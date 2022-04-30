@@ -1,0 +1,60 @@
+prog: ^^__Block__$$
+
+term: (
+    Bool / String / Char / Float / Int / Vec / List / Table
+    / Fncall / Var / Func / `(__(And / Or / expr)__`)
+)
+Indexed:: term +(__`.__term)
+expr: Add / Sub / Mul / Div / Expo / Indexed / term
+Add:: @lhs=(Add / Sub / Mul / Div / Expo / Indexed / term) _ `+ _ @rhs=(Mul / Div / Expo / Indexed / term)
+Sub:: @lhs=(Add / Sub / Mul / Div / Expo / Indexed / term) _ `- _ @rhs=(Mul / Div / Expo / Indexed / term)
+Mul:: @lhs=(Mul / Div / Expo / Indexed / term) _ `* _ @rhs=(Expo / Indexed / term)
+Div:: @lhs=(Mul / Div / Expo / Indexed / term) _ `/ _ @rhs=(Expo / Indexed / term)
+Expo:: @base=(Indexed / term) _ `^ _ @exponent=(Indexed / term)
+And:: 2+(Comparison / expr) % (__\b"and"\b__)
+Or:: 2+(Comparison / expr) % (__\b"or"\b__)
+Comparison:: expr _ (
+    +(@("<="/"<") _ expr)
+  / +(@(">="/">") _ expr)
+  / +(@"==" _ expr)
+  / @"!=" _ expr)
+Bool:: \b("yes"/"no")\b
+String:: `" ..%(Escape / `$ (Var/`(__(And / Or / expr)__`))) `"
+Char:: `` . / Escape
+Escape:: `\ (`x 2 hex / `a,b,t,n,r,v / 3 `0-8 / .)
+Float:: [`-,+] (`0-9 *`0-9,_ `. *`0-9 / `. +`0-9)
+Int:: [`-,+] `0-9 *`0-9,_
+Vec:: `| __ *expr % __ __ `|
+List:: `[ __ *expr % (__`,__) __ [`,__] `]
+Table:: `{ __ *@(@key=(id / expr) __ `: __ @val=expr) % (__`,__) __ [`,__] `}
+Fncall:: @fn=expr `( __ @args=(*expr % (__`,__)) __ [`,__] `)
+Var:: id !~ keyword
+id: \b(\I *\i)
+Func:: `(__*@args=(@arg=var__`:__@type=Type)%(__`,__)__[`,__]`)_"->"@body=(_ And / Or / expr / indent Block)
+Block:: +statement%\N
+statement: Declaration / FnDecl/ Assignment / block-statement / Return-statement / Fncall
+Declaration:: @var=Var _`: _[@type=Type_] `= _ @value=expr [\N @scope=Block]
+FnDecl:: @name=Var _ `( __ @args=*@(@arg=var_`:_@type=Type)%(__`,__)__[`,__]`)_`:_@return=Type_ `= _ indent @body=Block dedent \n
+Assignment:: @lhs=expr _ `= _ @rhs=expr
+Type:: Var / `|__Type__`| / `[__Type__`] / `{__Type__`:__Type__`}
+block-statement: If-statement / With-statement / For-loop / While-loop
+If-statement: (
+    @(\b"if"\b _ @condition=(And / Or / expr) indent @body=Block)
+    *@(\b"elseif"\b _ @condition=(And / Or / expr) indent @body=Block)
+    [\b"else"\b indent @else-body=Block]
+)
+With-statement:: \b"with"\b @expressions=+@(_ @expr=expr [_\b"as"\b @as=Var])%(_`,_) indent @body=Block
+For-loop:: \b"for"\b _ @var=Var _ "in" _ @iterable=(range / expr) indent @body=Block
+While-loop:: \b"while"\b _ @condition=(And / Or / expr) indent @body=Block
+Return-statement:: \b"return"\b _ expr
+Range:: expr _ [`,_expr]_".."_expr # 1,2..4  x..y  1..#list
+comment: "//" *.
+
+
+nodent: \N !(\t/` )
+indent: \N +(` /\t)
+dedent: $ !(nodent/indent)
+keyword: \b("yes"/"no"/"for"/"while"/"if"/"elseif"/"else"/"with")\b
+hex: `0-9,a-f,A-F
+__: *(` /\t/\n/\r/comment)
+_:  *(` /\t)
