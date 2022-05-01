@@ -29,9 +29,40 @@ local compile_stmt, to_reg
 strings = {}
 functions = {}
 
-fresh_reg = (types)->
+fresh_reg = (types, template="x")->
     for i=1,999
-        return "%x#{i}" unless types["%x#{i}"]
+        r = "%#{template}#{i > 1 and i or ""}"
+        continue if types[r]
+        types[r] = true
+        return r
+
+get_abity = (types, var)->
+    if types[var] == "Float"
+        return "d"
+    else
+        return "l"
+
+get_type = (types)=>
+    return get_type(@[1]) if not @__tag
+    switch @__tag
+        when "Var" then types["%"..@[0]]
+        when "Int" then "Int"
+        when "Float" then "Float"
+        when "Add","Sub","Mul","Div" then "Int"
+        when "Pow" then "Float"
+        else "Int"
+        
+
+binop = (op)->
+    (types)=>
+        -- t2 = setmetatable {}, {__index: types}
+        t2 = types
+        lhs_reg, lhs_code = to_reg @lhs, t2
+        t2[lhs_reg] = true
+        rhs_reg, rhs_code = to_reg @rhs, t2
+        t2[rhs_reg] = true
+        ret_reg = fresh_reg t2
+        return ret_reg, "#{lhs_code}#{rhs_code}#{ret_reg} =l #{op} #{lhs_reg}, #{rhs_reg}\n"
 
 expr_compilers =
     Var: (types)=>
@@ -41,57 +72,87 @@ expr_compilers =
             return "$#{@[0]}", ""
     Int: (types)=>
         reg = fresh_reg types
+        types[reg] = "Int"
         return reg, "#{reg} =l copy #{@[0]}\n"
+    Float: (types)=>
+        reg = fresh_reg types
+        types[reg] = "Float"
+        return reg, "#{reg} =d copy d_#{@[0]}\n"
     String: => strings[@[0]], ""
-    Add: (types)=>
-        t2 = setmetatable {}, {__index: types}
-        lhs_reg, lhs_code = to_reg @lhs, t2
-        t2[lhs_reg] = true
-        rhs_reg, rhs_code = to_reg @rhs, t2
-        t2[rhs_reg] = true
-        ret_reg = fresh_reg t2
-        return ret_reg, "#{lhs_code}#{rhs_code}#{ret_reg} =l add #{lhs_reg}, #{rhs_reg}\n"
+    Add: binop "add"
+    Sub: binop "sub"
+    Mul: binop "mul"
+    Div: binop "div"
+    Or: binop "or"
+    Xor: binop "xor"
+    And: binop "and"
+    Mod: binop "rem"
+    Pow: (types)=>
+        --t2 = setmetatable {}, {__index: types}
+        t2 = types
+        base_reg, base_code = to_reg @base, t2
+        if get_abity(t2, base_reg) != "d"
+            base_reg2 = fresh_reg t2
+            t2[base_reg2] = "Float"
+            base_code ..= "#{base_reg2} =d copy #{base_reg}\n"
+            base_reg = base_reg2
+            
+        exponent_reg, exponent_code = to_reg @exponent, t2
+        if get_abity(t2, exponent_reg) != "d"
+            exponent_reg2 = fresh_reg t2
+            t2[exponent_reg2] = "Float"
+            exponent_code ..= "#{exponent_reg2} =d copy #{exponent_reg}\n"
+            exponent_reg = exponent_reg2
 
-    Fncall: (types)=>
-        t2 = setmetatable {}, {__index: types}
+        ret_reg = fresh_reg t2
+        return ret_reg, "#{base_code}#{exponent_code}#{ret_reg} =d call $pow(d #{base_reg}, d #{exponent_reg})\n"
+
+    Fncall: (types, skip_ret=false)=>
+        --t2 = setmetatable {}, {__index: types}
+        t2 = types
         fn_reg = to_reg @fn, t2
         t2[fn_reg] = true
         arg_regs = {}
         code = ""
         for arg in *@args
             arg_reg, arg_code = to_reg arg, t2
-            t2[arg_reg] = arg_reg
+            t2[arg_reg] = get_type(arg, types)
             code ..= arg_code
             table.insert arg_regs, arg_reg
         ret_reg = fresh_reg t2
         t2[ret_reg] = true
-        code ..= "#{ret_reg} =l call #{fn_reg}(#{concat ["l #{r}" for r in *arg_regs], ", "})\n"
+        unless skip_ret
+            code ..= "#{ret_reg} =l "
+        code ..= "call #{fn_reg}(#{concat ["#{get_abity(t2, r)} #{r}" for r in *arg_regs], ", "})\n"
         return ret_reg, code
     
 stmt_compilers =
     Block: (types)=>
         concat([compile_stmt(stmt, types) for stmt in *@], "")
     Declaration: (types)=>
-        t2 = setmetatable {[@var[0]]: @type and @type[0] or true}, {__index: types}
+        -- t2 = setmetatable {[@var[0]]: @type and @type[0] or true}, {__index: types}
+        t2 = types
         reg, code = to_reg @value, types
-        code = "#{code}%#{@var[0]} =l copy #{reg}\n"
+        t2[reg] = @type and @type[0] or "Int"
+        code = "#{code}%#{@var[0]} =#{get_abity(types, reg)} copy #{reg}\n"
         if @scope
             code ..= compile_stmt @scope, t2
         return code
     FnDecl: (types)=>
         return ""
     Fncall: (types)=>
-        _, code = to_reg @, types
+        r, code = to_reg @, types, true
+        types[r] = true
         return code
     ["Return-statement"]: (types)=>
         reg, code = to_reg @[1], types
         return "#{code}ret #{reg}\n"
         
-to_reg = (types)=>
+to_reg = (types, ...)=>
     if not @__tag
         return to_reg @[1], types
     assert expr_compilers[@__tag], "Not implemented: #{@__tag}"
-    expr_compilers[@__tag](@, types)
+    expr_compilers[@__tag](@, types, ...)
 
 compile_stmt = (types)=>
     if not @__tag
@@ -112,7 +173,7 @@ for f in *arg
     log "Compiling #{f}"
     with io.open f
         text = \read "*a"
-        --io.write "\x1b[2m#{text}\x1b[m\n"
+        log "\x1b[34m#{text}\x1b[m"
         ast = blang\match text
         assert ast, "No match!"
         log viz(ast)
@@ -139,13 +200,17 @@ for f in *arg
 
         code = "# Source file: #{f}\n\n#{string_code}\n#{fn_code}\nexport function w $main() {\n@start\n#{body}\n  ret 0\n}\n"
 
-        log "\x1b[32m#{code}\x1b[m"
+        line = 0
+        numbered_code = code\gsub "[^\n]*", =>
+            line += 1
+            "#{("% 4d")\format line}| #{@}"
+        log "\x1b[32m#{numbered_code}\x1b[m"
 
         with io.open f..".ssa", "w"
             \write code
             \close!
 
-        os.execute "qbe #{f}.ssa > #{f}.S && cc #{f}.S -o #{f}.o"
+        os.execute "qbe #{f}.ssa > #{f}.S && cc #{f}.S -o #{f}.o -lm"
 
         log "Compiled #{f}!"
 

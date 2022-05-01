@@ -5,12 +5,13 @@ term: (
     / Fncall / Var / Func / `(__(And / Or / expr)__`)
 )
 Indexed:: term +(__`.__term)
-expr: Add / Sub / Mul / Div / Expo / Indexed / term
-Add:: @lhs=(Add / Sub / Mul / Div / Expo / Indexed / term) _ `+ _ @rhs=(Mul / Div / Expo / Indexed / term)
-Sub:: @lhs=(Add / Sub / Mul / Div / Expo / Indexed / term) _ `- _ @rhs=(Mul / Div / Expo / Indexed / term)
-Mul:: @lhs=(Mul / Div / Expo / Indexed / term) _ `* _ @rhs=(Expo / Indexed / term)
-Div:: @lhs=(Mul / Div / Expo / Indexed / term) _ `/ _ @rhs=(Expo / Indexed / term)
-Expo:: @base=(Indexed / term) _ `^ _ @exponent=(Indexed / term)
+expr: Mod / Add / Sub / Mul / Div / Pow / Indexed / term
+Mod:: @lhs=(Add / Sub / Mul / Div / Pow / Indexed / term) _ \b"mod"\b _ @rhs=(Add / Sub / Mul / Div / Pow / Indexed / term)
+Add:: @lhs=(Add / Sub / Mul / Div / Pow / Indexed / term) _ `+ _ @rhs=(Mul / Div / Pow / Indexed / term)
+Sub:: @lhs=(Add / Sub / Mul / Div / Pow / Indexed / term) _ `- _ @rhs=(Mul / Div / Pow / Indexed / term)
+Mul:: @lhs=(Mul / Div / Pow / Indexed / term) _ `* _ @rhs=(Pow / Indexed / term)
+Div:: @lhs=(Mul / Div / Pow / Indexed / term) _ `/ _ @rhs=(Pow / Indexed / term)
+Pow:: @base=(Indexed / term) _ `^ _ @exponent=(Indexed / term)
 And:: 2+(Comparison / expr) % (__\b"and"\b__)
 Or:: 2+(Comparison / expr) % (__\b"or"\b__)
 Comparison:: expr _ (
