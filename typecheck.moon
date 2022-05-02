@@ -74,15 +74,19 @@ get_type = (node)->
             assert get_type(node.exponent) == "Float", "Expected float"
             return "Float"
         when "Func","FnDecl"
-            ret_type = nil
-            for ret in coroutine.wrap ->find_returns(node.body)
-                if ret_type == nil
-                    ret_type = ret and get_type(ret) or "Void"
-                else
-                    t2 = ret and get_type(ret) or "Void"
-                    assert(t2 == ret_type, "Return type mismatch: #{ret_type} vs #{t2}")
-            if not ret_type
-                ret_type = get_type(node.body)
+            return node.type[0] if node.type
+
+            ret_type = if node.expr
+                get_type node.expr[1]
+            else
+                t = nil
+                for ret in coroutine.wrap ->find_returns(node.body)
+                    if t == nil
+                        t = ret and get_type(ret) or "Void"
+                    else
+                        t2 = ret and get_type(ret) or "Void"
+                        assert(t2 == t, "Return type mismatch: #{t} vs #{t2}")
+                t or "Void"
             return "(#{concat [get_type a for a in *node.args], ","})->#{ret_type}"
         when "Var"
             var_type = find_declared_type(parents[node], node[0])
@@ -94,7 +98,8 @@ get_type = (node)->
             assert args, "Not a function: #{viz node.fn[1]} is #{fn_type}"
             return fn_type\sub(#args+1,#fn_type)
         when "Block"
-            return get_type(node[#node])
+            error "Blocks have no type"
+            -- return get_type(node[#node])
         else
             assert not node.__tag, "Unknown node tag: #{node.__tag}"
     if #node > 0

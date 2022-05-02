@@ -6,10 +6,16 @@ local compile_stmt, to_reg
 
 strings = {}
 functions = {}
+duplicate_regs = {}
 
 fresh_reg = (vars, template="x")->
     for i=1,999
-        r = "%#{template}#{i > 1 and i or ""}"
+        r = if duplicate_regs[template]
+            duplicate_regs[template] += 1
+            "%#{template}#{duplicate_regs[template]}"
+        else
+            duplicate_regs[template] = 1
+            "%#{template}"
         continue if vars[r]
         vars[r] = true
         return r
@@ -34,9 +40,7 @@ binop = (op, flop)->
         assert get_type(@[1]) == get_type(@[2]), "Type mismatch"
         abity = get_abity(@[1])
         lhs_reg, lhs_code = to_reg @[1], vars
-        vars[lhs_reg] = true
         rhs_reg, rhs_code = to_reg @[2], vars
-        vars[rhs_reg] = true
         ret_reg = fresh_reg vars
         return ret_reg, "#{lhs_code}#{rhs_code}#{ret_reg} =#{abity} #{abity == "d" and flop or op} #{lhs_reg}, #{rhs_reg}\n"
 
@@ -120,12 +124,10 @@ expr_compilers =
 
     FnCall: (vars)=>
         fn_reg = to_reg @fn, vars
-        vars[fn_reg] = true
         code = ""
         args = {}
         for arg in *@args
             arg_reg, arg_code = to_reg arg, vars
-            vars[arg_reg] = true
             code ..= arg_code
             table.insert args, "#{get_abity arg} #{arg_reg}"
         ret_reg = fresh_reg vars
@@ -237,10 +239,8 @@ compile_prog = (ast, filename)->
             ret_reg, tmp = to_reg fndec.expr, vars
             "#{tmp}ret #{ret_reg}\n"
         body_code = body_code\gsub("[^\n]+", =>(@\match("^%@") and @ or "  "..@))
-        ret_type = if fndec.return
-            fndec.return[0]
-        else
-            get_type(fndec.body and fndec.body[0] or fndec.expr[0])
+        fn_type = get_type fndec
+        ret_type = fn_type\gsub("^b()->","")
         fn_code ..= "function #{ret_type == "Void" and "" or get_abity(ret_type).." "}"
         fn_name = "$"..fndec.name[0]
         fn_dups[fn_name] = (fn_dups[fn_name] or 0) + 1
