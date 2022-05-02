@@ -28,8 +28,8 @@ find_declared_type = (scope, name)->
         when "Block"
             for i=#scope,1,-1
                 stmt = scope[i]
-                if stmt.__tag == "FnDecl" and stmt.name == name
-                    return get_func_type(stmt)
+                if stmt.__tag == "FnDecl" and stmt.name[0] == name
+                    return get_type(stmt)
                 elseif stmt.__tag == "Declaration" and stmt.var[0] == name
                     return stmt.type[0] if stmt.type
                     return get_type stmt.value[1]
@@ -50,8 +50,10 @@ get_type = (node)->
     switch node.__tag
         when "Int","Float","Bool","String" then return node.__tag
         when "List"
-            return "[]" if #node == 0
+            decl_type = node.type and node.type[0]
+            return decl_type if #node == 0
             t = get_type node[1]
+            assert t == decl_type, "List type mismatch" if decl_type
             for i=2,#node
                 assert get_type(node[i]) == t, "List type mismatch"
             return "[#{t}]"
@@ -81,15 +83,15 @@ get_type = (node)->
                     assert(t2 == ret_type, "Return type mismatch: #{ret_type} vs #{t2}")
             if not ret_type
                 ret_type = get_type(node.body)
-            return ret_type
+            return "(#{concat [get_type a for a in *node.args], ","})->#{ret_type}"
         when "Var"
             var_type = find_declared_type(parents[node], node[0])
             assert var_type, "Undefined variable: #{node[0]}"
             return var_type
         when "FnCall"
-            fn_type = get_type node.fn
+            fn_type = get_type node.fn[1]
             args = fn_type\match("^%b()->")
-            assert args, "Not a function: #{fn_type}"
+            assert args, "Not a function: #{viz node.fn[1]} is #{fn_type}"
             return fn_type\sub(#args+1,#fn_type)
         when "Block"
             return get_type(node[#node])
@@ -99,9 +101,5 @@ get_type = (node)->
         error "WTF: #{viz node}"
         return get_type(node[#node])
     return "Void"
-
-get_func_type = (node)->
-    ret_type = find_type node.body
-    return "(#{concat [a.type[0] for a in *node.args], ","})->#{ret_type}"
 
 return {:add_parenting, :get_type, :get_abity}

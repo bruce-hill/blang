@@ -1,11 +1,14 @@
 prog: ^^__Block__ [ParseError:: +(./\n) @message=(""=>"Invalid code")]$$
 
 term: (
-    Bool / String / Float / Int / Var !`( / Fncall / Func / List / `(__extended-expr__`)
+    Bool / String / Float / Int / unaryOp / Var !`( / FnCall / Func / List / `(__extended-expr__`)
 )
 IndexedTerm:: term `@ term
 expr: Mod / Add / Sub / Mul / Div / Pow / IndexedTerm / term
 extended-expr: And / Or / comparison / expr
+unaryOp: Negative / Len
+Negative:: `- !`0-9,-,. term
+Len:: `# term
 Mod:: (Add / Sub / Mul / Div / Pow / term) _ \b"mod"\b _ (Add / Sub / Mul / Div / Pow / term)
 Add:: (Add / Sub / Mul / Div / Pow / term) _ `+ _ (Mul / Div / Pow / term)
 Sub:: (Add / Sub / Mul / Div / Pow / term) _ `- _ (Mul / Div / Pow / term)
@@ -23,15 +26,15 @@ NotEqual:: expr _ "!=" _ expr
 comparison: Equal / NotEqual / LessEq / Less / GreaterEq / Greater
 Bool:: \b("yes"/"no")\b
 String:: `" ..%(Escape / `$ (Var/`(__ extended-expr __`))) `"
-List:: `[__*extended-expr %(__`,__) __ [`,__] `]
+List:: `[__*extended-expr %(__`,__) __ [`,__] `] [_`:_@type=Type]
 Escape:: `\ (`x 2 hex / `a,b,t,n,r,v / 3 `0-8 / .)
 Float:: [`-,+] (`0-9 *`0-9,_ `. *`0-9 / `. +`0-9)
 Int:: [`-,+] `0-9 *`0-9,_
-Fncall:: @fn=(Fncall / Var / `(__expr__`)) `( __ @args=(*expr % (__`,__)) __ [`,__] `)
+FnCall:: @fn=(FnCall / Var / `(__expr__`)) `( __ @args=(*expr % (__`,__)) __ [`,__] `)
 Var:: id !~ keyword
 id: \b(\I *\i)
 Block:: @curdent=\C +(comment/statement) % (+\n curdent !(` /\t))
-statement: Declaration / FnDecl / Assignment / If / For / While / Return / Fncall / !$ (ParseError:: ..$ @message=(=>"Invalid statement"))
+statement: Declaration / FnDecl / Assignment / If / For / While / Return / FnCall / !$ (ParseError:: ..$ @message=(=>"Invalid statement"))
 Declaration:: @var=Var _`: _[@type=Type_] `= _ @value=expr
 FnDecl:: @curdent=\C (@name=Var _
   `( __ @args=*@(@arg=var_`:_@type=Type)%(__`,__)__[`,__]`)_`:_[@return=Type]_ `= _ funcBody)

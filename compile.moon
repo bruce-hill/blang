@@ -55,6 +55,10 @@ expr_compilers =
         -- return reg, "#{reg} =d copy d_#{@[0]}\n"
         return "d_#{@[0]}",""
     String: => strings[@[0]], ""
+    Negative: (vars)=>
+        reg,code = to_reg @[1], vars
+        ret = fresh_reg vars, "neg"
+        return reg, "#{code}#{ret} =#{get_abity @[1]} neg #{reg}\n"
     IndexedTerm: (vars)=>
         t = get_type @[1]
         assert t\match("^%b[]$"), "Not a list: #{viz @[1]} is: #{t}"
@@ -114,7 +118,7 @@ expr_compilers =
         ret_reg = fresh_reg vars
         return ret_reg, "#{base_code}#{exponent_code}#{ret_reg} =d call $pow(d #{base_reg}, d #{exponent_reg})\n"
 
-    Fncall: (vars)=>
+    FnCall: (vars)=>
         fn_reg = to_reg @fn, vars
         vars[fn_reg] = true
         code = ""
@@ -135,7 +139,10 @@ stmt_compilers =
         concat([compile_stmt(stmt, vars) for stmt in *@], "")
     Declaration: (vars)=>
         vars["%#{@var[0]}"] = true
-        var_type = @type or get_type @value[1]
+        var_type = if @type
+            assert get_type(@value[1]) == @type[1][0], "Type mismatch: #{get_type(@value[1])} vs #{@type[1][0]}"
+            @type[1][0]
+        else get_type @value[1]
         reg, code = to_reg @value, vars
         code = "#{code}%#{@var[0]} =#{get_abity var_type, vars} copy #{reg}\n"
         return code
@@ -145,7 +152,7 @@ stmt_compilers =
         code = "#{code}%#{@var[0]} =#{get_abity var_type, vars} copy #{reg}\n"
         return code
     FnDecl: (vars)=> ""
-    Fncall: (vars)=>
+    FnCall: (vars)=>
         r, code = to_reg @, vars
         -- Discard the return value register:
         vars[r] = nil
@@ -230,7 +237,10 @@ compile_prog = (ast, filename)->
             ret_reg, tmp = to_reg fndec.expr, vars
             "#{tmp}ret #{ret_reg}\n"
         body_code = body_code\gsub("[^\n]+", =>(@\match("^%@") and @ or "  "..@))
-        ret_type = fndec.return or get_type(fndec.body or fndec.expr)
+        ret_type = if fndec.return
+            fndec.return[0]
+        else
+            get_type(fndec.body and fndec.body[0] or fndec.expr[0])
         fn_code ..= "function #{ret_type == "Void" and "" or get_abity(ret_type).." "}"
         fn_name = "$"..fndec.name[0]
         fn_dups[fn_name] = (fn_dups[fn_name] or 0) + 1
