@@ -1,60 +1,53 @@
-prog: ^^__Block__$$
+prog: ^^__Block__ [ParseError:: +(./\n) @message=(""=>"Invalid code")]$$
 
 term: (
-    Bool / String / Char / Float / Int / Vec / List / Table
-    / Fncall / Var / Func / `(__(And / Or / expr)__`)
+    Bool / String / Float / Int / Var !`( / Fncall / Func / `(__(And / Or / expr)__`)
 )
-Indexed:: term +(__`.__term)
-expr: Mod / Add / Sub / Mul / Div / Pow / Indexed / term
-Mod:: @lhs=(Add / Sub / Mul / Div / Pow / Indexed / term) _ \b"mod"\b _ @rhs=(Add / Sub / Mul / Div / Pow / Indexed / term)
-Add:: @lhs=(Add / Sub / Mul / Div / Pow / Indexed / term) _ `+ _ @rhs=(Mul / Div / Pow / Indexed / term)
-Sub:: @lhs=(Add / Sub / Mul / Div / Pow / Indexed / term) _ `- _ @rhs=(Mul / Div / Pow / Indexed / term)
-Mul:: @lhs=(Mul / Div / Pow / Indexed / term) _ `* _ @rhs=(Pow / Indexed / term)
-Div:: @lhs=(Mul / Div / Pow / Indexed / term) _ `/ _ @rhs=(Pow / Indexed / term)
-Pow:: @base=(Indexed / term) _ `^ _ @exponent=(Indexed / term)
-And:: 2+(Comparison / expr) % (__\b"and"\b__)
-Or:: 2+(Comparison / expr) % (__\b"or"\b__)
-Comparison:: expr _ (
-    +(@("<="/"<") _ expr)
-  / +(@(">="/">") _ expr)
-  / +(@"==" _ expr)
-  / @"!=" _ expr)
+expr: Mod / Add / Sub / Mul / Div / Pow / term
+Mod:: (Add / Sub / Mul / Div / Pow / term) _ \b"mod"\b _ (Add / Sub / Mul / Div / Pow / term)
+Add:: (Add / Sub / Mul / Div / Pow / term) _ `+ _ (Mul / Div / Pow / term)
+Sub:: (Add / Sub / Mul / Div / Pow / term) _ `- _ (Mul / Div / Pow / term)
+Mul:: (Mul / Div / Pow / term) _ `* _ (Pow / term)
+Div:: (Mul / Div / Pow / term) _ `/ _ (Pow / term)
+Pow:: @base=term _ `^ _ @exponent=term
+And:: 2+(comparison / expr) % (__\b"and"\b__)
+Or:: 2+(comparison / expr) % (__\b"or"\b__)
+Less:: expr _ "<" _ expr
+LessEq:: expr _ "<=" _ expr
+Greater:: expr _ ">" _ expr
+GreaterEq:: expr _ ">=" _ expr
+Equal:: expr _ "==" _ expr
+NotEqual:: expr _ "!=" _ expr
+comparison: Equal / NotEqual / LessEq / Less / GreaterEq / Greater
 Bool:: \b("yes"/"no")\b
-String:: `" ..%(Escape / `$ (Var/`(__(And / Or / expr)__`))) `"
-Char:: `` . / Escape
+String:: `" ..%(Escape / `$ (Var/`(__(And / Or / comparison / expr)__`))) `"
 Escape:: `\ (`x 2 hex / `a,b,t,n,r,v / 3 `0-8 / .)
 Float:: [`-,+] (`0-9 *`0-9,_ `. *`0-9 / `. +`0-9)
 Int:: [`-,+] `0-9 *`0-9,_
-Vec:: `| __ *expr % __ __ `|
-List:: `[ __ *expr % (__`,__) __ [`,__] `]
-Table:: `{ __ *@(@key=(id / expr) __ `: __ @val=expr) % (__`,__) __ [`,__] `}
-Fncall:: @fn=expr `( __ @args=(*expr % (__`,__)) __ [`,__] `)
+Fncall:: @fn=(Fncall / Var / `(__expr__`)) `( __ @args=(*expr % (__`,__)) __ [`,__] `)
 Var:: id !~ keyword
 id: \b(\I *\i)
-Func:: `(__*@args=(@arg=var__`:__@type=Type)%(__`,__)__[`,__]`)_"->"@body=(_ And / Or / expr / indent Block)
-Block:: +statement%\N
-statement: Declaration / FnDecl/ Assignment / block-statement / Return-statement / Fncall
-Declaration:: @var=Var _`: _[@type=Type_] `= _ @value=expr [\N @scope=Block]
-FnDecl:: @name=Var _ `( __ @args=*@(@arg=var_`:_@type=Type)%(__`,__)__[`,__]`)_`:_@return=Type_ `= _ indent @body=Block dedent \n
-Assignment:: @lhs=expr _ `= _ @rhs=expr
-Type:: Var / `|__Type__`| / `[__Type__`] / `{__Type__`:__Type__`}
-block-statement: If-statement / With-statement / For-loop / While-loop
-If-statement: (
-    @(\b"if"\b _ @condition=(And / Or / expr) indent @body=Block)
-    *@(\b"elseif"\b _ @condition=(And / Or / expr) indent @body=Block)
-    [\b"else"\b indent @else-body=Block]
+Block:: @curdent=\C +(comment/statement) % (+\n curdent !(` /\t))
+statement: Declaration / FnDecl / Assignment / If / For / While / Return / Fncall / !$ (ParseError:: ..$ @message=(=>"Invalid statement"))
+Declaration:: @var=Var _`: _[@type=Type_] `= _ @value=expr
+FnDecl:: @curdent=\C (@name=Var _
+  `( __ @args=*@(@arg=var_`:_@type=Type)%(__`,__)__[`,__]`)_`:_[@return=Type]_ `= _ funcBody)
+Func:: @curdent=\C (`(__*@args=(@arg=var__`:__@type=Type)%(__`,__)__[`,__]`)_[`:_@return=Type]_"->" funcBody)
+funcBody: @expr=(And / Or / comparison / expr) / +\n curdent +(` /\t) @body=Block
+Assignment:: @var=Var _ `= _ (@value=expr / (ParseError:: ..$ @message=(=>"Invalid expression")))
+Type:: "Bool" / "Int" / "Float" / "String" / `(__ @args=(*Type % (__`,__)) __ `) _ "->" __ Type
+If:: \b"if"\b @curdent=\C _ (
+    @(@condition=(And / Or / comparison / expr) +\n curdent +(` /\t) @body=Block)
+    *@(+\n curdent \b"elseif"\b _ @condition=(And / Or / comparison / expr) +\n curdent +(` /\t) @body=Block)
+    [+\n curdent \b"else"\b +\n curdent +(` /\t) @elseBody=Block]
 )
-With-statement:: \b"with"\b @expressions=+@(_ @expr=expr [_\b"as"\b @as=Var])%(_`,_) indent @body=Block
-For-loop:: \b"for"\b _ @var=Var _ "in" _ @iterable=(range / expr) indent @body=Block
-While-loop:: \b"while"\b _ @condition=(And / Or / expr) indent @body=Block
-Return-statement:: \b"return"\b _ expr
+For:: \b"for"\b @curdent=\C _ @var=Var _ "in" _ @iterable=(range / expr) +\n curdent +(` /\t) @body=Block
+While:: \b"while"\b _ @condition=(And / Or / comparison / expr) +\n curdent +(` /\t) @body=Block
+Return:: \b"return"\b _ [expr]
 Range:: expr _ [`,_expr]_".."_expr # 1,2..4  x..y  1..#list
 comment: "//" *.
 
 
-nodent: \N !(\t/` )
-indent: \N +(` /\t)
-dedent: $ !(nodent/indent)
 keyword: \b("yes"/"no"/"for"/"while"/"if"/"elseif"/"else"/"with")\b
 hex: `0-9,a-f,A-F
 __: *(` /\t/\n/\r/comment)
