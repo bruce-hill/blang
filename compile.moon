@@ -47,14 +47,41 @@ expr_compilers =
         else
             return "$#{@[0]}", ""
     Int: (vars)=>
-        reg = fresh_reg vars
-        vars[reg] = "Int"
-        return reg, "#{reg} =l copy #{@[0]}\n"
+        --reg = fresh_reg vars, "i"
+        --return reg, "#{reg} =l copy #{@[0]}\n"
+        return "#{@[0]}",""
     Float: (vars)=>
-        reg = fresh_reg vars
-        vars[reg] = "Float"
-        return reg, "#{reg} =d copy d_#{@[0]}\n"
+        -- reg = fresh_reg vars, "f"
+        -- return reg, "#{reg} =d copy d_#{@[0]}\n"
+        return "d_#{@[0]}",""
     String: => strings[@[0]], ""
+    IndexedTerm: (vars)=>
+        t = get_type @[1]
+        assert t\match("^%b[]$"), "Not a list: #{viz @[1]} is: #{t}"
+        list_type = t\sub(2,#t-1)
+        assert get_type(@[2]) == "Int", "Bad index"
+        list_reg,list_code = to_reg @[1], vars
+        index_reg,index_code = to_reg @[2], vars
+        code = list_code..index_code
+        p = fresh_reg vars, "p"
+        code ..= "#{p} =l mul #{index_reg}, 8\n"
+        code ..= "#{p} =l add #{p}, #{list_reg}\n"
+        reg = fresh_reg vars, "item"
+        code ..= "#{reg} =#{get_abity list_type} load#{get_abity list_type} #{p}\n"
+        return reg,code
+    List: (vars)=>
+        reg = fresh_reg vars, "list"
+        code = "#{reg} =l call $calloc(l #{1 + #@}, l 8)\n"
+        -- code = "#{reg} =l alloc8 #{(1 + #@)*8}\n"
+        code ..= "storel #{#@}, #{reg}\n"
+        if #@ > 0
+            p = fresh_reg vars, "p"
+            for i,val in ipairs @
+                val_reg,val_code = to_reg val, vars
+                code ..= val_code
+                code ..= "#{p} =l add #{reg}, #{8*i}\n"
+                code ..= "storel #{val_reg}, #{p}\n"
+        return reg, code
     Add: binop "add"
     Sub: binop "sub"
     Mul: binop "mul"
@@ -108,13 +135,13 @@ stmt_compilers =
         concat([compile_stmt(stmt, vars) for stmt in *@], "")
     Declaration: (vars)=>
         vars["%#{@var[0]}"] = true
-        var_type = @type or get_type @value, vars
+        var_type = @type or get_type @value[1]
         reg, code = to_reg @value, vars
         code = "#{code}%#{@var[0]} =#{get_abity var_type, vars} copy #{reg}\n"
         return code
     Assignment: (vars)=>
         reg, code = to_reg @value, vars
-        var_type = get_type(@var, vars)
+        var_type = get_type @var[1]
         code = "#{code}%#{@var[0]} =#{get_abity var_type, vars} copy #{reg}\n"
         return code
     FnDecl: (vars)=> ""
@@ -220,8 +247,8 @@ compile_prog = (ast, filename)->
     body_code = compile_stmt(ast, vars)\gsub("[^\n]+", =>(@\match("^%@") and @ or "  "..@))
 
     code = "# Source file: #{filename}\n\n"
-    code ..= "#{string_code}\n"
-    code ..= "#{fn_code}\n"
+    code ..= "#{string_code}\n" if #string_code > 0
+    code ..= "#{fn_code}\n" if #fn_code > 0
     code ..= "export function w $main() {\n@start\n#{body_code}  ret 0\n}\n"
     return code
 

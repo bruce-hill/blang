@@ -1,9 +1,11 @@
 prog: ^^__Block__ [ParseError:: +(./\n) @message=(""=>"Invalid code")]$$
 
 term: (
-    Bool / String / Float / Int / Var !`( / Fncall / Func / `(__(And / Or / expr)__`)
+    Bool / String / Float / Int / Var !`( / Fncall / Func / List / `(__extended-expr__`)
 )
-expr: Mod / Add / Sub / Mul / Div / Pow / term
+IndexedTerm:: term `@ term
+expr: Mod / Add / Sub / Mul / Div / Pow / IndexedTerm / term
+extended-expr: And / Or / comparison / expr
 Mod:: (Add / Sub / Mul / Div / Pow / term) _ \b"mod"\b _ (Add / Sub / Mul / Div / Pow / term)
 Add:: (Add / Sub / Mul / Div / Pow / term) _ `+ _ (Mul / Div / Pow / term)
 Sub:: (Add / Sub / Mul / Div / Pow / term) _ `- _ (Mul / Div / Pow / term)
@@ -20,7 +22,8 @@ Equal:: expr _ "==" _ expr
 NotEqual:: expr _ "!=" _ expr
 comparison: Equal / NotEqual / LessEq / Less / GreaterEq / Greater
 Bool:: \b("yes"/"no")\b
-String:: `" ..%(Escape / `$ (Var/`(__(And / Or / comparison / expr)__`))) `"
+String:: `" ..%(Escape / `$ (Var/`(__ extended-expr __`))) `"
+List:: `[__*extended-expr %(__`,__) __ [`,__] `]
 Escape:: `\ (`x 2 hex / `a,b,t,n,r,v / 3 `0-8 / .)
 Float:: [`-,+] (`0-9 *`0-9,_ `. *`0-9 / `. +`0-9)
 Int:: [`-,+] `0-9 *`0-9,_
@@ -33,16 +36,16 @@ Declaration:: @var=Var _`: _[@type=Type_] `= _ @value=expr
 FnDecl:: @curdent=\C (@name=Var _
   `( __ @args=*@(@arg=var_`:_@type=Type)%(__`,__)__[`,__]`)_`:_[@return=Type]_ `= _ funcBody)
 Func:: @curdent=\C (`(__*@args=(@arg=var__`:__@type=Type)%(__`,__)__[`,__]`)_[`:_@return=Type]_"->" funcBody)
-funcBody: @expr=(And / Or / comparison / expr) / +\n curdent +(` /\t) @body=Block
+funcBody: @expr=extended-expr / +\n curdent +(` /\t) @body=Block
 Assignment:: @var=Var _ `= _ (@value=expr / (ParseError:: ..$ @message=(=>"Invalid expression")))
-Type:: "Bool" / "Int" / "Float" / "String" / `(__ @args=(*Type % (__`,__)) __ `) _ "->" __ Type
+Type:: "Bool" / "Int" / "Float" / "String" / `[Type`] / `(__ @args=(*Type % (__`,__)) __ `) _ "->" __ Type
 If:: \b"if"\b @curdent=\C _ (
-    @(@condition=(And / Or / comparison / expr) +\n curdent +(` /\t) @body=Block)
-    *@(+\n curdent \b"elseif"\b _ @condition=(And / Or / comparison / expr) +\n curdent +(` /\t) @body=Block)
+    @(@condition=extended-expr +\n curdent +(` /\t) @body=Block)
+    *@(+\n curdent \b"elseif"\b _ @condition=extended-expr +\n curdent +(` /\t) @body=Block)
     [+\n curdent \b"else"\b +\n curdent +(` /\t) @elseBody=Block]
 )
 For:: \b"for"\b @curdent=\C _ @var=Var _ "in" _ @iterable=(range / expr) +\n curdent +(` /\t) @body=Block
-While:: \b"while"\b _ @condition=(And / Or / comparison / expr) +\n curdent +(` /\t) @body=Block
+While:: \b"while"\b _ @condition=extended-expr +\n curdent +(` /\t) @body=Block
 Return:: \b"return"\b _ [expr]
 Range:: expr _ [`,_expr]_".."_expr # 1,2..4  x..y  1..#list
 comment: "//" *.

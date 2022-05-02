@@ -30,9 +30,9 @@ find_declared_type = (scope, name)->
                 stmt = scope[i]
                 if stmt.__tag == "FnDecl" and stmt.name == name
                     return get_func_type(stmt)
-                elseif stmt.__tag == "Declaration" and stmt.var
+                elseif stmt.__tag == "Declaration" and stmt.var[0] == name
                     return stmt.type[0] if stmt.type
-                    return get_type stmt.value
+                    return get_type stmt.value[1]
         when "FnDecl","Func"
             for a in *scope.args
                 if a.arg[0] == name
@@ -49,6 +49,18 @@ find_declared_type = (scope, name)->
 get_type = (node)->
     switch node.__tag
         when "Int","Float","Bool","String" then return node.__tag
+        when "List"
+            return "[]" if #node == 0
+            t = get_type node[1]
+            for i=2,#node
+                assert get_type(node[i]) == t, "List type mismatch"
+            return "[#{t}]"
+        when "IndexedTerm"
+            assert node[1] and node[2], "No value/index"
+            list_type = get_type node[1]
+            assert list_type\match("^%b[]$"), "Not a list: #{viz node[1]} is: #{list_type}"
+            assert get_type(node[2], vars) == "Int", "Bad index"
+            return list_type\sub(2,#list_type-1)
         when "And","Or","Comparison" then return "Bool"
         when "Add","Sub","Mul","Div"
             lhs_type = get_type node[1]
@@ -81,7 +93,10 @@ get_type = (node)->
             return fn_type\sub(#args+1,#fn_type)
         when "Block"
             return get_type(node[#node])
+        else
+            assert not node.__tag, "Unknown node tag: #{node.__tag}"
     if #node > 0
+        error "WTF: #{viz node}"
         return get_type(node[#node])
     return "Void"
 
