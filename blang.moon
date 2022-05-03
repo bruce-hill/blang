@@ -30,7 +30,7 @@ for f in *files
 
         log number_code(code, "36;1")
 
-        with io.open f..".ssa", "w"
+        with io.open f..".qbe", "w"
             \write code
             \close!
 
@@ -39,9 +39,9 @@ for f in *files
             assert os.execute cmd
 
         log "\x1b[2mRunning QBE...\x1b[m"
-        run "qbe #{f}.ssa > #{f}.S"
+        run "qbe #{f}.qbe > #{f}.s"
         log "\x1b[2mCompiling assembly...\x1b[m"
-        run "cc -O0 #{f}.S -o #{f}.o -lm"
+        run "cc #{f}.s -o #{f}.o -lm"
         log "\x1b[2mRunning program:\x1b[m"
         run "./#{f}.o #{table.concat args, " "}"
 
