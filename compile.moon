@@ -227,9 +227,10 @@ store_to = (val, vars, ...)=>
             dest = fresh_reg vars, "dest"
             code ..= "#{dest} =l mul #{index_reg}, 8\n"
             code ..= "#{dest} =l add #{dest}, #{list_reg}\n"
-            reg = fresh_reg vars, "item"
-            code ..= "store#{get_abity list_type} #{reg}, #{dest}\n"
-            return reg,code
+            val_reg,val_code = to_reg val, vars
+            code ..= val_code
+            code ..= "store#{get_abity list_type} #{val_reg}, #{dest}\n"
+            return code
         else
             error "Not implemented: store to #{@__tag}"
             

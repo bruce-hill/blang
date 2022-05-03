@@ -44,7 +44,7 @@ FnDecl:: @curdent=\C (@name=Var _
   `( __ @args=*@(@arg=var_`:_@type=Type)%(__`,__)__[`,__]`)_`:_[@return=Type]_ `= _ funcBody)
 Func:: @curdent=\C (`(__*@args=(@arg=var__`:__@type=Type)%(__`,__)__[`,__]`)_[`:_@return=Type]_"->" funcBody)
 funcBody: @expr=extended-expr / +\n curdent +(` /\t) @body=Block
-Assignment:: Var _ `= _ required-expr
+Assignment:: (IndexedTerm/Var) _ `= _ required-expr
 AddUpdate:: Var _ "+=" _ required-expr
 SubUpdate:: Var _ "-=" _ required-expr
 MulUpdate:: Var _ "*=" _ required-expr
