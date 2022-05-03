@@ -30,7 +30,7 @@ List:: `[__*extended-expr %(__`,__) __ [`,__] `] [_`:_@type=Type]
 Escape:: `\ (`x 2 hex / `a,b,t,n,r,v / 3 `0-8 / .)
 Float:: [`-,+] (`0-9 *`0-9,_ `. *`0-9 / `. +`0-9)
 Int:: [`-,+] `0-9 *`0-9,_
-FnCall:: @fn=(FnCall / Var / `(__expr__`)) `( __ @args=(*expr % (__`,__)) __ [`,__] `)
+FnCall:: @fn=(FnCall / Var / `(__expr__`)) `( __ @args=(*expr % (__`,__)) __ [`,__] `) [_`:_@type=Type]
 Var:: id !~ keyword
 id: \b(\I *\i)
 Block:: @curdent=\C +(comment/statement) % (+\n curdent !(` /\t))

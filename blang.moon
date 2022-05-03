@@ -3,22 +3,25 @@ import log, viz from require 'util'
 parse = require 'parse'
 import compile_prog from require 'compile'
 
+number_code = (code, color="1")->
+    line = 0
+    (code\gsub("\n$","")\gsub "[^\n]*", =>
+        line += 1
+        "\x1b[2m#{("% 4d")\format line}|\x1b[22m \x1b[#{color}m#{@}\x1b[m"
+    )
+
 for f in *arg
     log "Compiling #{f}"
     with io.open f
         text = \read "*a"
-        log "\x1b[1;34m#{text}\x1b[m"
+        log number_code(text, "34;1")
         ast = parse text, f
         assert ast, "No match!"
         log viz(ast)
 
         code = compile_prog ast, f
 
-        line = 0
-        numbered_code = code\gsub "[^\n]*", =>
-            line += 1
-            "#{("% 4d")\format line}| #{@}"
-        log "\x1b[1;36m#{numbered_code}\x1b[m"
+        log number_code(code, "36;1")
 
         with io.open f..".ssa", "w"
             \write code

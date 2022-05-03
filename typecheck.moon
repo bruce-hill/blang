@@ -46,7 +46,14 @@ find_declared_type = (scope, name)->
     
     return find_declared_type(parents[scope], name)
 
-get_type = (node)->
+memoize = (fn)-> fn
+    -- cache = setmetatable {}, __mode:'k'
+    -- return (x)->
+    --     unless cache[x]
+    --         cache[x] = fn(x)
+    --     return cache[x]
+
+get_type = memoize (node)->
     switch node.__tag
         when "Int","Float","Bool","String" then return node.__tag
         when "List"
@@ -93,10 +100,13 @@ get_type = (node)->
             assert var_type, "Undefined variable: #{node[0]}"
             return var_type
         when "FnCall"
-            fn_type = get_type node.fn[1]
-            args = fn_type\match("^%b()->")
-            assert args, "Not a function: #{viz node.fn[1]} is #{fn_type}"
-            return fn_type\sub(#args+1,#fn_type)
+            if node.type
+                return node.type[0]
+            else
+                fn_type = get_type node.fn[1]
+                args = fn_type\match("^%b()->")
+                assert args, "Not a function: #{viz node.fn[1]} is #{fn_type}"
+                return fn_type\sub(#args+1,#fn_type)
         when "Block"
             error "Blocks have no type"
             -- return get_type(node[#node])

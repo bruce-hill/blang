@@ -122,7 +122,7 @@ expr_compilers =
         ret_reg = fresh_reg vars
         return ret_reg, "#{base_code}#{exponent_code}#{ret_reg} =d call $pow(d #{base_reg}, d #{exponent_reg})\n"
 
-    FnCall: (vars)=>
+    FnCall: (vars, skip_ret=false)=>
         fn_reg = to_reg @fn, vars
         code = ""
         args = {}
@@ -130,9 +130,12 @@ expr_compilers =
             arg_reg, arg_code = to_reg arg, vars
             code ..= arg_code
             table.insert args, "#{get_abity arg} #{arg_reg}"
+
+        if skip_ret
+            return nil, "#{code}call #{fn_reg}(#{concat args, ", "})\n"
+
         ret_reg = fresh_reg vars
-        unless skip_ret
-            code ..= "#{ret_reg} =l "
+        code ..= "#{ret_reg} =#{get_abity @} "
         code ..= "call #{fn_reg}(#{concat args, ", "})\n"
         return ret_reg, code
     
@@ -155,9 +158,7 @@ stmt_compilers =
         return code
     FnDecl: (vars)=> ""
     FnCall: (vars)=>
-        r, code = to_reg @, vars
-        -- Discard the return value register:
-        vars[r] = nil
+        _, code = to_reg @, vars, true
         code = code\gsub("[^\n]- (call [^\n]*\n)$", "%1")
         return code
     Return: (vars)=>
