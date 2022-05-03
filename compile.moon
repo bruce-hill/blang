@@ -254,13 +254,13 @@ compile_prog = (ast, filename)->
             fn_code ..= "  ret 0\n"
         fn_code ..= "}\n"
 
-    vars = {}
+    vars = {["%__argc"]:true, ["%argc"]:true, ["%argv"]:true}
     body_code = compile_stmt(ast, vars)\gsub("[^\n]+", =>(@\match("^%@") and @ or "  "..@))
 
     code = "# Source file: #{filename}\n\n"
     code ..= "#{string_code}\n" if #string_code > 0
     code ..= "#{fn_code}\n" if #fn_code > 0
-    code ..= "export function w $main() {\n@start\n#{body_code}  ret 0\n}\n"
+    code ..= "export function w $main(w %__argc, l %argv) {\n@start\n  %argc =l extsw %__argc\n#{body_code}  ret 0\n}\n"
     return code
 
 return {:compile_prog}

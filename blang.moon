@@ -10,7 +10,9 @@ number_code = (code, color="1")->
         "\x1b[2m#{("% 4d")\format line}|\x1b[22m \x1b[#{color}m#{@}\x1b[m"
     )
 
-for f in *arg
+files = arg
+for f in *files
+    break if f == "--"
     log "Compiling #{f}"
     with io.open f
         text = \read "*a"
@@ -36,6 +38,6 @@ for f in *arg
         log "\x1b[2mCompiling assembly...\x1b[m"
         run "cc -O0 #{f}.S -o #{f}.o -lm"
         log "\x1b[2mRunning program:\x1b[m"
-        run "./#{f}.o"
+        run "./#{f}.o one two three"
 
         \close!

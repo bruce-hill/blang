@@ -97,6 +97,11 @@ get_type = memoize (node)->
             return "(#{concat [get_type a for a in *node.args], ","})->#{ret_type}"
         when "Var"
             var_type = find_declared_type(parents[node], node[0])
+            if not var_type
+                if node[0] == "argc"
+                    return "Int"
+                if node[0] == "argv"
+                    return "[String]"
             assert var_type, "Undefined variable: #{node[0]}"
             return var_type
         when "FnCall"
