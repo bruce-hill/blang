@@ -2,7 +2,7 @@ import add_parenting, get_type from require 'typecheck'
 import log, viz from require 'util'
 concat = table.concat
 
-local compile_stmt, to_reg
+local compile_stmt, to_reg, store_to
 
 strings = {}
 functions = {}
@@ -44,6 +44,21 @@ binop = (op, flop)->
         ret_reg = fresh_reg vars
         return ret_reg, "#{lhs_code}#{rhs_code}#{ret_reg} =#{abity} #{abity == "d" and flop or op} #{lhs_reg}, #{rhs_reg}\n"
 
+update = (op, flop)->
+    (vars)=>
+        assert @[1] and @[2], "Node doesn't have 2 captures: #{viz @}"
+        --assert @[1].__tag == "Var", "Node should be a var"
+        t = get_type @[1]
+        assert get_type(@[2]) == t, "Type mismatch"
+        reg, code = to_reg @[2], vars
+        abity = get_abity t
+        if @[1].__tag == "Var"
+            dest,_ = to_reg @[1], vars
+            code ..= "#{dest} =#{abity} #{abity == "d" and flop or op} #{dest}, #{reg}\n"
+        else
+            error "Not impl: update indexes"
+        return code
+
 expr_compilers =
     Var: (vars)=>
         if vars["%"..@[0]]
@@ -51,12 +66,8 @@ expr_compilers =
         else
             return "$#{@[0]}", ""
     Int: (vars)=>
-        --reg = fresh_reg vars, "i"
-        --return reg, "#{reg} =l copy #{@[0]}\n"
         return "#{@[0]}",""
     Float: (vars)=>
-        -- reg = fresh_reg vars, "f"
-        -- return reg, "#{reg} =d copy d_#{@[0]}\n"
         return "d_#{@[0]}",""
     String: => strings[@[0]], ""
     Negative: (vars)=>
@@ -105,20 +116,9 @@ expr_compilers =
     Equal: binop "ceql"
     NotEqual: binop "cnel"
     Pow: (vars)=>
+        -- TODO: auto-cast ints to doubles
         base_reg, base_code = to_reg @base, vars
-        -- if get_abity(vars, base_reg) != "d"
-        --     base_reg2 = fresh_reg vars
-        --     vars[base_reg2] = true
-        --     base_code ..= "#{base_reg2} =d copy #{base_reg}\n"
-        --     base_reg = base_reg2
-            
         exponent_reg, exponent_code = to_reg @exponent, vars
-        -- if get_abity(vars, exponent_reg) != "d"
-        --     exponent_reg2 = fresh_reg vars
-        --     vars[exponent_reg2] = true
-        --     exponent_code ..= "#{exponent_reg2} =d copy #{exponent_reg}\n"
-        --     exponent_reg = exponent_reg2
-
         ret_reg = fresh_reg vars
         return ret_reg, "#{base_code}#{exponent_code}#{ret_reg} =d call $pow(d #{base_reg}, d #{exponent_reg})\n"
 
@@ -135,27 +135,29 @@ expr_compilers =
             return nil, "#{code}call #{fn_reg}(#{concat args, ", "})\n"
 
         ret_reg = fresh_reg vars
-        code ..= "#{ret_reg} =#{get_abity @} "
-        code ..= "call #{fn_reg}(#{concat args, ", "})\n"
+        code ..= "#{ret_reg} =#{get_abity @} call #{fn_reg}(#{concat args, ", "})\n"
         return ret_reg, code
-    
+
 stmt_compilers =
     Block: (vars)=>
         concat([compile_stmt(stmt, vars) for stmt in *@], "")
     Declaration: (vars)=>
-        vars["%#{@var[0]}"] = true
-        var_type = if @type
+        varname = "%#{@var[0]}"
+        assert not vars[varname], "Variable being shadowed: #{var}"
+        vars[varname] = true
+        if @type
             assert get_type(@value[1]) == @type[1][0], "Type mismatch: #{get_type(@value[1])} vs #{@type[1][0]}"
             @type[1][0]
-        else get_type @value[1]
-        reg, code = to_reg @value, vars
-        code = "#{code}%#{@var[0]} =#{get_abity var_type, vars} copy #{reg}\n"
-        return code
+        return store_to @var[1], @value[1], vars
     Assignment: (vars)=>
-        reg, code = to_reg @value, vars
-        var_type = get_type @var[1]
-        code = "#{code}%#{@var[0]} =#{get_abity var_type, vars} copy #{reg}\n"
-        return code
+        return store_to @[1], @[2], vars
+    AddUpdate: update "add"
+    SubUpdate: update "sub"
+    MulUpdate: update "mul"
+    DivUpdate: update "div"
+    OrUpdate: update "or"
+    XorUpdate: update "xor"
+    AndUpdate: update "and"
     FnDecl: (vars)=> ""
     FnCall: (vars)=>
         _, code = to_reg @, vars, true
@@ -203,6 +205,34 @@ to_reg = (vars, ...)=>
         return to_reg @[1], vars
     assert expr_compilers[@__tag], "Not implemented: #{@__tag}"
     expr_compilers[@__tag](@, vars, ...)
+
+store_to = (val, vars, ...)=>
+    switch @__tag
+        when "Var"
+            if vars["%"..@[0]] == "CLOSURE"
+                error("Not impl")
+            elseif vars["%"..@[0]]
+                reg,code = to_reg val, vars, ...
+                return "#{code}%#{@[0]} =#{get_abity val} copy #{reg}\n"
+            else
+                error "Undefined variable, or saving to global: #{@[0]}"
+        when "IndexedTerm"
+            t = get_type @[1]
+            assert t\match("^%b[]$"), "Not a list: #{viz @[1]} is: #{t}"
+            list_type = t\sub(2,#t-1)
+            assert get_type(@[2]) == "Int", "Bad index"
+            list_reg,list_code = to_reg @[1], vars
+            index_reg,index_code = to_reg @[2], vars
+            code = list_code..index_code
+            dest = fresh_reg vars, "dest"
+            code ..= "#{dest} =l mul #{index_reg}, 8\n"
+            code ..= "#{dest} =l add #{dest}, #{list_reg}\n"
+            reg = fresh_reg vars, "item"
+            code ..= "store#{get_abity list_type} #{reg}, #{dest}\n"
+            return reg,code
+        else
+            error "Not implemented: store to #{@__tag}"
+            
 
 compile_stmt = (vars)=>
     if not @__tag

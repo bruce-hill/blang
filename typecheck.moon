@@ -122,4 +122,4 @@ get_type = memoize (node)->
         return get_type(node[#node])
     return "Void"
 
-return {:add_parenting, :get_type, :get_abity}
+return {:add_parenting, :get_type}

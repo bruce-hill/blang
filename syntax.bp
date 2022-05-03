@@ -5,7 +5,7 @@ term: (
 )
 IndexedTerm:: term `@ term
 expr: Mod / Add / Sub / Mul / Div / Pow / IndexedTerm / term
-extended-expr: And / Or / comparison / expr
+extended-expr: And / Or / Xor / comparison / expr
 unaryOp: Negative / Len
 Negative:: `- !`0-9,-,. term
 Len:: `# term
@@ -17,6 +17,7 @@ Div:: (Mul / Div / Pow / term) _ `/ _ (Pow / term)
 Pow:: @base=term _ `^ _ @exponent=term
 And:: 2+(comparison / expr) % (__\b"and"\b__)
 Or:: 2+(comparison / expr) % (__\b"or"\b__)
+Xor:: 2+(comparison / expr) % (__\b"xor"\b__)
 Less:: expr _ "<" _ expr
 LessEq:: expr _ "<=" _ expr
 Greater:: expr _ ">" _ expr
@@ -34,13 +35,24 @@ FnCall:: @fn=(FnCall / Var / `(__expr__`)) `( __ @args=(*expr % (__`,__)) __ [`,
 Var:: id !~ keyword
 id: \b(\I *\i)
 Block:: @curdent=\C +(comment/statement) % (+\n curdent !(` /\t))
-statement: Declaration / FnDecl / Assignment / If / For / While / Return / FnCall / !$ (ParseError:: ..$ @message=(=>"Invalid statement"))
+statement: (Declaration / FnDecl / Assignment / AddUpdate / SubUpdate
+  / MulUpdate / DivUpdate / AndUpdate / OrUpdate / XorUpdate
+  / If / For / While / Return / FnCall
+  / !$ (ParseError:: ..$ @message=(=>"Invalid statement")))
 Declaration:: @var=Var _`: _[@type=Type_] `= _ @value=expr
 FnDecl:: @curdent=\C (@name=Var _
   `( __ @args=*@(@arg=var_`:_@type=Type)%(__`,__)__[`,__]`)_`:_[@return=Type]_ `= _ funcBody)
 Func:: @curdent=\C (`(__*@args=(@arg=var__`:__@type=Type)%(__`,__)__[`,__]`)_[`:_@return=Type]_"->" funcBody)
 funcBody: @expr=extended-expr / +\n curdent +(` /\t) @body=Block
-Assignment:: @var=Var _ `= _ (@value=expr / (ParseError:: ..$ @message=(=>"Invalid expression")))
+Assignment:: Var _ `= _ required-expr
+AddUpdate:: Var _ "+=" _ required-expr
+SubUpdate:: Var _ "-=" _ required-expr
+MulUpdate:: Var _ "*=" _ required-expr
+DivUpdate:: Var _ "/=" _ required-expr
+AndUpdate:: Var _ "and=" _ required-expr
+OrUpdate:: Var _ "or=" _ required-expr
+XorUpdate:: Var _ "xor=" _ required-expr
+required-expr: expr / (ParseError:: ..$ @message=(=>"Invalid expression"))
 Type:: "Bool" / "Int" / "Float" / "String" / `[Type`] / `(__ @args=(*Type % (__`,__)) __ `) _ "->" __ Type
 If:: \b"if"\b @curdent=\C _ (
     @(@condition=extended-expr +\n curdent +(` /\t) @body=Block)
