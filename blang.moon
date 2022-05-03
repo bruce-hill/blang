@@ -11,8 +11,13 @@ number_code = (code, color="1")->
     )
 
 files = arg
+args = {}
+for i=1,#arg
+    if arg[i] == "--"
+        files = {table.unpack(arg, 1, i-1)}
+        args = {table.unpack(arg, i+1, #arg)}
+
 for f in *files
-    break if f == "--"
     log "Compiling #{f}"
     with io.open f
         text = \read "*a"
@@ -38,6 +43,6 @@ for f in *files
         log "\x1b[2mCompiling assembly...\x1b[m"
         run "cc -O0 #{f}.S -o #{f}.o -lm"
         log "\x1b[2mRunning program:\x1b[m"
-        run "./#{f}.o one two three"
+        run "./#{f}.o #{table.concat args, " "}"
 
         \close!
