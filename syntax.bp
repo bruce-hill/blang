@@ -1,7 +1,7 @@
 prog: ^^__Block__ [ParseError:: +(./\n) @message=(""=>"Invalid code")]$$
 
 term: (
-    Bool / String / Float / Int / unaryOp / Var !`( / FnCall / Func / List / `(__extended-expr__`)
+    Bool / String / Float / Int / unaryOp / Var !`( / FnCall / Lambda / List / `(__extended-expr__`)
 )
 IndexedTerm:: !`0-9 (IndexedTerm / term) `. (Int / term)
 expr: Mod / Add / Sub / Mul / Div / Pow / IndexedTerm / term
@@ -32,27 +32,31 @@ Escape:: `\ (`x 2 hex / `a,b,t,n,r,v / 3 `0-8 / .)
 Float:: [`-,+] (`0-9 *`0-9,_ `. *`0-9 / `. +`0-9)
 Int:: [`-,+] `0-9 *`0-9,_
 FnCall:: @fn=(FnCall / Var / `(__expr__`)) `( __ @args=(*expr % (__`,__)) __ [`,__] `) [_`:_@type=type]
-Var:: id !~ keyword
+Var:: id !~ (^^keyword$$)
 id: \b(\I *\i)
 Block:: @curdent=\C +(comment/statement) % (+\n curdent !(` /\t))
 statement: (Declaration / FnDecl / Assignment / AddUpdate / SubUpdate
   / MulUpdate / DivUpdate / AndUpdate / OrUpdate / XorUpdate
   / If / For / While / Return / FnCall
   / !$ (ParseError:: ..$ @message=(=>"Invalid statement")))
-Declaration:: @var=Var _`: _[@type=type_] `= _ @value=expr
+Declaration:: @var=Var _`: _[@type=type_] `= _ @value=(Lambda / (ParseError:: @message=(..$ => "Not a lambda: '@0'")))  # required-extended-expr
 FnDecl:: @curdent=\C (@name=Var _
-  `( __ @args=*@(@arg=var_`:_@type=type)%(__`,__)__[`,__]`)_`:_[@return=type]_ `= _ funcBody)
-Func:: @curdent=\C (`(__*@args=(@arg=var__`:__@type=type)%(__`,__)__[`,__]`)_[`:_@return=type]_"->" funcBody)
-funcBody: @expr=extended-expr / +\n curdent +(` /\t) @body=Block
-Assignment:: (IndexedTerm/Var) _ `= _ required-expr
-AddUpdate:: Var _ "+=" _ required-expr
-SubUpdate:: Var _ "-=" _ required-expr
-MulUpdate:: Var _ "*=" _ required-expr
-DivUpdate:: Var _ "/=" _ required-expr
-AndUpdate:: Var _ "and=" _ required-expr
-OrUpdate:: Var _ "or=" _ required-expr
-XorUpdate:: Var _ "xor=" _ required-expr
-required-expr: expr / (ParseError:: ..$ @message=(=>"Invalid expression"))
+  `( __ @args=*@(@arg=Var_`:_@type=type)%(__`,__)__[`,__]`)_`:_[@return=type]_ `= _ @body=funcBody)
+Lambda:: (@curdent=\C
+  `(__@args=*@(@arg=Var__`:__@type=type)%(__`,__)__[`,__]`)
+  [_`:_@return=type]_"->"_
+  (@body=funcBody / (ParseError:: @message=(..$ =>"Invalid lambda body")))
+)
+funcBody: extended-expr / +\n curdent +(` /\t) Block
+Assignment:: (IndexedTerm/Var) _ `= _ required-extended-expr
+AddUpdate:: Var _ "+=" _ required-extended-expr
+SubUpdate:: Var _ "-=" _ required-extended-expr
+MulUpdate:: Var _ "*=" _ required-extended-expr
+DivUpdate:: Var _ "/=" _ required-extended-expr
+AndUpdate:: Var _ "and=" _ required-extended-expr
+OrUpdate:: Var _ "or=" _ required-extended-expr
+XorUpdate:: Var _ "xor=" _ required-extended-expr
+required-extended-expr: extended-expr / (ParseError:: ..$ @message=(=>"Invalid expression"))
 type: ((NamedType::id) / (ListType::`[type`])
   / (OptionalType:: `? type)
   / (VariantType:: `( 2+ type%`| `))
@@ -69,7 +73,7 @@ Range:: expr _ [`,_expr]_".."_expr # 1,2..4  x..y  1..#list
 comment: "//" *.
 
 
-keyword: \b("yes"/"no"/"for"/"while"/"if"/"elseif"/"else"/"with")\b
+keyword: "yes"/"no"/"for"/"while"/"if"/"elseif"/"else"/"with"
 hex: `0-9,a-f,A-F
 __: *(` /\t/\n/\r/comment)
 _:  *(` /\t)

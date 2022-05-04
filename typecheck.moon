@@ -18,7 +18,7 @@ class Type
     is_a: (cls)=> @ == cls or cls\contains @
 
     contains: (other)=> @ == other
-    abity: 'l'
+    abi_type: 'l'
 
 class NamedType extends Type
     new: (@name)=>
@@ -38,7 +38,7 @@ class FnType extends Type
 class VariantType extends Type
     new: (variants)=>
         flattened = {}
-        for v in variants
+        for v in *variants
             if v.__class == VariantType
                 for v2 in *v.variants
                     table.insert flattened, v2
@@ -68,7 +68,7 @@ class VariantType extends Type
 -- Primitive Types:
 Int = NamedType("Int")
 Float = NamedType("Float")
-Float.abity = 'd'
+Float.abi_type = 'd'
 Void = NamedType("Void")
 Nil = NamedType("Nil")
 Bool = NamedType("Bool")
@@ -84,7 +84,7 @@ find_returns = (node)->
     switch node.__tag
         when "Return"
             coroutine.yield(node)
-        when "Func","FnDecl","Declaration"
+        when "Lambda","FnDecl","Declaration"
             return
         else
             for _,child in pairs node
@@ -101,7 +101,7 @@ find_declared_type = (scope, name)->
                 elseif stmt.__tag == "Declaration" and stmt.var[0] == name
                     return parse_type(stmt.type[1]) if stmt.type
                     return get_type stmt.value[1]
-        when "FnDecl","Func"
+        when "FnDecl","Lambda"
             for a in *scope.args
                 if a.arg[0] == name
                     return parse_type(a.type[1])
@@ -128,8 +128,8 @@ parse_type = (type_node)->
         when "ListType"
             return ListType(parse_type(type_node[1]))
         when "FnType"
-            arg_types = [parse_type(a) for a in *type_node.args[1]]
-            return FnType(arg_types, parse_type(type_node.return))
+            arg_types = [parse_type(a) for a in *type_node.args]
+            return FnType(arg_types, parse_type(type_node.return[1]))
         when "OptionalType"
             return VariantType({parse_type(type_node[1]), Nil})
         when "VariantType"
@@ -171,11 +171,11 @@ get_type = memoize (node)->
             assert get_type(node.base) == Float, "Expected float"
             assert get_type(node.exponent) == Float, "Expected float"
             return Float
-        when "Func","FnDecl"
+        when "Lambda","FnDecl"
             decl_type = node.type and parse_type(node.type[1])
 
-            ret_type = if node.expr
-                get_type node.expr[1]
+            ret_type = if node.body[1].__tag != "Block"
+                get_type node.body[1]
             else
                 t = nil
                 for ret in coroutine.wrap ->find_returns(node.body)

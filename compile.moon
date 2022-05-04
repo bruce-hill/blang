@@ -6,7 +6,6 @@ concat = table.concat
 local compile_stmt, to_reg, store_to
 
 strings = {}
-functions = {}
 duplicate_regs = {}
 
 fresh_reg = (vars, template="x")->
@@ -26,21 +25,17 @@ fresh_label = (template="label")->
     label_counts[template] = (label_counts[template] or 0) + 1
     return "@#{template}.#{label_counts[template]}"
 
-get_abity = (t)->
-    if type(t) == 'table'
-        -- log "Getting type: #{viz t}"
-        t = get_type(t)
-    return t.abity
-
 binop = (op, flop)->
     (vars)=>
         assert @[1] and @[2], "Node doesn't have 2 captures: #{viz @}"
-        assert get_type(@[1]) == get_type(@[2]), "Type mismatch: #{get_type(@[1])} vs #{get_type(@[2])}"
-        abity = get_abity(@[1])
+        t = get_type(@[1])
+        assert get_type(@[2]) == t, "Type mismatch: #{get_type(@[1])} vs #{get_type(@[2])}"
         lhs_reg, lhs_code = to_reg @[1], vars
         rhs_reg, rhs_code = to_reg @[2], vars
         ret_reg = fresh_reg vars
-        return ret_reg, "#{lhs_code}#{rhs_code}#{ret_reg} =#{abity} #{abity == "d" and flop or op} #{lhs_reg}, #{rhs_reg}\n"
+        if t.abi_type == "d" and flop
+            op = flop
+        return ret_reg, "#{lhs_code}#{rhs_code}#{ret_reg} =#{t.abi_type} #{op} #{lhs_reg}, #{rhs_reg}\n"
 
 update = (op, flop)->
     (vars)=>
@@ -49,10 +44,11 @@ update = (op, flop)->
         t = get_type @[1]
         assert get_type(@[2]) == t, "Type mismatch"
         reg, code = to_reg @[2], vars
-        abity = get_abity t
         if @[1].__tag == "Var"
             dest,_ = to_reg @[1], vars
-            code ..= "#{dest} =#{abity} #{abity == "d" and flop or op} #{dest}, #{reg}\n"
+            if t.abi_type == "d" and flop
+                op = flop
+            code ..= "#{dest} =#{t.abi_type} #{op} #{dest}, #{reg}\n"
         else
             error "Not impl: update indexes"
         return code
@@ -71,7 +67,9 @@ expr_compilers =
     Negative: (vars)=>
         reg,code = to_reg @[1], vars
         ret = fresh_reg vars, "neg"
-        return reg, "#{code}#{ret} =#{get_abity @[1]} neg #{reg}\n"
+        t = get_type @[1]
+        assert t == Types.Int or t == Types.Float, "Invalid type to negate: #{t}"
+        return reg, "#{code}#{ret} =#{t.abi_type} neg #{reg}\n"
     IndexedTerm: (vars)=>
         t = get_type @[1]
         assert t.__class == Types.ListType, "Not a list: #{viz @[1]} is: #{t}"
@@ -84,7 +82,7 @@ expr_compilers =
         code ..= "#{p} =l mul #{index_reg}, 8\n"
         code ..= "#{p} =l add #{p}, #{list_reg}\n"
         reg = fresh_reg vars, "item"
-        code ..= "#{reg} =#{item_type.abity} load#{item_type.abity} #{p}\n"
+        code ..= "#{reg} =#{item_type.abi_type} load#{item_type.abi_type} #{p}\n"
         return reg,code
     List: (vars)=>
         reg = fresh_reg vars, "list"
@@ -127,14 +125,18 @@ expr_compilers =
         for arg in *@args
             arg_reg, arg_code = to_reg arg, vars
             code ..= arg_code
-            table.insert args, "#{get_abity arg} #{arg_reg}"
+            table.insert args, "#{get_type(arg).abi_type} #{arg_reg}"
 
         if skip_ret
             return nil, "#{code}call #{fn_reg}(#{concat args, ", "})\n"
 
         ret_reg = fresh_reg vars
-        code ..= "#{ret_reg} =#{get_abity @} call #{fn_reg}(#{concat args, ", "})\n"
+        code ..= "#{ret_reg} =#{get_type(@).abi_type} call #{fn_reg}(#{concat args, ", "})\n"
         return ret_reg, code
+
+    Lambda: (vars)=>
+        assert @__name, "Unreferenceable lambda: #{viz @}"
+        return @__name,""
 
 stmt_compilers =
     Block: (vars)=>
@@ -145,7 +147,7 @@ stmt_compilers =
         vars[varname] = true
         if @type
             decl_type = Types.parse_type(@type[1])
-            assert get_type(@value[1]) == decl_type, "Type mismatch: #{get_type(@value[1])} vs #{@type[1][0]}"
+            assert get_type(@value[1])\is_a(decl_type), "Type mismatch: #{get_type(@value[1])} is not a #{@type[1][0]}"
         return store_to @var[1], @value[1], vars
     Assignment: (vars)=>
         return store_to @[1], @[2], vars
@@ -211,7 +213,7 @@ store_to = (val, vars, ...)=>
                 error("Not impl")
             elseif vars["%"..@[0]]
                 reg,code = to_reg val, vars, ...
-                return "#{code}%#{@[0]} =#{get_abity val} copy #{reg}\n"
+                return "#{code}%#{@[0]} =#{get_type(val).abi_type} copy #{reg}\n"
             else
                 error "Undefined variable, or saving to global: #{@[0]}"
         when "IndexedTerm"
@@ -226,7 +228,7 @@ store_to = (val, vars, ...)=>
             code ..= "#{dest} =l add #{dest}, #{list_reg}\n"
             val_reg,val_code = to_reg val, vars
             code ..= val_code
-            code ..= "store#{t.item_type.abity} #{val_reg}, #{dest}\n"
+            code ..= "store#{t.item_type.abi_type} #{val_reg}, #{dest}\n"
             return code
         else
             error "Not implemented: store to #{@__tag}"
@@ -258,29 +260,36 @@ compile_prog = (ast, filename)->
 
     fn_dups = {}
     fn_code = ""
-    for fndec in coroutine.wrap(-> each_tag(ast, "FnDecl"))
-        functions[fndec.name[0]] = "$#{fndec.name[0]}"
-        args = ["#{get_abity arg} %#{arg.arg[0]}" for arg in *fndec.args]
+
+    declare_func = (fndec)->
+        args = ["#{get_type(arg).abi_type} %#{arg.arg[0]}" for arg in *fndec.args]
         vars = {"%#{arg.arg[0]}",true for arg in *fndec.args}
-        body_code = if fndec.body
-            compile_stmt(fndec.body, vars)
+        body_code = if fndec.body[1].__tag == "Block"
+            compile_stmt(fndec.body[1], vars)
         else
-            ret_reg, tmp = to_reg fndec.expr, vars
+            ret_reg, tmp = to_reg fndec.body[1], vars
             "#{tmp}ret #{ret_reg}\n"
         body_code = body_code\gsub("[^\n]+", =>(@\match("^%@") and @ or "  "..@))
         fn_type = get_type fndec
         ret_type = fn_type.return_type
-        fn_code ..= "function #{ret_type == Types.Void and "" or get_abity(ret_type).." "}"
-        fn_name = "$"..fndec.name[0]
+        fn_name = fndec.name and "$"..fndec.name[0] or "$lambda"
         fn_dups[fn_name] = (fn_dups[fn_name] or 0) + 1
         if fn_dups[fn_name] > 1
-            fn_name = "#{fn_name}#{fn_dups[fn_name]}"
-        fn_code ..= "$#{fndec.name[0]}(#{concat args, ", "}) {\n@start\n#{body_code}"
+            fn_name ..= ".#{fn_dups[fn_name]}"
+        fn_code ..= "function #{ret_type == Types.Void and "" or ret_type.abi_type.." "}"
+        fn_code ..= "#{fn_name}(#{concat args, ", "}) {\n@start\n#{body_code}"
         if ret_type == Types.Void
             fn_code ..= "  ret\n"
         elseif not fn_code\match("%f[%w]ret%f[ \n][^\n]*\n$")
             fn_code ..= "  ret 0\n"
         fn_code ..= "}\n"
+        return fn_name
+
+    for fndec in coroutine.wrap(-> each_tag(ast, "FnDecl"))
+        declare_func fndec
+    for lambda in coroutine.wrap(-> each_tag(ast, "Lambda"))
+        name = declare_func lambda
+        lambda.__name = name
 
     vars = {["%__argc"]:true, ["%argc"]:true, ["%argv"]:true}
     body_code = compile_stmt(ast, vars)\gsub("[^\n]+", =>(@\match("^%@") and @ or "  "..@))
