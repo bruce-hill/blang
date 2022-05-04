@@ -39,7 +39,7 @@ statement: (Declaration / FnDecl / Assignment / AddUpdate / SubUpdate
   / MulUpdate / DivUpdate / AndUpdate / OrUpdate / XorUpdate
   / If / For / While / Return / FnCall
   / !$ (ParseError:: ..$ @message=(=>"Invalid statement")))
-Declaration:: @var=Var _`: _[@type=type_] `= _ @value=(Lambda / (ParseError:: @message=(..$ => "Not a lambda: '@0'")))  # required-extended-expr
+Declaration:: @var=Var _`: _[@type=type_] `= _ @value=required-extended-expr
 FnDecl:: @curdent=\C (@name=Var _
   `( __ @args=*@(@arg=Var_`:_@type=type)%(__`,__)__[`,__]`)_`:_[@return=type]_ `= _ @body=funcBody)
 Lambda:: (@curdent=\C
