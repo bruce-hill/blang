@@ -1,0 +1,8 @@
+say(s:String) :=
+    printf("%s\n", s)
+
+x := 5
+if x < 10
+    say("x is small")
+else
+    say("x is big")

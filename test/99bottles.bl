@@ -1,0 +1,15 @@
+// 99 Bottles of beer
+sing_bottles(n:Int):=
+  verse(n:Int):=
+    printf("%ld bottles of beer on the wall\n", n)
+
+  dec(x:Int):Int =
+    return x - 1
+
+  while n > 0
+    verse(n)
+    n = dec(n)
+
+  printf("No more bottles of beer on the wall\n")
+
+sing_bottles(5)

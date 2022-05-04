@@ -1,0 +1,16 @@
+L := [10, 20, 30]
+x := L.3
+printf("%ld\n", x)
+L.3 = 99
+printf("%ld\n", L.3)
+
+L2 := [1.5, 2.5, 3.5, 4.5]
+x2 := L2.3
+printf("%f\n", x2)
+
+L3 := [[10],[20]]
+printf("Inner: %ld\n", L3.2.1)
+L3.2.1 = 99
+printf("Inner: %ld\n", L3.2.1)
+L4 := []:Int
+
