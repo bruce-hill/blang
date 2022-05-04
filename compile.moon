@@ -1,4 +1,5 @@
-import add_parenting, get_type from require 'typecheck'
+Types = require 'typecheck'
+import add_parenting, get_type from Types
 import log, viz from require 'util'
 concat = table.concat
 
@@ -12,7 +13,7 @@ fresh_reg = (vars, template="x")->
     for i=1,999
         r = if duplicate_regs[template]
             duplicate_regs[template] += 1
-            "%#{template}#{duplicate_regs[template]}"
+            "%#{template}.#{duplicate_regs[template]}"
         else
             duplicate_regs[template] = 1
             "%#{template}"
@@ -23,21 +24,18 @@ fresh_reg = (vars, template="x")->
 label_counts = {}
 fresh_label = (template="label")->
     label_counts[template] = (label_counts[template] or 0) + 1
-    return "@#{template}#{label_counts[template]}"
+    return "@#{template}.#{label_counts[template]}"
 
 get_abity = (t)->
     if type(t) == 'table'
         -- log "Getting type: #{viz t}"
         t = get_type(t)
-    if t == "Float"
-        return "d"
-    else
-        return "l"
+    return t.abity
 
 binop = (op, flop)->
     (vars)=>
         assert @[1] and @[2], "Node doesn't have 2 captures: #{viz @}"
-        assert get_type(@[1]) == get_type(@[2]), "Type mismatch"
+        assert get_type(@[1]) == get_type(@[2]), "Type mismatch: #{get_type(@[1])} vs #{get_type(@[2])}"
         abity = get_abity(@[1])
         lhs_reg, lhs_code = to_reg @[1], vars
         rhs_reg, rhs_code = to_reg @[2], vars
@@ -76,9 +74,9 @@ expr_compilers =
         return reg, "#{code}#{ret} =#{get_abity @[1]} neg #{reg}\n"
     IndexedTerm: (vars)=>
         t = get_type @[1]
-        assert t\match("^%b[]$"), "Not a list: #{viz @[1]} is: #{t}"
-        list_type = t\sub(2,#t-1)
-        assert get_type(@[2]) == "Int", "Bad index"
+        assert t.__class == Types.ListType, "Not a list: #{viz @[1]} is: #{t}"
+        item_type = t.item_type
+        assert get_type(@[2]) == Types.Int, "Bad index"
         list_reg,list_code = to_reg @[1], vars
         index_reg,index_code = to_reg @[2], vars
         code = list_code..index_code
@@ -86,7 +84,7 @@ expr_compilers =
         code ..= "#{p} =l mul #{index_reg}, 8\n"
         code ..= "#{p} =l add #{p}, #{list_reg}\n"
         reg = fresh_reg vars, "item"
-        code ..= "#{reg} =#{get_abity list_type} load#{get_abity list_type} #{p}\n"
+        code ..= "#{reg} =#{item_type.abity} load#{item_type.abity} #{p}\n"
         return reg,code
     List: (vars)=>
         reg = fresh_reg vars, "list"
@@ -146,8 +144,8 @@ stmt_compilers =
         assert not vars[varname], "Variable being shadowed: #{var}"
         vars[varname] = true
         if @type
-            assert get_type(@value[1]) == @type[1][0], "Type mismatch: #{get_type(@value[1])} vs #{@type[1][0]}"
-            @type[1][0]
+            decl_type = Types.parse_type(@type[1])
+            assert get_type(@value[1]) == decl_type, "Type mismatch: #{get_type(@value[1])} vs #{@type[1][0]}"
         return store_to @var[1], @value[1], vars
     Assignment: (vars)=>
         return store_to @[1], @[2], vars
@@ -188,7 +186,7 @@ stmt_compilers =
         return code
     While: (vars)=>
         loop_label = fresh_label "while"
-        body_label = fresh_label "body"
+        body_label = fresh_label "whilebody"
         end_label = fresh_label "endwhile"
         code = "#{loop_label}\n"
         reg,cond_code = to_reg @condition, vars
@@ -218,9 +216,8 @@ store_to = (val, vars, ...)=>
                 error "Undefined variable, or saving to global: #{@[0]}"
         when "IndexedTerm"
             t = get_type @[1]
-            assert t\match("^%b[]$"), "Not a list: #{viz @[1]} is: #{t}"
-            list_type = t\sub(2,#t-1)
-            assert get_type(@[2]) == "Int", "Bad index"
+            assert t.__class == Types.ListType, "Not a list: #{viz @[1]} is: #{t}"
+            assert get_type(@[2]) == Types.Int, "Bad index"
             list_reg,list_code = to_reg @[1], vars
             index_reg,index_code = to_reg @[2], vars
             code = list_code..index_code
@@ -229,7 +226,7 @@ store_to = (val, vars, ...)=>
             code ..= "#{dest} =l add #{dest}, #{list_reg}\n"
             val_reg,val_code = to_reg val, vars
             code ..= val_code
-            code ..= "store#{get_abity list_type} #{val_reg}, #{dest}\n"
+            code ..= "store#{t.item_type.abity} #{val_reg}, #{dest}\n"
             return code
         else
             error "Not implemented: store to #{@__tag}"
@@ -272,14 +269,14 @@ compile_prog = (ast, filename)->
             "#{tmp}ret #{ret_reg}\n"
         body_code = body_code\gsub("[^\n]+", =>(@\match("^%@") and @ or "  "..@))
         fn_type = get_type fndec
-        ret_type = fn_type\gsub("^b()->","")
-        fn_code ..= "function #{ret_type == "Void" and "" or get_abity(ret_type).." "}"
+        ret_type = fn_type.return_type
+        fn_code ..= "function #{ret_type == Types.Void and "" or get_abity(ret_type).." "}"
         fn_name = "$"..fndec.name[0]
         fn_dups[fn_name] = (fn_dups[fn_name] or 0) + 1
         if fn_dups[fn_name] > 1
             fn_name = "#{fn_name}#{fn_dups[fn_name]}"
         fn_code ..= "$#{fndec.name[0]}(#{concat args, ", "}) {\n@start\n#{body_code}"
-        if ret_type == "Void"
+        if ret_type == Types.Void
             fn_code ..= "  ret\n"
         elseif not fn_code\match("%f[%w]ret%f[ \n][^\n]*\n$")
             fn_code ..= "  ret 0\n"

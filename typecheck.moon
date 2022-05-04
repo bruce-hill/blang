@@ -2,9 +2,77 @@
 concat = table.concat
 import log, viz from require 'util'
 
-local get_type
+local get_type, parse_type
 
 parents = setmetatable {}, __mode:"k"
+
+class Type
+    __eq: (other)=>
+        return false unless type(other) == type(@) and other.__class == @__class
+        for k,v in pairs @
+            return false unless other[k] == v
+        for k,v in pairs other
+            return false unless @[k] == v
+        return true
+
+    is_a: (cls)=> @ == cls or cls\contains @
+
+    contains: (other)=> @ == other
+    abity: 'l'
+
+class NamedType extends Type
+    new: (@name)=>
+    __tostring: => @name
+    __eq: Type.__eq
+
+class ListType extends Type
+    new: (@item_type)=>
+    __tostring: => "[#{@item_type}]"
+    __eq: Type.__eq
+
+class FnType extends Type
+    new: (@arg_types, @return_type)=>
+    __tostring: => "(#{concat ["#{a}" for a in *@arg_types], ","})->#{@return_type}"
+    __eq: Type.__eq
+
+class VariantType extends Type
+    new: (variants)=>
+        flattened = {}
+        for v in variants
+            if v.__class == VariantType
+                for v2 in *v.variants
+                    table.insert flattened, v2
+            else
+                table.insert flattened, v
+        @variants = flattened
+        table.sort @variants, (a,b)=> tostring(a) < tostring(b)
+    __tostring: => "(#{concat ["#{t}" for t in *@variants], "|"})"
+    __eq: Type.__eq
+    contains: (other)=>
+        return true if @ == other
+        to_check = if other.__class == VariantType
+            other.variants
+        else
+            {other}
+
+        -- Test if `to_check` is a subset of @variants
+        self_i, check_i = 1, 1
+        while self_i <= #@variants and check_i <= #to_check
+            if @variants[self_i] == to_check[check_i]
+                self_i += 1
+                check_i += 1
+            else
+                self_i += 1
+        return check_i > #to_check
+
+-- Primitive Types:
+Int = NamedType("Int")
+Float = NamedType("Float")
+Float.abity = 'd'
+Void = NamedType("Void")
+Nil = NamedType("Nil")
+Bool = NamedType("Bool")
+String = NamedType("String")
 
 add_parenting = (ast)->
     for _,node in pairs ast
@@ -15,7 +83,7 @@ add_parenting = (ast)->
 find_returns = (node)->
     switch node.__tag
         when "Return"
-            coroutine.yield(node[1] or false)
+            coroutine.yield(node)
         when "Func","FnDecl","Declaration"
             return
         else
@@ -31,57 +99,80 @@ find_declared_type = (scope, name)->
                 if stmt.__tag == "FnDecl" and stmt.name[0] == name
                     return get_type(stmt)
                 elseif stmt.__tag == "Declaration" and stmt.var[0] == name
-                    return stmt.type[0] if stmt.type
+                    return parse_type(stmt.type[1]) if stmt.type
                     return get_type stmt.value[1]
         when "FnDecl","Func"
             for a in *scope.args
                 if a.arg[0] == name
-                    return a.type[0]
+                    return parse_type(a.type[1])
         when "For-loop"
             if scope.var[0] == name
-                return "Int" if scope.iterable.__tag == "Range"
+                return Int if scope.iterable.__tag == "Range"
                 iter_type = get_type(scope.iterable)
-                assert iter_type\match("^%b[]$"), "Not an iterable: #{iter_type}"
-                return iter_type\sub(2,#iter_type-1)
+                assert iter_type.__tag == "ListType", "Not an iterable: #{scope.iterable}"
+                return parse_type(iter_type.ast[1])
     
     return find_declared_type(parents[scope], name)
 
-memoize = (fn)-> fn
-    -- cache = setmetatable {}, __mode:'k'
-    -- return (x)->
-    --     unless cache[x]
-    --         cache[x] = fn(x)
-    --     return cache[x]
+memoize = (fn)->
+    cache = setmetatable {}, __mode:'k'
+    return (x)->
+        unless cache[x]
+            cache[x] = fn(x)
+        return cache[x]
+
+parse_type = (type_node)->
+    switch type_node.__tag
+        when "NamedType"
+            return NamedType(type_node[0])
+        when "ListType"
+            return ListType(parse_type(type_node[1]))
+        when "FnType"
+            arg_types = [parse_type(a) for a in *type_node.args[1]]
+            return FnType(arg_types, parse_type(type_node.return))
+        when "OptionalType"
+            return VariantType({parse_type(type_node[1]), Nil})
+        when "VariantType"
+            return VariantType([parse_type(t) for t in *type_node])
+        else
+            error "Not a type node: #{viz type_node}"
 
 get_type = memoize (node)->
     switch node.__tag
-        when "Int","Float","Bool","String" then return node.__tag
+        when "Int" then return Int
+        when "Float" then return Float
+        when "Bool" then return Bool
+        when "String" then return String
         when "List"
-            decl_type = node.type and node.type[0]
+            decl_type = node.type and parse_type(node.type[1])
             return decl_type if #node == 0
             t = get_type node[1]
             assert t == decl_type, "List type mismatch" if decl_type
             for i=2,#node
                 assert get_type(node[i]) == t, "List type mismatch"
-            return "[#{t}]"
+            return ListType(t)
         when "IndexedTerm"
             assert node[1] and node[2], "No value/index"
             list_type = get_type node[1]
-            assert list_type\match("^%b[]$"), "Not a list: #{viz node[1]} is: #{list_type}"
-            assert get_type(node[2], vars) == "Int", "Bad index"
-            return list_type\sub(2,#list_type-1)
-        when "And","Or","Comparison" then return "Bool"
+            assert list_type.__class == ListType, "Not a list: #{viz node[1]} is: #{list_type}"
+            assert get_type(node[2], vars) == Int, "Bad index"
+            return list_type.item_type
+        when "And","Or","Comparison"
+            assert get_type(node[1]) == Bool, "Not a bool: #{node[1]}"
+            assert get_type(node[2]) == Bool, "Not a bool: #{node[2]}"
+            return Bool
         when "Add","Sub","Mul","Div"
             lhs_type = get_type node[1]
             rhs_type = get_type node[2]
-            assert lhs_type == rhs_type and (lhs_type == "Int" or lhs_type == "Float"), "Invalid #{node.__tag} types: #{lhs_type} and #{rhs_type}"
+            assert lhs_type == rhs_type and (lhs_type == Int or lhs_type == Float),
+                "Invalid #{node.__tag} types: #{lhs_type} and #{rhs_type}"
             return lhs_type
         when "Pow"
-            assert get_type(node.base) == "Float", "Expected float"
-            assert get_type(node.exponent) == "Float", "Expected float"
-            return "Float"
+            assert get_type(node.base) == Float, "Expected float"
+            assert get_type(node.exponent) == Float, "Expected float"
+            return Float
         when "Func","FnDecl"
-            return node.type[0] if node.type
+            decl_type = node.type and parse_type(node.type[1])
 
             ret_type = if node.expr
                 get_type node.expr[1]
@@ -89,29 +180,24 @@ get_type = memoize (node)->
                 t = nil
                 for ret in coroutine.wrap ->find_returns(node.body)
                     if t == nil
-                        t = ret and get_type(ret) or "Void"
+                        t = ret[1] and get_type(ret[1]) or Void
                     else
-                        t2 = ret and get_type(ret) or "Void"
-                        assert(t2 == t, "Return type mismatch: #{t} vs #{t2}")
-                t or "Void"
-            return "(#{concat [get_type a for a in *node.args], ","})->#{ret_type}"
+                        t2 = ret[1] and get_type(ret[1]) or Void
+                        assert t2 == t, "Return type mismatch: #{t} vs #{t2}"
+                t or Void
+            return FnType([get_type a for a in *node.args], ret_type)
         when "Var"
             var_type = find_declared_type(parents[node], node[0])
             if not var_type
-                if node[0] == "argc"
-                    return "Int"
-                if node[0] == "argv"
-                    return "[String]"
+                return Int if node[0] == "argc"
+                return ListType(String) if node[0] == "argv"
             assert var_type, "Undefined variable: #{node[0]}"
             return var_type
         when "FnCall"
-            if node.type
-                return node.type[0]
-            else
-                fn_type = get_type node.fn[1]
-                args = fn_type\match("^%b()->")
-                assert args, "Not a function: #{viz node.fn[1]} is #{fn_type}"
-                return fn_type\sub(#args+1,#fn_type)
+            return parse_type(node.type[1]) if node.type
+            fn_type = get_type node.fn[1]
+            assert fn_type.__class == FnType, "Not a function: #{viz node.fn[1]} is #{fn_type}"
+            return fn_type.return_type
         when "Block"
             error "Blocks have no type"
             -- return get_type(node[#node])
@@ -120,6 +206,6 @@ get_type = memoize (node)->
     if #node > 0
         error "WTF: #{viz node}"
         return get_type(node[#node])
-    return "Void"
+    return Void
 
-return {:add_parenting, :get_type}
+return {:add_parenting, :parse_type, :get_type, :Type, :NamedType, :ListType, :FnType, :VariantType, :Int, :Float, :String, :Bool, :Void, :Nil}

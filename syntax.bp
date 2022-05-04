@@ -27,11 +27,11 @@ NotEqual:: expr _ "!=" _ expr
 comparison: Equal / NotEqual / LessEq / Less / GreaterEq / Greater
 Bool:: \b("yes"/"no")\b
 String:: `" ..%(Escape / `$ (Var/`(__ extended-expr __`))) `"
-List:: `[__*extended-expr %(__`,__) __ [`,__] `] [_`:_@type=Type]
+List:: `[__*extended-expr %(__`,__) __ [`,__] `] [_`:_@type=type]
 Escape:: `\ (`x 2 hex / `a,b,t,n,r,v / 3 `0-8 / .)
 Float:: [`-,+] (`0-9 *`0-9,_ `. *`0-9 / `. +`0-9)
 Int:: [`-,+] `0-9 *`0-9,_
-FnCall:: @fn=(FnCall / Var / `(__expr__`)) `( __ @args=(*expr % (__`,__)) __ [`,__] `) [_`:_@type=Type]
+FnCall:: @fn=(FnCall / Var / `(__expr__`)) `( __ @args=(*expr % (__`,__)) __ [`,__] `) [_`:_@type=type]
 Var:: id !~ keyword
 id: \b(\I *\i)
 Block:: @curdent=\C +(comment/statement) % (+\n curdent !(` /\t))
@@ -39,10 +39,10 @@ statement: (Declaration / FnDecl / Assignment / AddUpdate / SubUpdate
   / MulUpdate / DivUpdate / AndUpdate / OrUpdate / XorUpdate
   / If / For / While / Return / FnCall
   / !$ (ParseError:: ..$ @message=(=>"Invalid statement")))
-Declaration:: @var=Var _`: _[@type=Type_] `= _ @value=expr
+Declaration:: @var=Var _`: _[@type=type_] `= _ @value=expr
 FnDecl:: @curdent=\C (@name=Var _
-  `( __ @args=*@(@arg=var_`:_@type=Type)%(__`,__)__[`,__]`)_`:_[@return=Type]_ `= _ funcBody)
-Func:: @curdent=\C (`(__*@args=(@arg=var__`:__@type=Type)%(__`,__)__[`,__]`)_[`:_@return=Type]_"->" funcBody)
+  `( __ @args=*@(@arg=var_`:_@type=type)%(__`,__)__[`,__]`)_`:_[@return=type]_ `= _ funcBody)
+Func:: @curdent=\C (`(__*@args=(@arg=var__`:__@type=type)%(__`,__)__[`,__]`)_[`:_@return=type]_"->" funcBody)
 funcBody: @expr=extended-expr / +\n curdent +(` /\t) @body=Block
 Assignment:: (IndexedTerm/Var) _ `= _ required-expr
 AddUpdate:: Var _ "+=" _ required-expr
@@ -53,7 +53,10 @@ AndUpdate:: Var _ "and=" _ required-expr
 OrUpdate:: Var _ "or=" _ required-expr
 XorUpdate:: Var _ "xor=" _ required-expr
 required-expr: expr / (ParseError:: ..$ @message=(=>"Invalid expression"))
-Type:: "Bool" / "Int" / "Float" / "String" / `[Type`] / `(__ @args=(*Type % (__`,__)) __ `) _ "->" __ Type
+type: ((NamedType::id) / (ListType::`[type`])
+  / (OptionalType:: `? type)
+  / (VariantType:: `( 2+ type%`| `))
+  / (FnType:: `(__ @args=(*type % (__`,__)) __ `) _ "->" __ @return=type))
 If:: \b"if"\b @curdent=\C _ (
     @(@condition=extended-expr +\n curdent +(` /\t) @body=Block)
     *@(+\n curdent \b"elseif"\b _ @condition=extended-expr +\n curdent +(` /\t) @body=Block)
