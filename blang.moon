@@ -18,7 +18,7 @@ for i=1,#arg
         args = {table.unpack(arg, i+1, #arg)}
 
 for f in *files
-    log "Compiling #{f}"
+    log "\x1b[1;4mFile #{f}\x1b[m"
     with io.open f
         text = \read "*a"
         log number_code(text, "34;1")
