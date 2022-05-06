@@ -316,6 +316,11 @@ stmt_compilers =
         vars[var_reg] = true
         code ..= "#{body_label}\n"
         code ..= "#{var_reg} =#{list_type.item_type.abi_type} load#{list_type.item_type.base_type} #{p}\n"
+        if @index
+            index_reg = "%#{@index[1]}"
+            vars[index_reg] = true
+            code ..= "#{index_reg} =l sub #{p}, #{list_reg}\n"
+            code ..= "#{index_reg} =l div #{index_reg}, 8\n"
         code ..= "#{compile_stmt @body[1], vars}"
         code ..= "jmp #{cont_label}\n#{cont_label}\n"
         code ..= "#{p} =l add #{p}, 8\n"

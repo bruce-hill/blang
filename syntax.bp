@@ -73,7 +73,7 @@ If:: \b"if"\b @curdent=\C _ (
     [+\n curdent \b"else"\b +\n curdent +(` /\t) @elseBody=Block]
 )
 For:: (
-  \b"for"\b @curdent=\C _ @var=Var _ "in" _ @iterable=(Range / expr)
+  \b"for"\b @curdent=\C _ [@index=Var_`,_] @var=Var _ "in" _ @iterable=(Range / expr)
   +\n curdent +(` /\t) @body=Block
   [+\n curdent \b"between"\b +\n curdent +(` /\t) @between=Block]
 )
@@ -83,7 +83,7 @@ While:: (
   [+\n curdent \b"between"\b +\n curdent +(` /\t) @between=Block]
 )
 Return:: \b"return"\b _ [expr]
-Range:: expr _ [`,_expr]_".."_expr # 1,2..4  x..y  1..#list
+Range:: @start=expr _ [`,_@next=expr]_".."_@last=expr # 1,2..4  x..y  1..#list
 comment: "//" *.
 
 
