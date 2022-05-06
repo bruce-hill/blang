@@ -10,7 +10,7 @@ class Type
     is_a: (cls)=> @ == cls or cls\contains @
     contains: (other)=> @ == other
     base_type: 'l'
-    ext_type: => @base_type
+    abi_type: 'l'
     __eq: (other)=> type(other) == type(@) and other.__class == @__class and tostring(other) == tostring(@)
 
 class NamedType extends Type
@@ -63,8 +63,7 @@ class StructType extends Type
         @members_by_name = {}
         for i,m in ipairs @members
             @members_by_name[m.name] = {index: i, type: m.type}
-        --@base_type = ":#{@name}"
-    ext_type: => ":#{@name}"
+        @abi_type = ":#{@name}"
     __tostring: => "#{@name}{#{concat ["#{m.name}:#{m.type}" for m in *@members], ","}}"
     __eq: Type.__eq
 
@@ -72,6 +71,7 @@ class StructType extends Type
 Int = NamedType("Int")
 Float = NamedType("Float")
 Float.base_type = 'd'
+Float.abi_type = 'd'
 Void = NamedType("Void")
 Nil = NamedType("Nil")
 Bool = NamedType("Bool")

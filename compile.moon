@@ -39,7 +39,7 @@ infixop = (op, flop)->
             assert_node rhs_type == t, rhs, "Expected type: #{t} but got type #{rhs_type}"
             rhs_reg, rhs_code = to_reg rhs, vars
             code ..= rhs_code
-            code ..= "#{ret_reg} =#{t.base_type} #{op} #{lhs_reg}, #{rhs_reg}\n"
+            code ..= "#{ret_reg} =#{t.abi_type} #{op} #{lhs_reg}, #{rhs_reg}\n"
             lhs_reg = ret_reg
         return ret_reg, code
 
@@ -51,9 +51,9 @@ update = (op, flop)->
         reg, code = to_reg @[2], vars
         if @[1].__tag == "Var"
             dest,_ = to_reg @[1], vars
-            if lhs_type.base_type == "d" and flop
+            if lhs_type.abi_type == "d" and flop
                 op = flop
-            code ..= "#{dest} =#{lhs_type.base_type} #{op} #{dest}, #{reg}\n"
+            code ..= "#{dest} =#{lhs_type.abi_type} #{op} #{dest}, #{reg}\n"
         else
             print_err @, "Not impl: update indexes"
         return code
@@ -76,7 +76,7 @@ expr_compilers =
         ret = fresh_reg vars, "neg"
         t = get_type @[1]
         assert_node t == Types.Int or t == Types.Float, @, "Invalid type to negate: #{t}"
-        return reg, "#{code}#{ret} =#{t.base_type} neg #{reg}\n"
+        return reg, "#{code}#{ret} =#{t.abi_type} neg #{reg}\n"
     IndexedTerm: (vars)=>
         t = get_type @[1]
         if t.__class == Types.ListType
@@ -90,7 +90,7 @@ expr_compilers =
             code ..= "#{loc} =l mul #{index_reg}, 8\n"
             code ..= "#{loc} =l add #{loc}, #{list_reg}\n"
             ret = fresh_reg vars, "item"
-            code ..= "#{ret} =#{item_type.base_type} load#{item_type.base_type} #{loc}\n"
+            code ..= "#{ret} =#{item_type.abi_type} load#{item_type.base_type} #{loc}\n"
             return ret,code
         elseif t.__class == Types.StructType
             assert_node @[2].__tag == "Var", @[2], "Structs can only be indexed by member"
@@ -103,7 +103,7 @@ expr_compilers =
             loc = fresh_reg vars, "member.loc"
             code ..= "#{loc} =l add #{struct_reg}, #{8*(i-1)}\n"
             ret = fresh_reg vars, "member"
-            code ..= "#{ret} =#{member_type.base_type} load#{member_type.base_type} #{loc}\n"
+            code ..= "#{ret} =#{member_type.abi_type} load#{member_type.base_type} #{loc}\n"
             return ret,code
         else
             print_err @[1], "Indexing is only valid on lists and structs, not #{t}"
@@ -171,13 +171,13 @@ expr_compilers =
         for arg in *@args
             arg_reg, arg_code = to_reg arg, vars
             code ..= arg_code
-            table.insert args, "#{get_type(arg)\ext_type!} #{arg_reg}"
+            table.insert args, "#{get_type(arg).abi_type} #{arg_reg}"
 
         if skip_ret
             return nil, "#{code}call #{fn_reg}(#{concat args, ", "})\n"
 
         ret_reg = fresh_reg vars
-        code ..= "#{ret_reg} =#{get_type(@).base_type} call #{fn_reg}(#{concat args, ", "})\n"
+        code ..= "#{ret_reg} =#{get_type(@).abi_type} call #{fn_reg}(#{concat args, ", "})\n"
         return ret_reg, code
 
     Lambda: (vars)=>
@@ -188,7 +188,7 @@ expr_compilers =
         t = get_type @
         struct_size = 8*#t.members
         ret = fresh_reg vars, "#{t.name\lower!}"
-        code = "#{ret} =l call $calloc(l 1, l #{struct_size})\n"
+        code = "#{ret} =#{t.abi_type} call $calloc(l 1, l #{struct_size})\n"
         p = fresh_reg vars, "#{t.name\lower!}.member.loc"
         named_members = {m.name[0],m.value[1] for m in *@ when m.name}
         unnamed_members = [m.value[1] for m in *@ when not m.name]
@@ -349,7 +349,7 @@ compile_prog = (ast, filename)->
     type_code = ""
     for s in coroutine.wrap(-> each_tag(ast, "StructType"))
         t = parse_type s
-        type_code ..= "type :#{t.name} = { #{concat [m.type.base_type for m in *t.members], ", "} }"
+        type_code ..= "type :#{t.name} = { #{concat [m.type.abi_type for m in *t.members], ", "} }"
 
     string_code = ""
     for s in coroutine.wrap(-> each_tag(ast, "String"))
@@ -361,8 +361,7 @@ compile_prog = (ast, filename)->
     fn_code = ""
 
     declare_func = (fndec)->
-        log concat ["#{parse_type(arg.type[1])}=#{parse_type(arg.type[1])\ext_type!}" for arg in *fndec.args], ","
-        args = ["#{parse_type(arg.type[1])\ext_type!} %#{arg.arg[0]}" for arg in *fndec.args]
+        args = ["#{parse_type(arg.type[1]).abi_type} %#{arg.arg[0]}" for arg in *fndec.args]
         vars = {"%#{arg.arg[0]}",true for arg in *fndec.args}
         body_code = if fndec.body[1].__tag == "Block"
             compile_stmt(fndec.body[1], vars)
@@ -376,7 +375,7 @@ compile_prog = (ast, filename)->
         fn_dups[fn_name] = (fn_dups[fn_name] or 0) + 1
         if fn_dups[fn_name] > 1
             fn_name ..= ".#{fn_dups[fn_name]}"
-        fn_code ..= "function #{ret_type == Types.Void and "" or ret_type\ext_type!.." "}"
+        fn_code ..= "function #{ret_type == Types.Void and "" or ret_type.abi_type.." "}"
         fn_code ..= "#{fn_name}(#{concat args, ", "}) {\n@start\n#{body_code}"
         if ret_type == Types.Void
             fn_code ..= "  ret\n"
