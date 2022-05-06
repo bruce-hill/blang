@@ -9,7 +9,8 @@ parents = setmetatable {}, __mode:"k"
 class Type
     is_a: (cls)=> @ == cls or cls\contains @
     contains: (other)=> @ == other
-    abi_type: 'l'
+    base_type: 'l'
+    ext_type: => @base_type
     __eq: (other)=> type(other) == type(@) and other.__class == @__class and tostring(other) == tostring(@)
 
 class NamedType extends Type
@@ -62,13 +63,15 @@ class StructType extends Type
         @members_by_name = {}
         for i,m in ipairs @members
             @members_by_name[m.name] = {index: i, type: m.type}
+        --@base_type = ":#{@name}"
+    ext_type: => ":#{@name}"
     __tostring: => "#{@name}{#{concat ["#{m.name}:#{m.type}" for m in *@members], ","}}"
     __eq: Type.__eq
 
 -- Primitive Types:
 Int = NamedType("Int")
 Float = NamedType("Float")
-Float.abi_type = 'd'
+Float.base_type = 'd'
 Void = NamedType("Void")
 Nil = NamedType("Nil")
 Bool = NamedType("Bool")
