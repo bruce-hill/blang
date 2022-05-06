@@ -7,33 +7,30 @@ local get_type, parse_type
 parents = setmetatable {}, __mode:"k"
 
 class Type
-    __eq: (other)=>
-        return false unless type(other) == type(@) and other.__class == @__class
-        for k,v in pairs @
-            return false unless other[k] == v
-        for k,v in pairs other
-            return false unless @[k] == v
-        return true
-
     is_a: (cls)=> @ == cls or cls\contains @
-
     contains: (other)=> @ == other
     abi_type: 'l'
 
 class NamedType extends Type
     new: (@name)=>
     __tostring: => @name
-    __eq: Type.__eq
+    __eq: (other)=>
+        type(other) == type(@) and other.__class == @__class and other.name == @name
 
 class ListType extends Type
     new: (@item_type)=>
     __tostring: => "[#{@item_type}]"
-    __eq: Type.__eq
+    __eq: (other)=>
+        type(other) == type(@) and other.__class == @__class and other.item_type == @item_type
 
 class FnType extends Type
     new: (@arg_types, @return_type)=>
     __tostring: => "(#{concat ["#{a}" for a in *@arg_types], ","})->#{@return_type}"
-    __eq: Type.__eq
+    __eq: (other)=>
+        return false unless type(other) == type(@) and other.__class == @__class and other.return_type == @return_type and #other.arg_types == #@arg_types
+        for i=1,#@arg_types
+            return false unless other.arg_types[i] == @arg_types[i]
+        return true
 
 class VariantType extends Type
     new: (variants)=>
@@ -47,7 +44,11 @@ class VariantType extends Type
         @variants = flattened
         table.sort @variants, (a,b)=> tostring(a) < tostring(b)
     __tostring: => "(#{concat ["#{t}" for t in *@variants], "|"})"
-    __eq: Type.__eq
+    __eq: (other)=>
+        return false unless type(other) == type(@) and other.__class == @__class and #other.variants == #@variants
+        for i=1,#@variants
+            return false unless other.variants[i] == @variants[i]
+        return true
     contains: (other)=>
         return true if @ == other
         to_check = if other.__class == VariantType
