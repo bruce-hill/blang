@@ -42,7 +42,7 @@ for f in *files
         log "\x1b[2mRunning QBE...\x1b[m"
         run "qbe #{f}.qbe > #{f}.s"
         log "\x1b[2mCompiling assembly...\x1b[m"
-        run "cc #{f}.s -o #{f}.o -lm"
+        run "cc #{f}.s lib/say.o lib/range.o -ggdb -o #{f}.o -lm"
         log "\x1b[2mRunning program:\x1b[m"
         run "./#{f}.o #{table.concat args, " "}"
 

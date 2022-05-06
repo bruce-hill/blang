@@ -76,7 +76,8 @@ Void = NamedType("Void")
 Nil = NamedType("Nil")
 Bool = NamedType("Bool")
 String = NamedType("String")
-primitive_types = {:Int, :Float, :Void, :Nil, :Bool, :String}
+Range = StructType("Range", {{name:"first",type:Int},{name:"next",type:Int},{name:"last",type:Int}})
+primitive_types = {:Int, :Float, :Void, :Nil, :Bool, :String, :Range}
 
 memoize = (fn)->
     cache = setmetatable {}, __mode:'k'
@@ -117,10 +118,12 @@ find_declared_type = (scope, name)->
                 if a.arg[0] == name
                     return parse_type(a.type[1])
         when "For"
-            if scope.var[0] == name
-                return Int if scope.iterable[1].__tag == "Range"
+            if scope.index and scope.index[0] == name
+                return Int
+            if scope.var and scope.var[0] == name
                 iter_type = get_type(scope.iterable[1])
-                assert_node iter_type.__class == ListType, scope.iterable[1], "Not an iterable"
+                return Int if iter_type == Range
+                assert_node iter_type.__class == ListType or iter_type.__class == Range, scope.iterable[1], "Not an iterable"
                 return iter_type.item_type
     
     return find_declared_type(parents[scope], name)
@@ -164,6 +167,7 @@ get_type = memoize (node)->
         when "Bool" then return Bool
         when "Nil" then return Nil
         when "String" then return String
+        when "Range" then return Range
         when "List"
             decl_type = node.type and parse_type(node.type[1])
             return decl_type if #node == 0
@@ -204,7 +208,7 @@ get_type = memoize (node)->
             return t
         when "Len"
             t = get_type node[1]
-            assert_node t.__class == ListType, node, "Attempt to get lenght of non-list: #{t}"
+            assert_node t.__class == ListType or t == Range, node, "Attempt to get length of non-iterable: #{t}"
             return Int
         when "Pow"
             base_type = get_type node.base[1]
@@ -253,4 +257,4 @@ get_type = memoize (node)->
         return get_type(node[#node])
     return Void
 
-return {:add_parenting, :parse_type, :get_type, :Type, :NamedType, :ListType, :FnType, :VariantType, :StructType, :Int, :Float, :String, :Bool, :Void, :Nil}
+return {:add_parenting, :parse_type, :get_type, :Type, :NamedType, :ListType, :FnType, :VariantType, :StructType, :Int, :Float, :String, :Bool, :Void, :Nil, :Range}

@@ -79,10 +79,17 @@ expr_compilers =
         return ret, "#{code}#{ret} =#{t.abi_type} neg #{reg}\n"
     Len: (vars)=>
         t = get_type @[1]
-        assert_node t.__class == Types.ListType, @, "Expected List type, not #{t}"
-        list,code = to_reg @[1], vars
-        ret = fresh_reg vars, "len"
-        return ret, "#{code}#{ret} =l loadl #{list}\n"
+        if t == Types.Range
+            range,code = to_reg @[1], vars
+            len = fresh_reg vars, "range.len"
+            code ..= "#{len} =l call $range_len(l #{range})\n"
+            return len, code
+        elseif t.__class == Types.ListType
+            list,code = to_reg @[1], vars
+            len = fresh_reg vars, "list.len"
+            return len, "#{code}#{len} =l loadl #{list}\n"
+        else
+            print_err @, "Expected List or Range type, not #{t}"
     IndexedTerm: (vars)=>
         t = get_type @[1]
         if t.__class == Types.ListType
@@ -111,9 +118,17 @@ expr_compilers =
             ret = fresh_reg vars, "member"
             code ..= "#{ret} =#{member_type.abi_type} load#{member_type.base_type} #{loc}\n"
             return ret,code
+        elseif t.__class == Types.Range
+            index_type = get_type(@[2])
+            assert_node index_type == Types.Int, @[2], "Index is #{index_type} instead of Int"
+            range_reg,code = to_reg @[1], vars
+            index_reg,index_code = to_reg @[1], vars
+            code ..= index_code
+            ret = fresh_reg vars, "range.nth"
+            code ..= "#{ret} =l call $range_nth(l #{range_reg}, l #{index_reg})\n"
+            return ret, code
         else
             print_err @[1], "Indexing is only valid on lists and structs, not #{t}"
-            
     List: (vars)=>
         reg = fresh_reg vars, "list"
         code = "#{reg} =l call $calloc(l #{1 + #@}, l 8)\n"
@@ -127,6 +142,19 @@ expr_compilers =
                 code ..= "#{p} =l add #{reg}, #{8*i}\n"
                 code ..= "storel #{val_reg}, #{p}\n"
         return reg, code
+    Range: (vars)=>
+        range = fresh_reg vars, "range"
+        code = "#{range} =l call $calloc(l 1, l #{3*8})\n"
+        first_reg,first_code = to_reg @first[1], vars
+        last_reg,last_code = to_reg @last[1], vars
+        if @next
+            next_reg,next_code = to_reg @next[1], vars
+            code ..= "#{first_code}#{next_code}#{last_code}"
+            code ..= "call $init_range3(l #{range}, l #{first_reg}, l #{next_reg}, l #{last_reg})\n"
+        else
+            code ..= "#{first_code}#{last_code}"
+            code ..= "call $init_range2(l #{range}, l #{first_reg}, l #{last_reg})\n"
+        return range, code
     Add: infixop "add"
     Sub: infixop "sub"
     Mul: infixop "mul"
@@ -291,7 +319,7 @@ stmt_compilers =
         return code
     For: (vars)=>
         list_type = get_type @iterable[1]
-        assert_node list_type.__class == Types.ListType, @iterable[1], "Expected a list"
+        assert_node list_type.__class == Types.ListType or list_type == Types.Range, @iterable[1], "Expected a List or Range, not #{list_type}"
 
         start_label = fresh_label "for.start"
         body_label = fresh_label "for.body"
@@ -299,32 +327,39 @@ stmt_compilers =
         cont_label = fresh_label "for.continue"
         end_label = fresh_label "for.end"
 
-        p = fresh_reg vars, "p"
-        last = fresh_reg vars, "last"
+        i = fresh_reg vars, "i"
+        len = fresh_reg vars, "len"
 
         code = "jmp #{start_label}\n#{start_label}\n"
         list_reg,list_code = to_reg @iterable[1], vars
         code ..= list_code
-        code ..= "#{p} =l add #{list_reg}, 8\n"
-        code ..= "#{last} =l loadl #{list_reg}\n"
-        code ..= "#{last} =l mul #{last}, 8\n"
-        code ..= "#{last} =l add #{list_reg}, #{last}\n"
+        code ..= "#{i} =l copy 1\n"
+        if list_type == Types.Range
+            code ..= "#{len} =l call $range_len(l #{list_reg})\n"
+        else
+            code ..= "#{len} =l loadl #{list_reg}\n"
         finished = fresh_reg vars, "for.finished"
-        code ..= "#{finished} =l csgtl #{p}, #{last}\n"
+        code ..= "#{finished} =l csgtl #{i}, #{len}\n"
         code ..= "jnz #{finished}, #{end_label}, #{body_label}\n"
-        var_reg = "%#{@var[1]}"
-        vars[var_reg] = true
         code ..= "#{body_label}\n"
-        code ..= "#{var_reg} =#{list_type.item_type.abi_type} load#{list_type.item_type.base_type} #{p}\n"
         if @index
             index_reg = "%#{@index[1]}"
             vars[index_reg] = true
-            code ..= "#{index_reg} =l sub #{p}, #{list_reg}\n"
-            code ..= "#{index_reg} =l div #{index_reg}, 8\n"
+            code ..= "#{index_reg} =l copy #{i}\n"
+        if @var
+            var_reg = "%#{@var[1]}"
+            vars[var_reg] = true
+            if list_type == Types.Range
+                code ..= "#{var_reg} =l call $range_nth(l #{list_reg}, l #{i})\n"
+            else
+                item_addr = fresh_reg vars, "item.addr"
+                code ..= "#{item_addr} =l mul #{i}, 8\n"
+                code ..= "#{item_addr} =l add #{list_reg}, #{item_addr}\n"
+                code ..= "#{var_reg} =#{list_type.item_type.abi_type} load#{list_type.item_type.base_type} #{item_addr}\n"
         code ..= "#{compile_stmt @body[1], vars}"
         code ..= "jmp #{cont_label}\n#{cont_label}\n"
-        code ..= "#{p} =l add #{p}, 8\n"
-        code ..= "#{finished} =l csgtl #{p}, #{last}\n"
+        code ..= "#{i} =l add #{i}, 1\n"
+        code ..= "#{finished} =l csgtl #{i}, #{len}\n"
         if @between
             code ..= "jnz #{finished}, #{end_label}, #{between_label}\n"
             code ..= "#{between_label}\n#{compile_stmt @between[1], vars}"
@@ -402,7 +437,7 @@ compile_prog = (ast, filename)->
     add_parenting(ast)
     s_i = 0
 
-    type_code = ""
+    type_code = "type :Range = { l, l, l }\n"
     for s in coroutine.wrap(-> each_tag(ast, "StructType"))
         t = parse_type s
         type_code ..= "type :#{t.name} = { #{concat [m.type.abi_type for m in *t.members], ", "} }"
