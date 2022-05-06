@@ -3,7 +3,10 @@ y := x and (1 < 2)
 z :Nil= nil
 
 if x and y and z == nil
-    printf("Yep\n")
+    printf("And pass\n")
 
 if 1 < 0 or 2 < 1 or 3 > 1
-    printf("Also yep\n")
+    printf("Or pass\n")
+
+if no xor yes xor no
+    printf("Xor pass\n")
