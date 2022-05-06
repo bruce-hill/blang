@@ -10,27 +10,22 @@ class Type
     is_a: (cls)=> @ == cls or cls\contains @
     contains: (other)=> @ == other
     abi_type: 'l'
+    __eq: (other)=> type(other) == type(@) and other.__class == @__class and tostring(other) == tostring(@)
 
 class NamedType extends Type
     new: (@name)=>
     __tostring: => @name
-    __eq: (other)=>
-        type(other) == type(@) and other.__class == @__class and other.name == @name
+    __eq: Type.__eq
 
 class ListType extends Type
     new: (@item_type)=>
     __tostring: => "[#{@item_type}]"
-    __eq: (other)=>
-        type(other) == type(@) and other.__class == @__class and other.item_type == @item_type
+    __eq: Type.__eq
 
 class FnType extends Type
     new: (@arg_types, @return_type)=>
     __tostring: => "(#{concat ["#{a}" for a in *@arg_types], ","})->#{@return_type}"
-    __eq: (other)=>
-        return false unless type(other) == type(@) and other.__class == @__class and other.return_type == @return_type and #other.arg_types == #@arg_types
-        for i=1,#@arg_types
-            return false unless other.arg_types[i] == @arg_types[i]
-        return true
+    __eq: Type.__eq
 
 class VariantType extends Type
     new: (variants)=>
@@ -44,11 +39,7 @@ class VariantType extends Type
         @variants = flattened
         table.sort @variants, (a,b)=> tostring(a) < tostring(b)
     __tostring: => "(#{concat ["#{t}" for t in *@variants], "|"})"
-    __eq: (other)=>
-        return false unless type(other) == type(@) and other.__class == @__class and #other.variants == #@variants
-        for i=1,#@variants
-            return false unless other.variants[i] == @variants[i]
-        return true
+    __eq: Type.__eq
     contains: (other)=>
         return true if @ == other
         to_check = if other.__class == VariantType
