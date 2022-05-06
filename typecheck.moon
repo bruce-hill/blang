@@ -116,12 +116,12 @@ find_declared_type = (scope, name)->
             for a in *scope.args
                 if a.arg[0] == name
                     return parse_type(a.type[1])
-        when "For-loop"
+        when "For"
             if scope.var[0] == name
-                return Int if scope.iterable.__tag == "Range"
-                iter_type = get_type(scope.iterable)
-                assert_node iter_type.__tag == "ListType", scope.iterable, "Not an iterable"
-                return parse_type(iter_type.ast[1])
+                return Int if scope.iterable[1].__tag == "Range"
+                iter_type = get_type(scope.iterable[1])
+                assert_node iter_type.__class == ListType, scope.iterable[1], "Not an iterable"
+                return iter_type.item_type
     
     return find_declared_type(parents[scope], name)
 
@@ -198,6 +198,14 @@ get_type = memoize (node)->
             assert_node lhs_type == rhs_type and (lhs_type == Int or lhs_type == Float), node,
                 "Invalid #{node.__tag} types: #{lhs_type} and #{rhs_type}"
             return lhs_type
+        when "Neg"
+            t = get_type node[1]
+            assert_node t == Int or t == Float, node, "Invalid negation type: #{t}"
+            return t
+        when "Len"
+            t = get_type node[1]
+            assert_node t.__class == ListType, node, "Attempt to get lenght of non-list: #{t}"
+            return Int
         when "Pow"
             base_type = get_type node.base[1]
             assert_node base_type == Float, node.base[1], "Expected float, not #{base_type}"

@@ -72,11 +72,17 @@ expr_compilers =
         return "d_#{@[0]}",""
     String: => strings[@[0]], ""
     Negative: (vars)=>
-        reg,code = to_reg @[1], vars
-        ret = fresh_reg vars, "neg"
         t = get_type @[1]
         assert_node t == Types.Int or t == Types.Float, @, "Invalid type to negate: #{t}"
-        return reg, "#{code}#{ret} =#{t.abi_type} neg #{reg}\n"
+        reg,code = to_reg @[1], vars
+        ret = fresh_reg vars, "neg"
+        return ret, "#{code}#{ret} =#{t.abi_type} neg #{reg}\n"
+    Len: (vars)=>
+        t = get_type @[1]
+        assert_node t.__class == Types.ListType, @, "Expected List type, not #{t}"
+        list,code = to_reg @[1], vars
+        ret = fresh_reg vars, "len"
+        return ret, "#{code}#{ret} =l loadl #{list}\n"
     IndexedTerm: (vars)=>
         t = get_type @[1]
         if t.__class == Types.ListType
@@ -265,16 +271,61 @@ stmt_compilers =
         code ..= "#{end_label}\n"
         return code
     While: (vars)=>
-        loop_label = fresh_label "while"
-        body_label = fresh_label "whilebody"
-        end_label = fresh_label "endwhile"
-        code = "#{loop_label}\n"
-        reg,cond_code = to_reg @condition, vars
+        cond_label = fresh_label "while.condition"
+        body_label = fresh_label "while.body"
+        between_label = fresh_label "while.between"
+        end_label = fresh_label "while.end"
+        cond_reg,cond_code = to_reg @condition[1], vars
+        code = "jmp #{cond_label}\n#{cond_label}\n"
         code ..= cond_code
-        code ..= "jnz #{reg}, #{body_label}, #{end_label}\n"
-        code ..= "#{body_label}\n#{compile_stmt @body, vars}"
-        unless code\match("%f[%w]ret%f[ \n][^\n]*\n$")
-            code ..= "jmp #{loop_label}\n"
+        code ..= "jnz #{cond_reg}, #{body_label}, #{end_label}\n"
+        code ..= "#{body_label}\n#{compile_stmt @body[1], vars}"
+        if @between
+            code ..= cond_code
+            code ..= "jnz #{cond_reg}, #{between_label}, #{end_label}\n"
+            code ..= "#{between_label}\n#{compile_stmt @between[1], vars}"
+            code ..= "jmp #{body_label}\n"
+        else
+            code ..= "jmp #{cond_label}\n"
+        code ..= "#{end_label}\n"
+        return code
+    For: (vars)=>
+        list_type = get_type @iterable[1]
+        assert_node list_type.__class == Types.ListType, @iterable[1], "Expected a list"
+
+        start_label = fresh_label "for.start"
+        body_label = fresh_label "for.body"
+        between_label = fresh_label "for.between"
+        cont_label = fresh_label "for.continue"
+        end_label = fresh_label "for.end"
+
+        p = fresh_reg vars, "p"
+        last = fresh_reg vars, "last"
+
+        code = "jmp #{start_label}\n#{start_label}\n"
+        list_reg,list_code = to_reg @iterable[1], vars
+        code ..= list_code
+        code ..= "#{p} =l add #{list_reg}, 8\n"
+        code ..= "#{last} =l loadl #{list_reg}\n"
+        code ..= "#{last} =l mul #{last}, 8\n"
+        code ..= "#{last} =l add #{list_reg}, #{last}\n"
+        finished = fresh_reg vars, "for.finished"
+        code ..= "#{finished} =l csgtl #{p}, #{last}\n"
+        code ..= "jnz #{finished}, #{end_label}, #{body_label}\n"
+        var_reg = "%#{@var[1]}"
+        vars[var_reg] = true
+        code ..= "#{body_label}\n"
+        code ..= "#{var_reg} =#{list_type.item_type.abi_type} load#{list_type.item_type.base_type} #{p}\n"
+        code ..= "#{compile_stmt @body[1], vars}"
+        code ..= "jmp #{cont_label}\n#{cont_label}\n"
+        code ..= "#{p} =l add #{p}, 8\n"
+        code ..= "#{finished} =l csgtl #{p}, #{last}\n"
+        if @between
+            code ..= "jnz #{finished}, #{end_label}, #{between_label}\n"
+            code ..= "#{between_label}\n#{compile_stmt @between[1], vars}"
+            code ..= "jmp #{body_label}\n"
+        else
+            code ..= "jnz #{finished}, #{end_label}, #{body_label}\n"
         code ..= "#{end_label}\n"
         return code
         
