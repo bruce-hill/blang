@@ -1,5 +1,5 @@
 #!/usr/bin/env moon
-import log, viz from require 'util'
+import log, viz, set_file from require 'util'
 parse = require 'parse'
 import compile_prog from require 'compile'
 
@@ -21,6 +21,7 @@ for f in *files
     log "\x1b[1;4mFile #{f}\x1b[m"
     with io.open f
         text = \read "*a"
+        set_file f, text
         log number_code(text, "34;1")
         ast = parse text, f
         assert ast, "No match!"

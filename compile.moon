@@ -1,6 +1,6 @@
 Types = require 'typecheck'
 import add_parenting, get_type from Types
-import log, viz from require 'util'
+import log, viz, assert_node, print_err from require 'util'
 concat = table.concat
 
 local compile_stmt, to_reg, store_to
@@ -27,30 +27,29 @@ fresh_label = (template="label")->
 
 binop = (op, flop)->
     (vars)=>
-        assert @[1] and @[2], "Node doesn't have 2 captures: #{viz @}"
-        t = get_type(@[1])
-        assert get_type(@[2]) == t, "Type mismatch: #{get_type(@[1])} vs #{get_type(@[2])}"
+        lhs_type = get_type(@[1])
+        rhs_type = get_type(@[2])
+        assert_node lhs_type == rhs_type, @, "Type mismatch: #{lhs_type} vs #{rhs_type}"
         lhs_reg, lhs_code = to_reg @[1], vars
         rhs_reg, rhs_code = to_reg @[2], vars
         ret_reg = fresh_reg vars
-        if t.abi_type == "d" and flop
+        if lhs_type.abi_type == "d" and flop
             op = flop
-        return ret_reg, "#{lhs_code}#{rhs_code}#{ret_reg} =#{t.abi_type} #{op} #{lhs_reg}, #{rhs_reg}\n"
+        return ret_reg, "#{lhs_code}#{rhs_code}#{ret_reg} =#{lhs_type.abi_type} #{op} #{lhs_reg}, #{rhs_reg}\n"
 
 update = (op, flop)->
     (vars)=>
-        assert @[1] and @[2], "Node doesn't have 2 captures: #{viz @}"
-        --assert @[1].__tag == "Var", "Node should be a var"
-        t = get_type @[1]
-        assert get_type(@[2]) == t, "Type mismatch"
+        lhs_type = get_type(@[1])
+        rhs_type = get_type(@[2])
+        assert_node lhs_type == rhs_type, @, "Type mismatch: #{lhs_type} vs #{rhs_type}"
         reg, code = to_reg @[2], vars
         if @[1].__tag == "Var"
             dest,_ = to_reg @[1], vars
-            if t.abi_type == "d" and flop
+            if lhs_type.abi_type == "d" and flop
                 op = flop
-            code ..= "#{dest} =#{t.abi_type} #{op} #{dest}, #{reg}\n"
+            code ..= "#{dest} =#{lhs_type.abi_type} #{op} #{dest}, #{reg}\n"
         else
-            error "Not impl: update indexes"
+            print_err @, "Not impl: update indexes"
         return code
 
 expr_compilers =
@@ -68,13 +67,14 @@ expr_compilers =
         reg,code = to_reg @[1], vars
         ret = fresh_reg vars, "neg"
         t = get_type @[1]
-        assert t == Types.Int or t == Types.Float, "Invalid type to negate: #{t}"
+        assert_node t == Types.Int or t == Types.Float, @, "Invalid type to negate: #{t}"
         return reg, "#{code}#{ret} =#{t.abi_type} neg #{reg}\n"
     IndexedTerm: (vars)=>
         t = get_type @[1]
-        assert t.__class == Types.ListType, "Not a list: #{viz @[1]} is: #{t}"
+        assert_node t.__class == Types.ListType, @[1], "Expected a list, but got: #{t}"
         item_type = t.item_type
-        assert get_type(@[2]) == Types.Int, "Bad index"
+        index_type = get_type(@[2])
+        assert_node index_type == Types.Int, @[2], "Index is #{index_type} instead of Int"
         list_reg,list_code = to_reg @[1], vars
         index_reg,index_code = to_reg @[2], vars
         code = list_code..index_code
@@ -135,7 +135,7 @@ expr_compilers =
         return ret_reg, code
 
     Lambda: (vars)=>
-        assert @__name, "Unreferenceable lambda: #{viz @}"
+        assert_node @__name, @, "Unreferenceable lambda"
         return @__name,""
 
 stmt_compilers =
@@ -143,13 +143,17 @@ stmt_compilers =
         concat([compile_stmt(stmt, vars) for stmt in *@], "")
     Declaration: (vars)=>
         varname = "%#{@var[0]}"
-        assert not vars[varname], "Variable being shadowed: #{var}"
+        assert_node not vars[varname], @var, "Variable being shadowed: #{varname}"
         vars[varname] = true
         if @type
-            decl_type = Types.parse_type(@type[1])
-            assert get_type(@value[1])\is_a(decl_type), "Type mismatch: #{get_type(@value[1])} is not a #{@type[1][0]}"
+            decl_type = Types.parse_type @type[1]
+            value_type = get_type @value[1]
+            assert_node value_type\is_a(decl_type), @value[1], "Value is type #{value_type}, not declared type #{decl_type}"
         return store_to @var[1], @value[1], vars
     Assignment: (vars)=>
+        var_type = get_type @[1]
+        value_type = get_type @[2]
+        assert_node value_type\is_a(var_type), @[2], "Value is type #{value_type}, but it's being assigned to something with type #{var_type}"
         return store_to @[1], @[2], vars
     AddUpdate: update "add"
     SubUpdate: update "sub"
@@ -159,6 +163,7 @@ stmt_compilers =
     XorUpdate: update "xor"
     AndUpdate: update "and"
     FnDecl: (vars)=> ""
+    TypeDeclaration: (vars)=> ""
     FnCall: (vars)=>
         _, code = to_reg @, vars, true
         code = code\gsub("[^\n]- (call [^\n]*\n)$", "%1")
@@ -203,7 +208,7 @@ stmt_compilers =
 to_reg = (vars, ...)=>
     if not @__tag
         return to_reg @[1], vars
-    assert expr_compilers[@__tag], "Not implemented: #{@__tag}"
+    assert_node expr_compilers[@__tag], @, "Not implemented: #{@__tag}"
     expr_compilers[@__tag](@, vars, ...)
 
 store_to = (val, vars, ...)=>
@@ -218,8 +223,8 @@ store_to = (val, vars, ...)=>
                 error "Undefined variable, or saving to global: #{@[0]}"
         when "IndexedTerm"
             t = get_type @[1]
-            assert t.__class == Types.ListType, "Not a list: #{viz @[1]} is: #{t}"
-            assert get_type(@[2]) == Types.Int, "Bad index"
+            assert_node t.__class == Types.ListType, @[1], "Expected a list, but got #{t}"
+            assert_node get_type(@[2]) == Types.Int, @[2], "Index is: #{get_type @[2]} instead of Int"
             list_reg,list_code = to_reg @[1], vars
             index_reg,index_code = to_reg @[2], vars
             code = list_code..index_code
@@ -232,12 +237,11 @@ store_to = (val, vars, ...)=>
             return code
         else
             error "Not implemented: store to #{@__tag}"
-            
 
 compile_stmt = (vars)=>
     if not @__tag
         return compile_stmt @[1], vars
-    assert stmt_compilers[@__tag], "Not implemented: #{@__tag}"
+    assert_node stmt_compilers[@__tag], @, "Not implemented: #{@__tag}"
     stmt_compilers[@__tag](@, vars)
 
 each_tag = (tag)=>

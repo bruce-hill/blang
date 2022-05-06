@@ -1,6 +1,6 @@
 -- Type checking/inference logic
 concat = table.concat
-import log, viz from require 'util'
+import log, viz, print_err, assert_node from require 'util'
 
 local get_type, parse_type
 
@@ -73,6 +73,14 @@ Void = NamedType("Void")
 Nil = NamedType("Nil")
 Bool = NamedType("Bool")
 String = NamedType("String")
+primitive_types = {:Int, :Float, :Void, :Nil, :Bool, :String}
+
+memoize = (fn)->
+    cache = setmetatable {}, __mode:'k'
+    return (x)->
+        unless cache[x]
+            cache[x] = fn(x)
+        return cache[x]
 
 add_parenting = (ast)->
     for _,node in pairs ast
@@ -109,22 +117,29 @@ find_declared_type = (scope, name)->
             if scope.var[0] == name
                 return Int if scope.iterable.__tag == "Range"
                 iter_type = get_type(scope.iterable)
-                assert iter_type.__tag == "ListType", "Not an iterable: #{scope.iterable}"
+                assert_node iter_type.__tag == "ListType", scope.iterable, "Not an iterable"
                 return parse_type(iter_type.ast[1])
     
     return find_declared_type(parents[scope], name)
 
-memoize = (fn)->
-    cache = setmetatable {}, __mode:'k'
-    return (x)->
-        unless cache[x]
-            cache[x] = fn(x)
-        return cache[x]
+find_type_alias = (scope, name)->
+    while scope
+        switch scope.__tag
+            when "Block"
+                for i=#scope,1,-1
+                    stmt = scope[i]
+                    if stmt.__tag == "TypeDeclaration" and stmt[1][0] == name
+                        return parse_type stmt[2]
+        scope = parents[scope]
 
-parse_type = (type_node)->
+parse_type = memoize (type_node)->
     switch type_node.__tag
         when "NamedType"
-            return NamedType(type_node[0])
+            if primitive_types[type_node[0]]
+                return primitive_types[type_node[0]]
+            alias = find_type_alias type_node, type_node[0]
+            assert_node alias, type_node, "Undefined type"
+            return alias
         when "ListType"
             return ListType(parse_type(type_node[1]))
         when "FnType"
@@ -147,29 +162,34 @@ get_type = memoize (node)->
             decl_type = node.type and parse_type(node.type[1])
             return decl_type if #node == 0
             t = get_type node[1]
-            assert t == decl_type, "List type mismatch" if decl_type
+            assert_node t == decl_type, node[1], "Not expected type: #{t}" if decl_type
             for i=2,#node
-                assert get_type(node[i]) == t, "List type mismatch"
+                assert_node get_type(node[i]) == t, node[i], "Not expected type: #{t}"
             return ListType(t)
         when "IndexedTerm"
-            assert node[1] and node[2], "No value/index"
             list_type = get_type node[1]
-            assert list_type.__class == ListType, "Not a list: #{viz node[1]} is: #{list_type}"
-            assert get_type(node[2], vars) == Int, "Bad index"
+            assert_node list_type.__class == ListType, node[1], "Value has type: #{list_type}, but expected a List"
+            index_type = get_type(node[2], vars)
+            assert_node index_type == Int, node[2], "Index has type #{index_type}, but expected Int"
             return list_type.item_type
-        when "And","Or","Comparison"
-            assert get_type(node[1]) == Bool, "Not a bool: #{node[1]}"
-            assert get_type(node[2]) == Bool, "Not a bool: #{node[2]}"
+        when "And","Or"
+            for val in *node
+                t = get_type val
+                assert_node t == Bool, val, "Expected a Bool, but got a #{t}"
+            return Bool
+        when "Comparison"
             return Bool
         when "Add","Sub","Mul","Div"
             lhs_type = get_type node[1]
             rhs_type = get_type node[2]
-            assert lhs_type == rhs_type and (lhs_type == Int or lhs_type == Float),
+            assert_node lhs_type == rhs_type and (lhs_type == Int or lhs_type == Float), node,
                 "Invalid #{node.__tag} types: #{lhs_type} and #{rhs_type}"
             return lhs_type
         when "Pow"
-            assert get_type(node.base) == Float, "Expected float"
-            assert get_type(node.exponent) == Float, "Expected float"
+            base_type = get_type node.base[1]
+            assert_node base_type == Float, node.base[1], "Expected float, not #{base_type}"
+            exponent_type = get_type node.exponent[1]
+            assert_node exponent_type == Float, node.exponent[1], "Expected float, not #{exponent_type}"
             return Float
         when "Lambda","FnDecl"
             decl_type = node.type and parse_type(node.type[1])
@@ -183,7 +203,7 @@ get_type = memoize (node)->
                         t = ret[1] and get_type(ret[1]) or Void
                     else
                         t2 = ret[1] and get_type(ret[1]) or Void
-                        assert t2 == t, "Return type mismatch: #{t} vs #{t2}"
+                        assert_node t2 == t, ret[1], "Return type here is: #{t2}, which conflicts with earlier return type: #{t}"
                 t or Void
             return FnType([get_type a for a in *node.args], ret_type)
         when "Var"
@@ -191,18 +211,18 @@ get_type = memoize (node)->
             if not var_type
                 return Int if node[0] == "argc"
                 return ListType(String) if node[0] == "argv"
-            assert var_type, "Undefined variable: #{node[0]}"
+            assert_node var_type, node, "Undefined variable"
             return var_type
         when "FnCall"
             return parse_type(node.type[1]) if node.type
             fn_type = get_type node.fn[1]
-            assert fn_type.__class == FnType, "Not a function: #{viz node.fn[1]} is #{fn_type}"
+            assert_node fn_type.__class == FnType, node.fn[1], "This is not a function, it's a #{fn_type}"
             return fn_type.return_type
         when "Block"
             error "Blocks have no type"
             -- return get_type(node[#node])
         else
-            assert not node.__tag, "Unknown node tag: #{node.__tag}"
+            assert_node not node.__tag, node, "Unknown node tag: #{node.__tag}"
     if #node > 0
         error "WTF: #{viz node}"
         return get_type(node[#node])

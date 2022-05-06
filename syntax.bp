@@ -37,9 +37,10 @@ id: \b(\I *\i)
 Block:: @curdent=\C +(comment/statement) % (+\n curdent !(` /\t))
 statement: (Declaration / FnDecl / Assignment / AddUpdate / SubUpdate
   / MulUpdate / DivUpdate / AndUpdate / OrUpdate / XorUpdate
-  / If / For / While / Return / FnCall
+  / If / For / While / Return / FnCall / TypeDeclaration
   / !$ (ParseError:: ..$ @message=(=>"Invalid statement")))
 Declaration:: @var=Var _`: _[@type=type_] `= _ @value=required-extended-expr
+TypeDeclaration:: @(NamedType::id) _ ":::" _ (type / (ParseError:: ..$ @message=(=>"Not a valid type")))
 FnDecl:: @curdent=\C (@name=Var _
   `( __ @args=*@(@arg=Var_`:_@type=type)%(__`,__)__[`,__]`)_`:_[@return=type]_ `= _ @body=funcBody)
 Lambda:: (@curdent=\C
