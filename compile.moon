@@ -171,7 +171,7 @@ expr_compilers =
         for arg in *@args
             arg_reg, arg_code = to_reg arg, vars
             code ..= arg_code
-            table.insert args, "#{get_type(arg).base_type} #{arg_reg}"
+            table.insert args, "#{get_type(arg)\ext_type!} #{arg_reg}"
 
         if skip_ret
             return nil, "#{code}call #{fn_reg}(#{concat args, ", "})\n"
