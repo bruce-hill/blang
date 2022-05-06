@@ -25,17 +25,23 @@ fresh_label = (template="label")->
     label_counts[template] = (label_counts[template] or 0) + 1
     return "@#{template}.#{label_counts[template]}"
 
-binop = (op, flop)->
+infixop = (op, flop)->
     (vars)=>
-        lhs_type = get_type(@[1])
-        rhs_type = get_type(@[2])
-        assert_node lhs_type == rhs_type, @, "Type mismatch: #{lhs_type} vs #{rhs_type}"
-        lhs_reg, lhs_code = to_reg @[1], vars
-        rhs_reg, rhs_code = to_reg @[2], vars
-        ret_reg = fresh_reg vars
-        if lhs_type.abi_type == "d" and flop
+        t = get_type @[1]
+        if t.abi_type == "d" and flop
             op = flop
-        return ret_reg, "#{lhs_code}#{rhs_code}#{ret_reg} =#{lhs_type.abi_type} #{op} #{lhs_reg}, #{rhs_reg}\n"
+        lhs_reg, lhs_code = to_reg @[1], vars
+        code = lhs_code
+        ret_reg = fresh_reg vars
+        for i=2,#@
+            rhs = @[i]
+            rhs_type = get_type rhs
+            assert_node rhs_type == t, rhs, "Expected type: #{t} but got type #{rhs_type}"
+            rhs_reg, rhs_code = to_reg rhs, vars
+            code ..= rhs_code
+            code ..= "#{ret_reg} =#{t.abi_type} #{op} #{lhs_reg}, #{rhs_reg}\n"
+            lhs_reg = ret_reg
+        return ret_reg, code
 
 update = (op, flop)->
     (vars)=>
@@ -60,6 +66,8 @@ expr_compilers =
             return "$#{@[0]}", ""
     Int: (vars)=>
         return "#{@[0]}",""
+    Nil: (vars)=> "0",""
+    Bool: (vars)=> (@[0] == "yes" and "1" or "0"),""
     Float: (vars)=>
         return "d_#{@[0]}",""
     String: => strings[@[0]], ""
@@ -97,20 +105,42 @@ expr_compilers =
                 code ..= "#{p} =l add #{reg}, #{8*i}\n"
                 code ..= "storel #{val_reg}, #{p}\n"
         return reg, code
-    Add: binop "add"
-    Sub: binop "sub"
-    Mul: binop "mul"
-    Div: binop "div"
-    Or: binop "or"
-    Xor: binop "xor"
-    And: binop "and"
-    Mod: binop "rem"
-    Less: binop("csltl", "cltd")
-    LessEq: binop("cslel", "cled")
-    Greater: binop("csgtl", "cgtd")
-    GreaterEq: binop("csgel", "cged")
-    Equal: binop "ceql"
-    NotEqual: binop "cnel"
+    Add: infixop "add"
+    Sub: infixop "sub"
+    Mul: infixop "mul"
+    Div: infixop "div"
+    Xor: infixop "xor"
+    Or: (vars)=>
+        true_label = fresh_label "or.true"
+        done_label = fresh_label "or.end"
+        code = ""
+        for val in *@
+            assert_node get_type(val) == Types.Bool, val, "Expected Bool here, but got #{get_type val}"
+            val_reg, val_code = to_reg val, vars
+            false_label = fresh_label "or.false"
+            code ..= "#{val_code}jnz #{val_reg}, #{true_label}, #{false_label}\n#{false_label}\n"
+        ret_reg = fresh_reg vars, "any"
+        code ..= "#{ret_reg} =#{Types.Bool.abi_type} copy 0\njmp #{done_label}\n#{true_label}\n#{ret_reg} =#{Types.Bool.abi_type} copy 1\n#{done_label}\n"
+        return ret_reg, code
+    And: (vars)=>
+        false_label = fresh_label "and.false"
+        done_label = fresh_label "and.end"
+        code = ""
+        for val in *@
+            assert_node get_type(val) == Types.Bool, val, "Expected Bool here, but got #{get_type val}"
+            val_reg, val_code = to_reg val, vars
+            true_label = fresh_label "and.true"
+            code ..= "#{val_code}jnz #{val_reg}, #{true_label}, #{false_label}\n#{true_label}\n"
+        ret_reg = fresh_reg vars, "any"
+        code ..= "#{ret_reg} =#{Types.Bool.abi_type} copy 1\njmp #{done_label}\n#{false_label}\n#{ret_reg} =#{Types.Bool.abi_type} copy 0\n#{done_label}\n"
+        return ret_reg, code
+    Mod: infixop "rem"
+    Less: infixop("csltl", "cltd")
+    LessEq: infixop("cslel", "cled")
+    Greater: infixop("csgtl", "cgtd")
+    GreaterEq: infixop("csgel", "cged")
+    Equal: infixop "ceql"
+    NotEqual: infixop "cnel"
     Pow: (vars)=>
         -- TODO: auto-cast ints to doubles
         base_reg, base_code = to_reg @base, vars

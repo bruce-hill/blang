@@ -1,7 +1,7 @@
 prog: ^^__Block__ [ParseError:: +(./\n) @message=(""=>"Invalid code")]$$
 
 term: (
-    Bool / String / Float / Int / unaryOp / Var !`( / FnCall / Lambda / List / `(__extended-expr__`)
+    Bool / Nil / String / Float / Int / unaryOp / Var !`( / FnCall / Lambda / List / `(__extended-expr__`)
 )
 IndexedTerm:: !`0-9 (IndexedTerm / term) `. (Int / term)
 expr: Mod / Add / Sub / Mul / Div / Pow / IndexedTerm / term
@@ -26,6 +26,7 @@ Equal:: expr _ "==" _ expr
 NotEqual:: expr _ "!=" _ expr
 comparison: Equal / NotEqual / LessEq / Less / GreaterEq / Greater
 Bool:: \b("yes"/"no")\b
+Nil:: \b"nil"\b
 String:: `" ..%(Escape / `$ (Var/`(__ extended-expr __`))) `"
 List:: `[__*extended-expr %(__`,__) __ [`,__] `] [_`:_@type=type]
 Escape:: `\ (`x 2 hex / `a,b,t,n,r,v / 3 `0-8 / .)
@@ -74,7 +75,7 @@ Range:: expr _ [`,_expr]_".."_expr # 1,2..4  x..y  1..#list
 comment: "//" *.
 
 
-keyword: "yes"/"no"/"for"/"while"/"if"/"elseif"/"else"/"with"
+keyword: "nil"/"yes"/"no"/"for"/"while"/"if"/"elseif"/"else"/"with"
 hex: `0-9,a-f,A-F
 __: *(` /\t/\n/\r/comment)
 _:  *(` /\t)

@@ -157,6 +157,7 @@ get_type = memoize (node)->
         when "Int" then return Int
         when "Float" then return Float
         when "Bool" then return Bool
+        when "Nil" then return Nil
         when "String" then return String
         when "List"
             decl_type = node.type and parse_type(node.type[1])
@@ -177,7 +178,7 @@ get_type = memoize (node)->
                 t = get_type val
                 assert_node t == Bool, val, "Expected a Bool, but got a #{t}"
             return Bool
-        when "Comparison"
+        when "Equal","NotEqual","Less","LessEq","Greater","GreaterEq"
             return Bool
         when "Add","Sub","Mul","Div"
             lhs_type = get_type node[1]
