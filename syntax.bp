@@ -1,7 +1,7 @@
 prog: ^^__Block__ [ParseError:: +(./\n) @message=(""=>"Invalid code")]$$
 
 term: (
-    Bool / Nil / String / Float / Int / unaryOp / Var !`( / FnCall / Lambda / List / `(__extended-expr__`)
+    Bool / Nil / String / Float / Int / unaryOp / Var !(_`(,{) / Struct / FnCall / Lambda / List / `(__extended-expr__`)
 )
 IndexedTerm:: !`0-9 (IndexedTerm / term) `. (Int / term)
 expr: Mod / Add / Sub / Mul / Div / Pow / IndexedTerm / term
@@ -32,6 +32,7 @@ List:: `[__*extended-expr %(__`,__) __ [`,__] `] [_`:_@type=type]
 Escape:: `\ (`x 2 hex / `a,b,t,n,r,v / 3 `0-8 / .)
 Float:: [`-,+] (`0-9 *`0-9,_ `. *`0-9 / `. +`0-9)
 Int:: [`-,+] `0-9 *`0-9,_
+Struct:: @name=Var _ `{ __ *@([@name=Var __`=__] @value=required-extended-expr) % (__`,__) [__`,] __ `}
 FnCall:: @fn=(FnCall / Var / `(__expr__`)) `( __ @args=(*expr % (__`,__)) __ [`,__] `) [_`:_@type=type]
 Var:: id !~ (^^keyword$$)
 id: \b(\I *\i)
@@ -59,10 +60,13 @@ AndUpdate:: Var _ "and=" _ required-extended-expr
 OrUpdate:: Var _ "or=" _ required-extended-expr
 XorUpdate:: Var _ "xor=" _ required-extended-expr
 required-extended-expr: extended-expr / (ParseError:: ..$ @message=(=>"Invalid expression"))
-type: ((NamedType::id) / (ListType::`[type`])
+type: (
+  (StructType:: @name=Var `{__ *@(@name=Var_`:_@type=type) % (__`,__) [__`,] __`})
+  / (NamedType::Var) / (ListType::`[type`])
   / (OptionalType:: `? type)
   / (VariantType:: `( 2+ type%`| `))
-  / (FnType:: `(__ @args=(*type % (__`,__)) __ `) _ "->" __ @return=type))
+  / (FnType:: `(__ @args=(*type % (__`,__)) __ `) _ "->" __ @return=type)
+)
 If:: \b"if"\b @curdent=\C _ (
     @(@condition=extended-expr +\n curdent +(` /\t) @body=Block)
     *@(+\n curdent \b"elseif"\b _ @condition=extended-expr +\n curdent +(` /\t) @body=Block)

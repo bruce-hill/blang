@@ -57,6 +57,14 @@ class VariantType extends Type
                 self_i += 1
         return check_i > #to_check
 
+class StructType extends Type
+    new: (@name, @members)=> -- Members: {{type=t, name="Foo"}, {type=t2, name="Baz"}, ...}
+        @members_by_name = {}
+        for i,m in ipairs @members
+            @members_by_name[m.name] = {index: i, type: m.type}
+    __tostring: => "#{@name}{#{concat ["#{m.name}:#{m.type}" for m in *@members], ","}}"
+    __eq: Type.__eq
+
 -- Primitive Types:
 Int = NamedType("Int")
 Float = NamedType("Float")
@@ -141,6 +149,8 @@ parse_type = memoize (type_node)->
             return VariantType({parse_type(type_node[1]), Nil})
         when "VariantType"
             return VariantType([parse_type(t) for t in *type_node])
+        when "StructType"
+            return StructType(type_node.name[0], [{name:m.name[0], type: parse_type(m.type[1])} for m in *type_node])
         else
             error "Not a type node: #{viz type_node}"
 
@@ -160,11 +170,18 @@ get_type = memoize (node)->
                 assert_node get_type(node[i]) == t, node[i], "Not expected type: #{t}"
             return ListType(t)
         when "IndexedTerm"
-            list_type = get_type node[1]
-            assert_node list_type.__class == ListType, node[1], "Value has type: #{list_type}, but expected a List"
-            index_type = get_type(node[2], vars)
-            assert_node index_type == Int, node[2], "Index has type #{index_type}, but expected Int"
-            return list_type.item_type
+            t = get_type node[1]
+            if t.__class == ListType
+                index_type = get_type(node[2], vars)
+                assert_node index_type == Int, node[2], "Index has type #{index_type}, but expected Int"
+                return t.item_type
+            elseif t.__class == StructType
+                assert_node node[2].__tag == "Var", node[2], "Structs can only be indexed by member"
+                member_name = node[2][0]
+                assert_node t.members_by_name[member_name], node[2], "Not a valid struct member of #{t}"
+                return t.members_by_name[member_name].type
+            else
+                print_err node, "Indexing is only valid on structs and lists"
         when "And","Or"
             for val in *node
                 t = get_type val
@@ -214,6 +231,10 @@ get_type = memoize (node)->
         when "Block"
             error "Blocks have no type"
             -- return get_type(node[#node])
+        when "Struct"
+            alias = find_type_alias node, node.name[0]
+            assert_node alias, node, "Undefined struct"
+            return alias
         else
             assert_node not node.__tag, node, "Unknown node tag: #{node.__tag}"
     if #node > 0
@@ -221,4 +242,4 @@ get_type = memoize (node)->
         return get_type(node[#node])
     return Void
 
-return {:add_parenting, :parse_type, :get_type, :Type, :NamedType, :ListType, :FnType, :VariantType, :Int, :Float, :String, :Bool, :Void, :Nil}
+return {:add_parenting, :parse_type, :get_type, :Type, :NamedType, :ListType, :FnType, :VariantType, :StructType, :Int, :Float, :String, :Bool, :Void, :Nil}

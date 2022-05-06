@@ -79,19 +79,35 @@ expr_compilers =
         return reg, "#{code}#{ret} =#{t.abi_type} neg #{reg}\n"
     IndexedTerm: (vars)=>
         t = get_type @[1]
-        assert_node t.__class == Types.ListType, @[1], "Expected a list, but got: #{t}"
-        item_type = t.item_type
-        index_type = get_type(@[2])
-        assert_node index_type == Types.Int, @[2], "Index is #{index_type} instead of Int"
-        list_reg,list_code = to_reg @[1], vars
-        index_reg,index_code = to_reg @[2], vars
-        code = list_code..index_code
-        p = fresh_reg vars, "p"
-        code ..= "#{p} =l mul #{index_reg}, 8\n"
-        code ..= "#{p} =l add #{p}, #{list_reg}\n"
-        reg = fresh_reg vars, "item"
-        code ..= "#{reg} =#{item_type.abi_type} load#{item_type.abi_type} #{p}\n"
-        return reg,code
+        if t.__class == Types.ListType
+            item_type = t.item_type
+            index_type = get_type(@[2])
+            assert_node index_type == Types.Int, @[2], "Index is #{index_type} instead of Int"
+            list_reg,list_code = to_reg @[1], vars
+            index_reg,index_code = to_reg @[2], vars
+            code = list_code..index_code
+            loc = fresh_reg vars, "item.loc"
+            code ..= "#{loc} =l mul #{index_reg}, 8\n"
+            code ..= "#{loc} =l add #{loc}, #{list_reg}\n"
+            ret = fresh_reg vars, "item"
+            code ..= "#{ret} =#{item_type.abi_type} load#{item_type.abi_type} #{loc}\n"
+            return ret,code
+        elseif t.__class == Types.StructType
+            assert_node @[2].__tag == "Var", @[2], "Structs can only be indexed by member"
+            member_name = @[2][0]
+            assert_node t.members_by_name[member_name], @[2], "Not a valid struct member of #{t}"
+            struct_reg,struct_code = to_reg @[1], vars
+            i = t.members_by_name[member_name].index
+            member_type = t.members_by_name[member_name].type
+            code = struct_code
+            loc = fresh_reg vars, "member.loc"
+            code ..= "#{loc} =l add #{struct_reg}, #{8*(i-1)}\n"
+            ret = fresh_reg vars, "member"
+            code ..= "#{ret} =#{member_type.abi_type} load#{member_type.abi_type} #{loc}\n"
+            return ret,code
+        else
+            print_err @[1], "Indexing is only valid on lists and structs, not #{t}"
+            
     List: (vars)=>
         reg = fresh_reg vars, "list"
         code = "#{reg} =l call $calloc(l #{1 + #@}, l 8)\n"
@@ -168,6 +184,33 @@ expr_compilers =
         assert_node @__name, @, "Unreferenceable lambda"
         return @__name,""
 
+    Struct: (vars)=>
+        t = get_type @
+        struct_size = 8*#t.members
+        ret = fresh_reg vars, "#{t.name\lower!}"
+        code = "#{ret} =l call $calloc(l 1, l #{struct_size})\n"
+        p = fresh_reg vars, "#{t.name\lower!}.member.loc"
+        named_members = {m.name[0],m.value[1] for m in *@ when m.name}
+        unnamed_members = [m.value[1] for m in *@ when not m.name]
+        for i,m in ipairs t.members
+            val = if named_members[m.name]
+                named_members[m.name]
+            elseif #unnamed_members > 0
+                tmp = unnamed_members[1]
+                table.remove unnamed_members, 1
+            else
+                nil
+
+            if val
+                code ..= "#{p} =l add #{ret}, #{8*(i-1)}\n"
+                val_reg,val_code = to_reg val, vars
+                code ..= val_code
+                m_t = get_type val
+                code ..= "store#{m_t.abi_type} #{val_reg}, #{p}\n"
+                
+        return ret, code
+
+
 stmt_compilers =
     Block: (vars)=>
         concat([compile_stmt(stmt, vars) for stmt in *@], "")
@@ -238,7 +281,7 @@ stmt_compilers =
 to_reg = (vars, ...)=>
     if not @__tag
         return to_reg @[1], vars
-    assert_node expr_compilers[@__tag], @, "Not implemented: #{@__tag}"
+    assert_node expr_compilers[@__tag], @, "Expression compiler implemented for #{@__tag}"
     expr_compilers[@__tag](@, vars, ...)
 
 store_to = (val, vars, ...)=>
@@ -253,18 +296,34 @@ store_to = (val, vars, ...)=>
                 error "Undefined variable, or saving to global: #{@[0]}"
         when "IndexedTerm"
             t = get_type @[1]
-            assert_node t.__class == Types.ListType, @[1], "Expected a list, but got #{t}"
-            assert_node get_type(@[2]) == Types.Int, @[2], "Index is: #{get_type @[2]} instead of Int"
-            list_reg,list_code = to_reg @[1], vars
-            index_reg,index_code = to_reg @[2], vars
-            code = list_code..index_code
-            dest = fresh_reg vars, "dest"
-            code ..= "#{dest} =l mul #{index_reg}, 8\n"
-            code ..= "#{dest} =l add #{dest}, #{list_reg}\n"
-            val_reg,val_code = to_reg val, vars
-            code ..= val_code
-            code ..= "store#{t.item_type.abi_type} #{val_reg}, #{dest}\n"
-            return code
+            if t.__class == Types.ListType
+                assert_node get_type(@[2]) == Types.Int, @[2], "Index is: #{get_type @[2]} instead of Int"
+                list_reg,list_code = to_reg @[1], vars
+                index_reg,index_code = to_reg @[2], vars
+                code = list_code..index_code
+                dest = fresh_reg vars, "dest"
+                code ..= "#{dest} =l mul #{index_reg}, 8\n"
+                code ..= "#{dest} =l add #{dest}, #{list_reg}\n"
+                val_reg,val_code = to_reg val, vars
+                code ..= val_code
+                code ..= "store#{t.item_type.abi_type} #{val_reg}, #{dest}\n"
+                return code
+            elseif t.__class == Types.StructType
+                assert_node @[2].__tag == "Var", @[2], "Structs can only be indexed by member"
+                member_name = @[2][0]
+                assert_node t.members_by_name[member_name], @[2], "Not a valid struct member of #{t}"
+                struct_reg,struct_code = to_reg @[1], vars
+                i = t.members_by_name[member_name].index
+                member_type = t.members_by_name[member_name].type
+                code = struct_code
+                dest = fresh_reg vars, "member.loc"
+                code ..= "#{dest} =l add #{struct_reg}, #{8*(i-1)}\n"
+                val_reg,val_code = to_reg val, vars
+                code ..= val_code
+                code ..= "store#{member_type.item_type.abi_type} #{val_reg}, #{dest}\n"
+                return code
+            else
+                print_err @[1], "Indexing is only valid on a list or struct, but this is a #{t}"
         else
             error "Not implemented: store to #{@__tag}"
 
