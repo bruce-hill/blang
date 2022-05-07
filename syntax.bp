@@ -29,7 +29,7 @@ comparison: Equal / NotEqual / LessEq / Less / GreaterEq / Greater
 TernaryOp:: @condition=(And/Or/Xor/comparison/expr) _ `? _ @ifTrue=required-extended-expr _ `| _ @ifFalse=required-extended-expr
 Bool:: \b("yes"/"no")\b
 Nil:: \b"nil"\b
-String:: `" ..%(Escape / `$ (Var/`(__ extended-expr __`))) `"
+String:: `" @content=..%(Escape / `$ (Var/`(__ extended-expr __`))) `"
 List:: `[__*extended-expr %(__`,__) __ [`,__] `] [_`:_@type=type]
 Escape:: `\ (`x 2 hex / `a,b,t,n,r,v / 3 `0-8 / .)
 Float:: [`-,+] (`0-9 *`0-9,_ `. *`0-9 / `. +`0-9)
