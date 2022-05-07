@@ -25,7 +25,35 @@ fresh_label = (template="label")->
     label_counts[template] = (label_counts[template] or 0) + 1
     return "@#{template}.#{label_counts[template]}"
 
-infixop = (op, flop)->
+get_function_reg = (scope, name, arg_signature)->
+    return nil unless scope
+    switch scope.__tag
+        when "Block"
+            for i=#scope,1,-1
+                stmt = scope[i]
+                if stmt.__tag == "FnDecl" and stmt.name[0] == name and get_type(stmt)\arg_signature! == arg_signature
+                    return stmt.__name, get_type(stmt)
+                elseif stmt.__tag == "Declaration" and stmt.var[0] == name
+                    t = if stmt.type
+                        parse_type(stmt.type[1])
+                    else
+                        get_type stmt.value[1]
+                    if t.__class == Types.FnType and t\arg_signature! == arg_signature
+                        return "%#{stmt.var[0]}", t
+        when "FnDecl","Lambda"
+            for a in *scope.args
+                if a.arg[0] == name
+                    t = parse_type(a.type[1])
+                    if t.__class == Types.FnType and t\arg_signature! == arg_signature
+                        return "%"..a.arg[0], t
+        when "For"
+            iter_type = get_type(scope.iterable[1])
+            if scope.var and scope.var[0] == name and iter_type.__class == Types.ListType and iter_type.item_type.__class == Types.FnType
+                return "%"..scope.var[0], iter_type.item_type
+    
+    return get_function_reg(scope.__parent, name, arg_signature)
+
+infixop = (op, flop, abi_type)->
     (vars)=>
         t = get_type @[1]
         if t.base_type == "d" and flop
@@ -39,7 +67,7 @@ infixop = (op, flop)->
             assert_node rhs_type == t, rhs, "Expected type: #{t} but got type #{rhs_type}"
             rhs_reg, rhs_code = to_reg rhs, vars
             code ..= rhs_code
-            code ..= "#{ret_reg} =#{t.abi_type} #{op} #{lhs_reg}, #{rhs_reg}\n"
+            code ..= "#{ret_reg} =#{abi_type or t.abi_type} #{op} #{lhs_reg}, #{rhs_reg}\n"
             lhs_reg = ret_reg
         return ret_reg, code
 
@@ -55,7 +83,7 @@ update = (op, flop)->
                 op = flop
             code ..= "#{dest} =#{lhs_type.abi_type} #{op} #{dest}, #{reg}\n"
         else
-            print_err @, "Not impl: update indexes"
+            assert_node false, @, "Not impl: update indexes"
         return code
 
 expr_compilers =
@@ -84,7 +112,7 @@ expr_compilers =
             code ..= "call $range_backwards(l #{range}, l #{orig})\n"
             return range, code
         else
-            print_err @, "Invalid type to negate: #{t}"
+            assert_node false, @, "Invalid type to negate: #{t}"
     Len: (vars)=>
         t = get_type @[1]
         if t == Types.Range
@@ -97,7 +125,7 @@ expr_compilers =
             len = fresh_reg vars, "list.len"
             return len, "#{code}#{len} =l loadl #{list}\n"
         else
-            print_err @, "Expected List or Range type, not #{t}"
+            assert_node false, @, "Expected List or Range type, not #{t}"
     IndexedTerm: (vars)=>
         t = get_type @[1]
         if t.__class == Types.ListType
@@ -136,7 +164,7 @@ expr_compilers =
             code ..= "#{ret} =l call $range_nth(l #{range_reg}, l #{index_reg})\n"
             return ret, code
         else
-            print_err @[1], "Indexing is only valid on lists and structs, not #{t}"
+            assert_node false, @[1], "Indexing is only valid on lists and structs, not #{t}"
     List: (vars)=>
         reg = fresh_reg vars, "list"
         code = "#{reg} =l call $calloc(l #{1 + #@}, l 8)\n"
@@ -193,12 +221,12 @@ expr_compilers =
         code ..= "#{ret_reg} =#{Types.Bool.base_type} copy 1\njmp #{done_label}\n#{false_label}\n#{ret_reg} =#{Types.Bool.base_type} copy 0\n#{done_label}\n"
         return ret_reg, code
     Mod: infixop "rem"
-    Less: infixop("csltl", "cltd")
-    LessEq: infixop("cslel", "cled")
-    Greater: infixop("csgtl", "cgtd")
-    GreaterEq: infixop("csgel", "cged")
-    Equal: infixop "ceql"
-    NotEqual: infixop "cnel"
+    Less: infixop("csltl", "cltd", "l")
+    LessEq: infixop("cslel", "cled", "l")
+    Greater: infixop("csgtl", "cgtd", "l")
+    GreaterEq: infixop("csgel", "cged", "l")
+    Equal: infixop("ceql", "ceql", "l")
+    NotEqual: infixop("cnel", "cnel", "l")
     Pow: (vars)=>
         -- TODO: auto-cast ints to doubles
         base_reg, base_code = to_reg @base, vars
@@ -207,8 +235,24 @@ expr_compilers =
         return ret_reg, "#{base_code}#{exponent_code}#{ret_reg} =d call $pow(d #{base_reg}, d #{exponent_reg})\n"
 
     FnCall: (vars, skip_ret=false)=>
-        fn_reg = to_reg @fn, vars
         code = ""
+        local fn_type, fn_reg
+        target_sig = "(#{concat [tostring(get_type(a)) for a in *@args], ","})"
+        if @fn[1].__tag == "Var"
+            fn_reg, fn_type = get_function_reg(@, @fn[0], target_sig)
+            if fn_type
+                log "Looked for #{@fn[0]} with sig #{target_sig}, got: #{fn_type}"
+            -- assert_node fn_reg, @fn, "Couldn't find register for function"
+            if not fn_reg
+                fn_reg = "$"..@fn[0]
+        else
+            fn_type = get_type @fn[1]
+            fn_reg,fn_code = to_reg @fn, vars
+            code ..= fn_code
+
+        if fn_type
+            assert_node fn_type and fn_type.__class == Types.FnType, @fn[1], "This is not a function, it's a #{fn_type}"
+
         args = {}
         for arg in *@args
             arg_reg, arg_code = to_reg arg, vars
@@ -219,7 +263,8 @@ expr_compilers =
             return nil, "#{code}call #{fn_reg}(#{concat args, ", "})\n"
 
         ret_reg = fresh_reg vars
-        code ..= "#{ret_reg} =#{get_type(@).abi_type} call #{fn_reg}(#{concat args, ", "})\n"
+        ret_type = fn_type and fn_type.return_type or get_type(@)
+        code ..= "#{ret_reg} =#{ret_type.abi_type} call #{fn_reg}(#{concat args, ", "})\n"
         return ret_reg, code
 
     Lambda: (vars)=>
@@ -422,7 +467,7 @@ store_to = (val, vars, ...)=>
                 code ..= "store#{member_type.item_type.base_type} #{val_reg}, #{dest}\n"
                 return code
             else
-                print_err @[1], "Indexing is only valid on a list or struct, but this is a #{t}"
+                assert_node false, @[1], "Indexing is only valid on a list or struct, but this is a #{t}"
         else
             error "Not implemented: store to #{@__tag}"
 
@@ -432,14 +477,15 @@ compile_stmt = (vars)=>
     assert_node stmt_compilers[@__tag], @, "Not implemented: #{@__tag}"
     stmt_compilers[@__tag](@, vars)
 
-each_tag = (tag)=>
+each_tag = (...)=>
     return unless type(@) == 'table'
 
-    if @__tag == tag
-        coroutine.yield @
+    tags = {...}
+    for tag in *tags
+        coroutine.yield @ if @__tag == tag
 
     for k,v in pairs(@)
-        each_tag(v, tag) if type(v) == 'table'
+        each_tag(v, ...) if type(v) == 'table' and k != "__parent"
 
 compile_prog = (ast, filename)->
     add_parenting(ast)
@@ -459,13 +505,15 @@ compile_prog = (ast, filename)->
     fn_dups = {}
     fn_code = ""
 
+    vars = {["%__argc"]:true, ["%argc"]:true, ["%argv"]:true}
+
     declare_func = (fndec)->
         args = ["#{parse_type(arg.type[1]).abi_type} %#{arg.arg[0]}" for arg in *fndec.args]
-        vars = {"%#{arg.arg[0]}",true for arg in *fndec.args}
+        fn_vars = {"%#{arg.arg[0]}",true for arg in *fndec.args}
         body_code = if fndec.body[1].__tag == "Block"
-            compile_stmt(fndec.body[1], vars)
+            compile_stmt(fndec.body[1], fn_vars)
         else
-            ret_reg, tmp = to_reg fndec.body[1], vars
+            ret_reg, tmp = to_reg fndec.body[1], fn_vars
             "#{tmp}ret #{ret_reg}\n"
         body_code = body_code\gsub("[^\n]+", =>(@\match("^%@") and @ or "  "..@))
         fn_type = get_type fndec
@@ -474,6 +522,7 @@ compile_prog = (ast, filename)->
         fn_dups[fn_name] = (fn_dups[fn_name] or 0) + 1
         if fn_dups[fn_name] > 1
             fn_name ..= ".#{fn_dups[fn_name]}"
+        fndec.__name = fn_name
         fn_code ..= "function #{ret_type == Types.Void and "" or ret_type.abi_type.." "}"
         fn_code ..= "#{fn_name}(#{concat args, ", "}) {\n@start\n#{body_code}"
         if ret_type == Types.Void
@@ -486,10 +535,8 @@ compile_prog = (ast, filename)->
     for fndec in coroutine.wrap(-> each_tag(ast, "FnDecl"))
         declare_func fndec
     for lambda in coroutine.wrap(-> each_tag(ast, "Lambda"))
-        name = declare_func lambda
-        lambda.__name = name
+        declare_func lambda
 
-    vars = {["%__argc"]:true, ["%argc"]:true, ["%argv"]:true}
     body_code = compile_stmt(ast, vars)\gsub("[^\n]+", =>(@\match("^%@") and @ or "  "..@))
 
     code = "# Source file: #{filename}\n\n"

@@ -25,8 +25,9 @@ class ListType extends Type
 
 class FnType extends Type
     new: (@arg_types, @return_type)=>
-    __tostring: => "(#{concat ["#{a}" for a in *@arg_types], ","})->#{@return_type}"
+    __tostring: => "#{@arg_signature!}->#{@return_type}"
     __eq: Type.__eq
+    arg_signature: => "(#{concat ["#{a}" for a in *@arg_types], ","})"
 
 class VariantType extends Type
     new: (variants)=>
@@ -87,9 +88,10 @@ memoize = (fn)->
         return cache[x]
 
 add_parenting = (ast)->
-    for _,node in pairs ast
-        if type(node) == 'table'
+    for k,node in pairs ast
+        if type(node) == 'table' and k != "__parent"
             parents[node] = ast
+            node.__parent = ast
             add_parenting node
 
 find_returns = (node)->
@@ -99,16 +101,16 @@ find_returns = (node)->
         when "Lambda","FnDecl","Declaration"
             return
         else
-            for _,child in pairs node
-                find_returns(child) if type(child) == 'table'
+            for k,child in pairs node
+                find_returns(child) if type(child) == 'table' and k != "__parent"
 
-find_declared_type = (scope, name)->
+find_declared_type = (scope, name, arg_signature=nil)->
     return nil unless scope
     switch scope.__tag
         when "Block"
             for i=#scope,1,-1
                 stmt = scope[i]
-                if stmt.__tag == "FnDecl" and stmt.name[0] == name
+                if stmt.__tag == "FnDecl" and stmt.name[0] == name and (not arg_signature or arg_signature == get_type(stmt)\arg_signature!)
                     return get_type(stmt)
                 elseif stmt.__tag == "Declaration" and stmt.var[0] == name
                     return parse_type(stmt.type[1]) if stmt.type
@@ -126,7 +128,7 @@ find_declared_type = (scope, name)->
                 assert_node iter_type.__class == ListType or iter_type.__class == Range, scope.iterable[1], "Not an iterable"
                 return iter_type.item_type
     
-    return find_declared_type(parents[scope], name)
+    return find_declared_type(parents[scope], name, arg_signature)
 
 find_type_alias = (scope, name)->
     while scope
@@ -151,10 +153,10 @@ parse_type = memoize (type_node)->
         when "FnType"
             arg_types = [parse_type(a) for a in *type_node.args]
             return FnType(arg_types, parse_type(type_node.return[1]))
-        when "OptionalType"
-            return VariantType({parse_type(type_node[1]), Nil})
-        when "VariantType"
-            return VariantType([parse_type(t) for t in *type_node])
+        -- when "OptionalType"
+        --     return VariantType({parse_type(type_node[1]), Nil})
+        -- when "VariantType"
+        --     return VariantType([parse_type(t) for t in *type_node])
         when "StructType"
             return StructType(type_node.name[0], [{name:m.name[0], type: parse_type(m.type[1])} for m in *type_node])
         else
@@ -217,8 +219,7 @@ get_type = memoize (node)->
             assert_node exponent_type == Float, node.exponent[1], "Expected float, not #{exponent_type}"
             return Float
         when "Lambda","FnDecl"
-            decl_type = node.type and parse_type(node.type[1])
-
+            decl_ret_type = node.return and parse_type(node.return[1])
             ret_type = if node.body[1].__tag != "Block"
                 get_type node.body[1]
             else
@@ -228,9 +229,12 @@ get_type = memoize (node)->
                         t = ret[1] and get_type(ret[1]) or Void
                     else
                         t2 = ret[1] and get_type(ret[1]) or Void
-                        assert_node t2 == t, ret[1], "Return type here is: #{t2}, which conflicts with earlier return type: #{t}"
+                        unless t2\is_a t
+                            t = Types.VariantType({t, t2})
                 t or Void
-            return FnType([get_type a for a in *node.args], ret_type)
+            if decl_ret_type
+                assert_node decl_ret_type == ret_type, node, "Conflicting return types"
+            return FnType([parse_type a.type[1] for a in *node.args], ret_type)
         when "Var"
             var_type = find_declared_type(parents[node], node[0])
             if not var_type
@@ -240,8 +244,12 @@ get_type = memoize (node)->
             return var_type
         when "FnCall"
             return parse_type(node.type[1]) if node.type
-            fn_type = get_type node.fn[1]
-            assert_node fn_type.__class == FnType, node.fn[1], "This is not a function, it's a #{fn_type}"
+            fn_type = if node.fn[1].__tag == "Var"
+                target_sig = "(#{concat [tostring(get_type(a)) for a in *node.args], ","})"
+                find_declared_type node, node.fn[0], target_sig
+            else
+                get_type node.fn[1]
+            assert_node fn_type and fn_type.__class == FnType, node.fn[1], "This is not a function, it's a #{fn_type}"
             return fn_type.return_type
         when "Block"
             error "Blocks have no type"

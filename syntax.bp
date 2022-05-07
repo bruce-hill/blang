@@ -35,22 +35,24 @@ Int:: [`-,+] `0-9 *`0-9,_
 Struct:: @name=Var _ `{ __ *@([@name=Var __`=__] @value=required-extended-expr) % (__`,__) [__`,] __ `}
 FnCall:: @fn=(FnCall / Var / `(__expr__`)) `( __ @args=(*expr % (__`,__)) __ [`,__] `) [_`:_@type=type]
 Var:: id !~ (^^keyword$$)
+TypeVar:: id !~ (^^keyword$$)
 id: \b(\I *\i)
-Block:: @curdent=\C +(comment/statement) % (+\n curdent !(` /\t))
+Block:: @curdent=\C +(comment/statement) % (nl curdent !(` /\t))
 statement: (Declaration / FnDecl / Assignment / AddUpdate / SubUpdate
   / MulUpdate / DivUpdate / AndUpdate / OrUpdate / XorUpdate
-  / If / For / While / Return / FnCall / TypeDeclaration
+  / If / When / For / While / Return / FnCall / TypeDeclaration
   / !$ (ParseError:: @dent=\C ..$ *(\n dent (` /\t)..$) @message=(=>"Invalid statement")))
 Declaration:: @var=Var _`: _[@type=type_] `= _ @value=required-extended-expr
 TypeDeclaration:: @(NamedType::id) _ ":::" _ (type / (ParseError:: ..$ @message=(=>"Not a valid type")))
 FnDecl:: @curdent=\C "def"\b _ (@name=Var _
-  `( __ @args=*@(@arg=Var_`:_@type=type)%(__`,__)__[`,__]`)_`:_[@return=type]_ @body=(`= _ extended-expr / +\n curdent +(` /\t) Block))
+  `( __ @args=*@(@arg=Var_`:_@type=type)%(__`,__)__[`,__]`)_`:_[@return=type]_ [comment]
+  @body=(`= _ extended-expr / nl curdent +(` /\t) Block))
 Lambda:: (@curdent=\C
   `(__@args=*@(@arg=Var__`:__@type=type)%(__`,__)__[`,__]`)
-  [_`:_@return=type]_"->"_
+  [_`:_@return=type]_"->"_ [comment]
   (@body=funcBody / (ParseError:: @message=(..$ =>"Invalid lambda body")))
 )
-funcBody: extended-expr / +\n curdent +(` /\t) Block
+funcBody: extended-expr / nl curdent +(` /\t) Block
 Assignment:: (IndexedTerm/Var) _ `= _ required-extended-expr
 AddUpdate:: Var _ "+=" _ required-extended-expr
 SubUpdate:: Var _ "-=" _ required-extended-expr
@@ -61,33 +63,40 @@ OrUpdate:: Var _ "or=" _ required-extended-expr
 XorUpdate:: Var _ "xor=" _ required-extended-expr
 required-extended-expr: extended-expr / (ParseError:: ..$ @message=(=>"Invalid expression"))
 type: (
-    (VariantType:: 2+ type%`|)
-  / (StructType:: @name=Var `{__ *@(@name=Var_`:_@type=type) % (__`,__) [__`,] __`})
-  / (NamedType::Var) / (ListType::`[type`])
-  / (OptionalType:: `? type)
+    # (VariantType:: 2+ type%`|)
+    (StructType:: @name=Var `{__ *@(@name=Var_`:_@type=type) % (__`,__) [__`,] __`})
+  / (NamedType::Var)
+  / TypeVar
+  / (ListType::`[type`])
+  #/ (OptionalType:: `? type)
   / (FnType:: `(__ @args=(*type % (__`,__)) __ `) _ "->" __ @return=type)
 )
 If:: \b"if"\b @curdent=\C _ (
-    @(@condition=extended-expr +\n curdent +(` /\t) @body=Block)
-    *@(+\n curdent \b"elseif"\b _ @condition=extended-expr +\n curdent +(` /\t) @body=Block)
-    [+\n curdent \b"else"\b +\n curdent +(` /\t) @elseBody=Block]
+    @(@condition=extended-expr [comment] nl curdent +(` /\t) @body=Block)
+    *@(nl curdent \b"elseif"\b _ @condition=extended-expr [comment] nl curdent +(` /\t) @body=Block)
+    [nl curdent \b"else"\b [comment] nl curdent +(` /\t) @elseBody=Block]
+)
+When:: ( \b"when"\b @curdent=\C _
+  @what=required-extended-expr _ [[comment] nl curdent]
+  +("is"\b @cases=+required-extended-expr%(_`,_) _ [comment] nl curdent +(` /\t) @body=Block)%(nl curdent)
+  [nl curdent "else" _ [comment] nl curdent +(` /\t) @elseBody=Block]
 )
 For:: (
-  \b"for"\b @curdent=\C _ [@index=Var_`,_] @var=Var _ "in" _ @iterable=required-extended-expr
-  +\n curdent +(` /\t) @body=Block
-  [+\n curdent \b"between"\b +\n curdent +(` /\t) @between=Block]
+  \b"for"\b @curdent=\C _ [@index=Var_`,_] @var=Var _ "in" _ @iterable=required-extended-expr _ [comment]
+  nl curdent +(` /\t) @body=Block
+  [nl curdent \b"between"\b [comment] nl curdent +(` /\t) @between=Block]
 )
 While:: (
-  \b"while"\b _ @condition=extended-expr
-  +\n curdent +(` /\t) @body=Block
-  [+\n curdent \b"between"\b +\n curdent +(` /\t) @between=Block]
+  \b"while"\b _ @condition=extended-expr _ [comment]
+  nl curdent +(` /\t) @body=Block
+  [nl curdent \b"between"\b nl curdent +(` /\t) @between=Block]
 )
 Return:: \b"return"\b _ [expr]
 Range:: `[__@first=(Int/!Float extended-expr) __ [`,__@next=(Int/ !Float required-extended-expr)]__".."__@last=(Int/!Float required-extended-expr)__`] # [0,2..4] [x..y] [1..#list]
 comment: "//" *.
 
-
 keyword: "nil"/"yes"/"no"/"for"/"while"/"between"/"if"/"elseif"/"else"/"with"/"and"/"or"/"xor"
 hex: `0-9,a-f,A-F
+nl: +\n % (*(` /\t) [comment])
 __: *(` /\t/\n/\r/comment)
 _:  *(` /\t)
