@@ -6,9 +6,10 @@ term: (
 IndexedTerm:: !`0-9 (IndexedTerm / term) `. (Int / term)
 expr: Mod / Add / Sub / Mul / Div / Pow / IndexedTerm / term
 extended-expr: And / Or / Xor / comparison / expr
-unaryOp: Negative / Len
+unaryOp: Negative / Len / Not
 Negative:: `- !`0-9,-,. term
 Len:: `# term
+Not:: \b"not"\b _ (comparison / expr)
 Mod:: (Add / Sub / Mul / Div / Pow / term) _ \b"mod"\b _ (Add / Sub / Mul / Div / Pow / term)
 Add:: (Add / Sub / Mul / Div / Pow / term) _ `+ _ (Mul / Div / Pow / term)
 Sub:: (Add / Sub / Mul / Div / Pow / term) _ `- _ (Mul / Div / Pow / term)
@@ -95,7 +96,7 @@ Return:: \b"return"\b _ [expr]
 Range:: `[__@first=(Int/!Float extended-expr) __ [`,__@next=(Int/ !Float required-extended-expr)]__".."__@last=(Int/!Float required-extended-expr)__`] # [0,2..4] [x..y] [1..#list]
 comment: "//" *.
 
-keyword: "nil"/"yes"/"no"/"for"/"while"/"between"/"if"/"elseif"/"else"/"with"/"and"/"or"/"xor"/"pass"
+keyword: "nil"/"yes"/"no"/"for"/"while"/"between"/"if"/"elseif"/"else"/"with"/"and"/"or"/"xor"/"pass"/"not"
 hex: `0-9,a-f,A-F
 nl: +\n % (*(` /\t) [comment])
 __: *(` /\t/\n/\r/comment)

@@ -2,7 +2,9 @@ def say(s:String):
     printf("%s\n", s)
 
 x := 5
-if x < 10
+if not x > 10
     say("x is small")
+elseif x > 100
+    say("x is HUGE")
 else
     say("x is big")

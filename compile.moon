@@ -126,6 +126,12 @@ expr_compilers =
             return len, "#{code}#{len} =l loadl #{list}\n"
         else
             assert_node false, @, "Expected List or Range type, not #{t}"
+    Not: (vars)=>
+        assert_node get_type(@[1]) == Types.Bool, @[1], "Expected a Bool"
+        b,code = to_reg @[1], vars
+        ret = fresh_reg vars, "not"
+        code ..= "#{ret} =l ceql #{b}, 0\n"
+        return ret, code
     IndexedTerm: (vars)=>
         t = get_type @[1]
         if t.__class == Types.ListType

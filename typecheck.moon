@@ -212,6 +212,10 @@ get_type = memoize (node)->
             t = get_type node[1]
             assert_node t.__class == ListType or t == Range, node, "Attempt to get length of non-iterable: #{t}"
             return Int
+        when "Not"
+            t = get_type node[1]
+            assert_node t == Bool, node, "Invalid type for 'not': #{t}"
+            return Bool
         when "Pow"
             base_type = get_type node.base[1]
             assert_node base_type == Float, node.base[1], "Expected float, not #{base_type}"
