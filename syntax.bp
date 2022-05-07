@@ -5,7 +5,7 @@ term: (
 )
 IndexedTerm:: !`0-9 (IndexedTerm / term) `. (Int / term)
 expr: Mod / Add / Sub / Mul / Div / Pow / IndexedTerm / term
-extended-expr: And / Or / Xor / comparison / expr
+extended-expr: TernaryOp / And / Or / Xor / comparison / expr
 unaryOp: Negative / Len / Not
 Negative:: `- !`0-9,-,. term
 Len:: `# term
@@ -26,6 +26,7 @@ GreaterEq:: expr _ ">=" _ expr
 Equal:: expr _ "==" _ expr
 NotEqual:: expr _ "!=" _ expr
 comparison: Equal / NotEqual / LessEq / Less / GreaterEq / Greater
+TernaryOp:: @condition=(And/Or/Xor/comparison/expr) _ `? _ @ifTrue=required-extended-expr _ `| _ @ifFalse=required-extended-expr
 Bool:: \b("yes"/"no")\b
 Nil:: \b"nil"\b
 String:: `" ..%(Escape / `$ (Var/`(__ extended-expr __`))) `"

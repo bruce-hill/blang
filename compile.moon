@@ -233,6 +233,19 @@ expr_compilers =
     GreaterEq: infixop("csgel", "cged", "l")
     Equal: infixop("ceql", "ceql", "l")
     NotEqual: infixop("cnel", "cnel", "l")
+    TernaryOp: (vars)=>
+        cond_reg,code = to_reg @condition[1], vars
+        true_reg,true_code = to_reg @ifTrue[1], vars
+        false_reg,false_code = to_reg @ifFalse[1], vars
+        true_label = fresh_label "ternary.true"
+        false_label = fresh_label "ternary.false"
+        end_label = fresh_label "ternary.end"
+        ret_reg = fresh_reg vars, "ternary.result"
+        code ..= "jnz #{cond_reg}, #{true_label}, #{false_label}\n"
+        code ..= "#{true_label}\n#{true_code}#{ret_reg} =#{get_type(@ifTrue[1]).base_type} copy #{true_reg}\njmp #{end_label}\n"
+        code ..= "#{false_label}\n#{false_code}#{ret_reg} =#{get_type(@ifFalse[1]).base_type} copy #{false_reg}\njmp #{end_label}\n"
+        code ..= "#{end_label}\n"
+        return ret_reg, code
     Pow: (vars)=>
         -- TODO: auto-cast ints to doubles
         base_reg, base_code = to_reg @base, vars

@@ -198,6 +198,13 @@ get_type = memoize (node)->
             return Bool
         when "Equal","NotEqual","Less","LessEq","Greater","GreaterEq"
             return Bool
+        when "TernaryOp"
+            cond_type = get_type node.condition[1]
+            assert_node cond_type == Bool, node.condition, "Expected a Bool here"
+            true_type = get_type node.ifTrue[1]
+            false_type = get_type node.ifFalse[1]
+            assert_node true_type == false_type, node, "Values for true/false branches are different: #{lhs_type} vs #{rhs_type}"
+            return true_type
         when "Add","Sub","Mul","Div","Mod"
             lhs_type = get_type node[1]
             rhs_type = get_type node[2]
