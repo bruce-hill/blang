@@ -43,8 +43,8 @@ statement: (Declaration / FnDecl / Assignment / AddUpdate / SubUpdate
   / !$ (ParseError:: @dent=\C ..$ *(\n dent (` /\t)..$) @message=(=>"Invalid statement")))
 Declaration:: @var=Var _`: _[@type=type_] `= _ @value=required-extended-expr
 TypeDeclaration:: @(NamedType::id) _ ":::" _ (type / (ParseError:: ..$ @message=(=>"Not a valid type")))
-FnDecl:: @curdent=\C (@name=Var _
-  `( __ @args=*@(@arg=Var_`:_@type=type)%(__`,__)__[`,__]`)_`:_[@return=type]_ `= _ @body=funcBody)
+FnDecl:: @curdent=\C "def"\b _ (@name=Var _
+  `( __ @args=*@(@arg=Var_`:_@type=type)%(__`,__)__[`,__]`)_`:_[@return=type]_ @body=(`= _ extended-expr / +\n curdent +(` /\t) Block))
 Lambda:: (@curdent=\C
   `(__@args=*@(@arg=Var__`:__@type=type)%(__`,__)__[`,__]`)
   [_`:_@return=type]_"->"_
@@ -87,7 +87,7 @@ Range:: `[__@first=(Int/!Float extended-expr) __ [`,__@next=(Int/ !Float require
 comment: "//" *.
 
 
-keyword: "nil"/"yes"/"no"/"for"/"while"/"between"/"if"/"elseif"/"else"/"with"
+keyword: "nil"/"yes"/"no"/"for"/"while"/"between"/"if"/"elseif"/"else"/"with"/"and"/"or"/"xor"
 hex: `0-9,a-f,A-F
 __: *(` /\t/\n/\r/comment)
 _:  *(` /\t)

@@ -1,7 +1,7 @@
 
 x := 0
 
-doop() :=
+def doop():
     x := 0
     printf("Current: %ld\n", x)
     //x += 1

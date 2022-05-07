@@ -1,6 +1,6 @@
 Vec ::: Vec{x: Float, y: Float}
 
-print_vec(v:Vec):=
+def print_vec(v:Vec):
     printf("Vec<%f,%f>\n", v.x, v.y)
 
 v := Vec{2.3, 4.5}

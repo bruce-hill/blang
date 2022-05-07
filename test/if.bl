@@ -1,4 +1,4 @@
-say(s:String) :=
+def say(s:String):
     printf("%s\n", s)
 
 x := 5
