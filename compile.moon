@@ -240,8 +240,6 @@ expr_compilers =
         target_sig = "(#{concat [tostring(get_type(a)) for a in *@args], ","})"
         if @fn[1].__tag == "Var"
             fn_reg, fn_type = get_function_reg(@, @fn[0], target_sig)
-            if fn_type
-                log "Looked for #{@fn[0]} with sig #{target_sig}, got: #{fn_type}"
             -- assert_node fn_reg, @fn, "Couldn't find register for function"
             if not fn_reg
                 fn_reg = "$"..@fn[0]
@@ -323,29 +321,61 @@ stmt_compilers =
     XorUpdate: update "xor"
     AndUpdate: update "and"
     FnDecl: (vars)=> ""
+    Pass: (vars)=> ""
     TypeDeclaration: (vars)=> ""
     FnCall: (vars)=>
         _, code = to_reg @, vars, true
         code = code\gsub("[^\n]- (call [^\n]*\n)$", "%1")
         return code
     Return: (vars)=>
-        reg, code = to_reg @[1], vars
-        return "#{code}ret #{reg}\n"
+        if @[1]
+            reg, code = to_reg @[1], vars
+            return "#{code}ret #{reg}\n"
+        else
+            return "ret\n"
     If: (vars)=>
         code = ""
-        end_label = fresh_label "endif"
-        false_label = fresh_label "else"
+        end_label = fresh_label "if.end"
+        false_label = fresh_label "if.else"
         for cond in *@
             r,cond_code = to_reg cond.condition, vars
             code ..= cond_code
-            true_label = fresh_label "iftrue"
+            true_label = fresh_label "if.true"
             code ..= "jnz #{r}, #{true_label}, #{false_label}\n#{true_label}\n"
             code ..= compile_stmt cond.body, vars
             unless code\match("%f[%w]ret%f[ \n][^\n]*\n$")
                 code ..= "jmp #{end_label}\n"
             code ..= "#{false_label}\n"
-            false_label = fresh_label "else"
+            false_label = fresh_label "if.else"
         if @elseBody
+            code ..= compile_stmt @elseBody, vars
+            unless code\match("%f[%w]ret%f[ \n][^\n]*\n$")
+                code ..= "jmp #{end_label}\n"
+        code ..= "#{end_label}\n"
+        return code
+    When: (vars)=>
+        t = get_type @what[1]
+        what_reg,code = to_reg @what[1], vars
+        end_label = fresh_label "when.end"
+        next_case = fresh_label "when.case"
+        next_body = fresh_label "when.body"
+        match_reg = fresh_reg vars, "when.matches"
+        code ..= "jmp #{next_case}\n"
+        for branch in *@branches
+            for case in *branch.cases
+                assert_node get_type(case)\is_a(t), case, "'when' value is not a #{t}"
+                code ..= "#{next_case}\n"
+                next_case = fresh_label "when.case"
+                case_reg,case_code = to_reg case, vars
+                code ..= "#{case_code}#{match_reg} =l ceql #{what_reg}, #{case_reg}\n"
+                code ..= "jnz #{match_reg}, #{next_body}, #{next_case}\n"
+            code ..= "#{next_body}\n"
+            next_body = fresh_label "when.body"
+            code ..= compile_stmt branch.body, vars
+            unless code\match("%f[%w]ret%f[ \n][^\n]*\n$")
+                code ..= "jmp #{end_label}\n"
+        if @elseBody
+            code ..= "#{next_case}\n"
             code ..= compile_stmt @elseBody, vars
             unless code\match("%f[%w]ret%f[ \n][^\n]*\n$")
                 code ..= "jmp #{end_label}\n"

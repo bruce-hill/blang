@@ -38,7 +38,7 @@ Var:: id !~ (^^keyword$$)
 TypeVar:: id !~ (^^keyword$$)
 id: \b(\I *\i)
 Block:: @curdent=\C +(comment/statement) % (nl curdent !(` /\t))
-statement: (Declaration / FnDecl / Assignment / AddUpdate / SubUpdate
+statement: ((Pass:: "pass" _ [comment]) / Declaration / FnDecl / Assignment / AddUpdate / SubUpdate
   / MulUpdate / DivUpdate / AndUpdate / OrUpdate / XorUpdate
   / If / When / For / While / Return / FnCall / TypeDeclaration
   / !$ (ParseError:: @dent=\C ..$ *(\n dent (` /\t)..$) @message=(=>"Invalid statement")))
@@ -78,7 +78,7 @@ If:: \b"if"\b @curdent=\C _ (
 )
 When:: ( \b"when"\b @curdent=\C _
   @what=required-extended-expr _ [[comment] nl curdent]
-  +("is"\b @cases=+required-extended-expr%(_`,_) _ [comment] nl curdent +(` /\t) @body=Block)%(nl curdent)
+  @branches=+@("is"\b _ @cases=+required-extended-expr%(_`,_) _ [comment] nl curdent +(` /\t) @body=Block)%(nl curdent)
   [nl curdent "else" _ [comment] nl curdent +(` /\t) @elseBody=Block]
 )
 For:: (
@@ -95,7 +95,7 @@ Return:: \b"return"\b _ [expr]
 Range:: `[__@first=(Int/!Float extended-expr) __ [`,__@next=(Int/ !Float required-extended-expr)]__".."__@last=(Int/!Float required-extended-expr)__`] # [0,2..4] [x..y] [1..#list]
 comment: "//" *.
 
-keyword: "nil"/"yes"/"no"/"for"/"while"/"between"/"if"/"elseif"/"else"/"with"/"and"/"or"/"xor"
+keyword: "nil"/"yes"/"no"/"for"/"while"/"between"/"if"/"elseif"/"else"/"with"/"and"/"or"/"xor"/"pass"
 hex: `0-9,a-f,A-F
 nl: +\n % (*(` /\t) [comment])
 __: *(` /\t/\n/\r/comment)
