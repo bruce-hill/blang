@@ -1,7 +1,6 @@
 #!/usr/bin/env moon
-import log, viz, set_file from require 'util'
-parse = require 'parse'
-import compile_prog from require 'compile'
+util = require 'util'
+import log, viz, set_file from util
 
 number_code = (code, color="1")->
     line = 0
@@ -22,6 +21,10 @@ for i,a in ipairs arg
 
 unless verbose
     log = ->
+    util.log = log
+
+parse = require 'parse'
+import compile_prog from require 'compile'
 
 for f in *files
     log "\x1b[1;4mFile #{f}\x1b[m"
