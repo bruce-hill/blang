@@ -104,13 +104,17 @@ When:: ( \b"when"\b @curdent=\C _
 For:: (
   \b"for"\b @curdent=\C _ [@index=Var_`,_] @var=Var _ "in" _ @iterable=required-extended-expr _ [comment]
   nl curdent +(` /\t) @body=Block
-  [nl curdent \b"between"\b [comment] nl curdent +(` /\t) @between=Block]
+  [between]
 )
 While:: (
   \b"while"\b @curdent=\C _ @condition=extended-expr _ [comment]
   nl curdent +(` /\t) @body=Block
-  [nl curdent \b"between"\b nl curdent +(` /\t) @between=Block]
+  [between]
 )
+between: nl curdent \b"between"\b _ [comment] @between=(
+  nl curdent +(` /\t) Block
+  / (Block:: line-statement)
+  / (ParseError:: ..$ => "Invalid 'between' body"))
 Return:: \b"return"\b _ [extended-expr]
 Range:: `[__@first=(Int/!Float extended-expr) __ [`,__@next=(Int/ !Float required-extended-expr)]__".."__@last=(Int/!Float required-extended-expr)__`] # [0,2..4] [x..y] [1..#list]
 comment: "//" *.
