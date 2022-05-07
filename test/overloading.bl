@@ -1,0 +1,25 @@
+
+def max(x:Int,y:Int):Int
+    if x >= y
+        return x
+    else
+        return y
+
+def max(x:Float,y:Float):Float
+    if x >= y
+        return x
+    else
+        return y
+
+def say_max(x:Int,y:Int):
+    m := max(x, y)
+    say_int(m)
+
+def say_max(x:Float,y:Float):
+    m := max(x, y)
+    say_float(m)
+
+say_max(2.3, 3.4)
+printf("\n")
+say_max(99, 100)
+printf("\n")
