@@ -202,9 +202,9 @@ get_type = memoize (node)->
             assert_node lhs_type == rhs_type and (lhs_type == Int or lhs_type == Float), node,
                 "Invalid #{node.__tag} types: #{lhs_type} and #{rhs_type}"
             return lhs_type
-        when "Neg"
+        when "Negative"
             t = get_type node[1]
-            assert_node t == Int or t == Float, node, "Invalid negation type: #{t}"
+            assert_node t == Int or t == Float or t == Range, node, "Invalid negation type: #{t}"
             return t
         when "Len"
             t = get_type node[1]

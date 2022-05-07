@@ -73,10 +73,18 @@ expr_compilers =
     String: => strings[@[0]], ""
     Negative: (vars)=>
         t = get_type @[1]
-        assert_node t == Types.Int or t == Types.Float, @, "Invalid type to negate: #{t}"
-        reg,code = to_reg @[1], vars
-        ret = fresh_reg vars, "neg"
-        return ret, "#{code}#{ret} =#{t.abi_type} neg #{reg}\n"
+        if t == Types.Int or t == Types.Float
+            reg,code = to_reg @[1], vars
+            ret = fresh_reg vars, "neg"
+            return ret, "#{code}#{ret} =#{t.abi_type} neg #{reg}\n"
+        elseif t == Types.Range
+            orig,code = to_reg @[1], vars
+            range = fresh_reg vars, "neg.range"
+            code ..= "#{range} =l call $calloc(l 1, l #{3*8})\n"
+            code ..= "call $range_backwards(l #{range}, l #{orig})\n"
+            return range, code
+        else
+            print_err @, "Invalid type to negate: #{t}"
     Len: (vars)=>
         t = get_type @[1]
         if t == Types.Range
