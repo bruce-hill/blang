@@ -61,10 +61,10 @@ OrUpdate:: Var _ "or=" _ required-extended-expr
 XorUpdate:: Var _ "xor=" _ required-extended-expr
 required-extended-expr: extended-expr / (ParseError:: ..$ @message=(=>"Invalid expression"))
 type: (
-  (StructType:: @name=Var `{__ *@(@name=Var_`:_@type=type) % (__`,__) [__`,] __`})
+    (VariantType:: 2+ type%`|)
+  / (StructType:: @name=Var `{__ *@(@name=Var_`:_@type=type) % (__`,__) [__`,] __`})
   / (NamedType::Var) / (ListType::`[type`])
   / (OptionalType:: `? type)
-  / (VariantType:: `( 2+ type%`| `))
   / (FnType:: `(__ @args=(*type % (__`,__)) __ `) _ "->" __ @return=type)
 )
 If:: \b"if"\b @curdent=\C _ (

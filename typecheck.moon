@@ -39,7 +39,7 @@ class VariantType extends Type
                 table.insert flattened, v
         @variants = flattened
         table.sort @variants, (a,b)=> tostring(a) < tostring(b)
-    __tostring: => "(#{concat ["#{t}" for t in *@variants], "|"})"
+    __tostring: => "#{concat ["#{t}" for t in *@variants], "|"}"
     __eq: Type.__eq
     contains: (other)=>
         return true if @ == other
