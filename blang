@@ -16,6 +16,7 @@ for i,a in ipairs arg
         verbose = true
     elseif a == "--"
         args = {table.unpack(arg, i+1, #arg)}
+        break
     else
         table.insert files, a
 

@@ -3,4 +3,4 @@ addTwo := (x:Int)-> x + 2
 addThree := (x:Int)->
     return x + 3
 
-printf("%ld %ld %ld\n", addOne(0), addTwo(0), addThree(0))
+$printf("%ld %ld %ld\n", addOne(0), addTwo(0), addThree(0))

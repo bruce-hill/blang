@@ -87,7 +87,7 @@ memoize = (fn)->
 
 add_parenting = (ast)->
     for k,node in pairs ast
-        if type(node) == 'table' and k != "__parent"
+        if type(node) == 'table' and not (type(k) == 'string' and k\match("^__"))
             node.__parent = ast
             add_parenting node
 
@@ -99,7 +99,7 @@ find_returns = (node)->
             return
         else
             for k,child in pairs node
-                find_returns(child) if type(child) == 'table' and k != "__parent"
+                find_returns(child) if type(child) == 'table' and not (type(k) == 'string' and k\match("^__"))
 
 find_declared_type = (scope, name, arg_signature=nil)->
     return nil unless scope
@@ -256,6 +256,8 @@ get_type = memoize (node)->
                 return ListType(String) if node[0] == "argv"
             assert_node var_type, node, "Undefined variable"
             return var_type
+        when "Global"
+            return nil
         when "FnCall"
             return parse_type(node.type[1]) if node.type
             fn_type = if node.fn[1].__tag == "Var"

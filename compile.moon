@@ -16,7 +16,7 @@ each_tag = (...)=>
         coroutine.yield @ if @__tag == tag
 
     for k,v in pairs(@)
-        each_tag(v, ...) if type(v) == 'table' and k != "__parent"
+        each_tag(v, ...) if type(v) == 'table' and not (type(k) == 'string' and k\match("^__"))
 
 get_function_reg = (scope, name, arg_signature)->
     return nil unless scope
@@ -26,7 +26,7 @@ get_function_reg = (scope, name, arg_signature)->
                 stmt = scope[i]
                 log "Checking for #{name} #{arg_signature} in #{stmt}" if stmt.__tag == "FnDecl"
                 if stmt.__tag == "FnDecl" and stmt.name[0] == name and get_type(stmt)\arg_signature! == arg_signature
-                    return assert_node(stmt.__name, stmt, "Function without a name"), get_type(stmt)
+                    return assert_node(stmt.__register, stmt, "Function without a name"), get_type(stmt)
                 elseif stmt.__tag == "Declaration" and stmt.var[0] == name
                     t = if stmt.type
                         parse_type(stmt.type[1])
@@ -117,7 +117,7 @@ class Environment
         return @strings[str]
 
     declare_function: (fndec)=>
-        args = ["#{parse_type(arg.type[1]).abi_type} %#{arg.arg[0]}" for arg in *fndec.args]
+        args = ["#{parse_type(arg.type[1]).abi_type} #{arg.arg[1].__register}" for arg in *fndec.args]
         fn_scope = @inner_scope {"%#{arg.arg[0]}",true for arg in *fndec.args}
         body_code = if fndec.body[1].__tag == "Block"
             fn_scope\compile_stmt fndec.body[1]
@@ -127,8 +127,8 @@ class Environment
         body_code = body_code\gsub("[^\n]+", =>(@\match("^%@") and @ or "  "..@))
         fn_type = get_type fndec
         ret_type = fn_type.return_type
-        assert_node fndec.__name, fndec, "Function has no name"
-        fn_name = fndec.__name
+        assert_node fndec.__register, fndec, "Function has no name"
+        fn_name = fndec.__register
         @fn_code ..= "function #{ret_type == Types.Void and "" or ret_type.abi_type.." "}"
         @fn_code ..= "#{fn_name}(#{concat args, ", "}) {\n@start\n#{body_code}"
         if ret_type == Types.Void
@@ -149,7 +149,7 @@ class Environment
         assert_node stmt_compilers[node.__tag], node, "Not implemented: #{node.__tag}"
         return stmt_compilers[node.__tag](node, @)
 
-    compile_program: (ast)=>
+    compile_program: (ast, filename)=>
         add_parenting(ast)
 
         @type_code = "type :Range = { l, l, l }\n"
@@ -160,10 +160,59 @@ class Environment
         @used_names["%__argc"] = true
         @used_names["%argc"] = true
         @used_names["%argv"] = true
+        for v in coroutine.wrap(-> each_tag(ast, "Var"))
+            if v[0] == "argc"
+                v.__register = "%argc"
+            elseif v[0] == "argv"
+                v.__register = "%argv"
+            elseif v[0] == "__argc"
+                v.__register = "%__argc"
 
+        -- Set up variable registers:
+        hook_up_refs = (var, scope)->
+            assert var.__tag == "Var" and scope and scope != var
+            var.__register or= @fresh_local var[0]
+            for k,node in pairs scope
+                continue unless type(node) == 'table' and not (type(k) == 'string' and k\match("^__"))
+                switch node.__tag
+                    when "Var"
+                        if node[0] == var[0]
+                            assert_node not node.__register, var, "Variable shadows earlier declaration #{node.__decl}"
+                            node.__register = var.__register
+                            node.__decl = var
+                    when "FnDecl"
+                        -- Nothing
+                        _ = nil
+                    else
+                        hook_up_refs var, node
+
+        -- Set up function names (global):
         for fndec in coroutine.wrap(-> each_tag(ast, "FnDecl", "Lambda"))
-            fndec.__name = @fresh_global(fndec.name and fndec.name[0] or "lambda")
+            fndec.__register = @fresh_global(fndec.name and fndec.name[0] or "lambda")
+            fndec.__decl = fndec
+            if fndec.name
+                fndec.name[1].__register = fndec.__register
+                fndec.name[1].__decl = fndec
+                hook_up_refs fndec.name[1], fndec.__parent
+                    
+        for fn in coroutine.wrap(-> each_tag(ast, "FnDecl", "Lambda"))
+            for a in *fn.args
+                hook_up_refs a.arg[1], fn.body
+        for vardec in coroutine.wrap(-> each_tag(ast, "Declaration"))
+            scope = if vardec.__parent.__tag == "Block"
+                i = 1
+                while vardec.__parent[i] != vardec
+                    i += 1
+                {table.unpack(vardec.__parent, i+1)}
+            else vardec.__parent
+            hook_up_refs vardec.var[1], scope -- vardec.__parent
+        for for_block in coroutine.wrap(-> each_tag(ast, "For"))
+            if for_block.var
+                hook_up_refs for_block.var[1], for_block.body
+            if for_block.index
+                hook_up_refs for_block.index[1], for_block.body
 
+        -- Compile functions:
         for fndec in coroutine.wrap(-> each_tag(ast, "FnDecl", "Lambda"))
             @declare_function fndec
 
@@ -178,10 +227,10 @@ class Environment
 
 expr_compilers =
     Var: (env)=>
-        if env.used_names["%"..@[0]]
-            return "%#{@[0]}", ""
-        else
-            return "$#{@[0]}", ""
+        assert_node @__register, @, "Undefined variable"
+        return @__register, ""
+    Global: (env)=>
+        return "#{@[0]}", ""
     Int: (env)=>
         return "#{@[0]}",""
     Nil: (env)=> "0",""
@@ -347,15 +396,9 @@ expr_compilers =
         code = ""
         local fn_type, fn_reg
         target_sig = "(#{concat [tostring(get_type(a)) for a in *@args], ","})"
-        if @fn[1].__tag == "Var"
-            fn_reg, fn_type = get_function_reg(@, @fn[0], target_sig)
-            -- assert_node fn_reg, @fn, "Couldn't find register for function"
-            if not fn_reg
-                fn_reg = "$"..@fn[0]
-        else
-            fn_type = get_type @fn[1]
-            fn_reg,fn_code = env\to_reg @fn
-            code ..= fn_code
+        fn_type = get_type @fn[1]
+        fn_reg,fn_code = env\to_reg @fn
+        code ..= fn_code
 
         if fn_type
             assert_node fn_type and fn_type.__class == Types.FnType, @fn[1], "This is not a function, it's a #{fn_type}"
@@ -375,8 +418,8 @@ expr_compilers =
         return ret_reg, code
 
     Lambda: (env)=>
-        assert_node @__name, @, "Unreferenceable lambda"
-        return @__name,""
+        assert_node @__register, @, "Unreferenceable lambda"
+        return @__register,""
 
     Struct: (env)=>
         t = get_type @
@@ -583,11 +626,11 @@ stmt_compilers =
         code ..= "jnz #{finished}, #{end_label}, #{body_label}\n"
         code ..= "#{body_label}\n"
         if @index
-            index_reg = "%#{@index[1]}"
+            index_reg = @index[1].__register
             env.used_names[index_reg] = true
             code ..= "#{index_reg} =l copy #{i}\n"
         if @var
-            var_reg = "%#{@var[1]}"
+            var_reg = @var[1].__register
             env.used_names[var_reg] = true
             if list_type == Types.Range
                 code ..= "#{var_reg} =l call $range_nth(l #{list_reg}, l #{i})\n"
@@ -619,11 +662,9 @@ stmt_compilers =
 store_to = (val, env, ...)=>
     switch @__tag
         when "Var"
-            if env.used_names["%"..@[0]]
-                reg,code = env\to_reg val, ...
-                return "#{code}%#{@[0]} =#{get_type(val).base_type} copy #{reg}\n"
-            else
-                error "Undefined variable, or saving to global: #{@[0]}"
+            assert_node @__register, @, "Undefined variable"
+            reg,code = env\to_reg val, ...
+            return "#{code}#{@__register} =#{get_type(val).base_type} copy #{reg}\n"
         when "IndexedTerm"
             t = get_type @[1]
             if t.__class == Types.ListType

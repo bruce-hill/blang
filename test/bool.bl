@@ -3,10 +3,10 @@ y := x and (1 < 2)
 z :Nil= nil
 
 if x and y and z == nil
-    printf("And pass\n")
+    $printf("And pass\n")
 
 if 1 < 0 or 2 < 1 or 3 > 1
-    printf("Or pass\n")
+    $printf("Or pass\n")
 
 if no xor yes xor no
-    printf("Xor pass\n")
+    $printf("Xor pass\n")

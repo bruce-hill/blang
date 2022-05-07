@@ -1,7 +1,7 @@
 prog: ^^__Block__ [ParseError:: +(./\n) @message=(""=>"Invalid code")]$$
 
 term: (
-    Bool / Nil / String / Float / Int / unaryOp / Var !(_`(,{) / Struct / FnCall / Lambda / Range / List / `(__extended-expr__`)
+    Bool / Nil / String / Float / Int / unaryOp / Global !(_`(,{) / Var !(_`(,{) / Struct / FnCall / Lambda / Range / List / `(__extended-expr__`)
 )
 IndexedTerm:: !`0-9 (IndexedTerm / term) `. (Int / term)
 expr: Mod / Add / Sub / Mul / Div / Pow / IndexedTerm / term
@@ -35,8 +35,9 @@ Escape:: `\ (`x 2 hex / `a,b,t,n,r,v / 3 `0-8 / .)
 Float:: [`-,+] (`0-9 *`0-9,_ `. *`0-9 / `. +`0-9)
 Int:: [`-,+] `0-9 *`0-9,_
 Struct:: @name=Var _ `{ __ *@([@name=Var __`=__] @value=required-extended-expr) % (__`,__) [__`,] __ `}
-FnCall:: @fn=(FnCall / Var / `(__expr__`)) `( __ @args=(*expr % (__`,__)) __ [`,__] `) [_`:_@type=type]
+FnCall:: @fn=(FnCall / Global / Var / `(__expr__`)) `( __ @args=(*expr % (__`,__)) __ [`,__] `) [_`:_@type=type]
 Var:: id !~ (^^keyword$$)
+Global:: `$ id
 TypeVar:: id !~ (^^keyword$$)
 id: \b(\I *\i)
 Block:: @curdent=\C +(

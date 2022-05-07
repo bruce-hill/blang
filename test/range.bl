@@ -1,15 +1,15 @@
 
 r := [5,7..10]
-print_range(r)
-printf("\n")
+$print_range(r)
+$printf("\n")
 
-printf("len: %ld\n", #r)
+$printf("len: %ld\n", #r)
 
 for i,x in r
-    printf("%ld) %ld\n", i, x)
+    $printf("%ld) %ld\n", i, x)
 
 for i,x in -r
-    printf("%ld) %ld\n", i, x)
+    $printf("%ld) %ld\n", i, x)
 
 for i,x in [100..97]
-    printf("%ld) %ld\n", i, x)
+    $printf("%ld) %ld\n", i, x)

@@ -1,7 +1,7 @@
 Vec ::: Vec{x: Float, y: Float}
 
 def print_vec(v:Vec):
-    printf("Vec<%f,%f>\n", v.x, v.y)
+    $printf("Vec<%f,%f>\n", v.x, v.y)
 
 v := Vec{2.3, 4.5}
 print_vec(v)

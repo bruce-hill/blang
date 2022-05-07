@@ -1,15 +1,15 @@
 
 def doop(x:Int):
     when x is 1,2,3,4
-        printf("smol\n")
+        $printf("smol\n")
     is 5
-        printf("five\n")
+        $printf("five\n")
     is 0
         pass
     is -1
         return
     else
-        printf("other\n")
+        $printf("other\n")
 
 doop(1)
 doop(2)

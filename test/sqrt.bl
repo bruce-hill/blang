@@ -1,5 +1,5 @@
 // Demonstrate calling external C func:
-x := sqrt(2.0):Float
-printf("Result: %f\n", x)
-y := sqrt(3.0):Float
-printf("Result: %f\n", y)
+x := $sqrt(2.0):Float
+$printf("Result: %f\n", x)
+y := $sqrt(3.0):Float
+$printf("Result: %f\n", y)

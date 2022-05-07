@@ -1,32 +1,32 @@
 
 nums := [10,20,30,40]
-i := 1
-while i <= #nums
-    printf("%ld", nums.i)
-    i += 1
-between printf(", ")
-printf("\n")
+tmp := 1
+while tmp <= #nums
+    $printf("%ld", nums.tmp)
+    tmp += 1
+between $printf(", ")
+$printf("\n")
 
 
 for i,num in nums
-    printf("%ld)%ld", i, num)
-between printf(", ")
-printf("\n")
+    $printf("%ld)%ld", i, num)
+between $printf(", ")
+$printf("\n")
 
-printf("%ld\n", i) for i in [100..102]
+$printf("%ld\n", i) for i in [100..102]
 
 def retry():
-    r := random():Int
-    printf("rng = %ld\n", r)
+    r := $random():Int
+    $printf("rng = %ld\n", r)
     return r mod 4 != 0
 
-printf("doop\n") while retry()
+$printf("doop\n") while retry()
 
 for i in [1,-2,3,-4,5]
     skip if i < 0
-    printf("i = %ld\n", i)
+    $printf("i = %ld\n", i)
 between
-    printf("---\n")
+    $printf("---\n")
 
 for outer in [-10,1,2,-2,3000,4]
     skip if outer < 0
@@ -34,13 +34,13 @@ for outer in [-10,1,2,-2,3000,4]
         skip if inner < 0
         stop outer if inner*outer > 1000
         while yes
-            printf("inner: %ld outer: %ld product: %ld\n", inner, outer, inner*outer)
+            $printf("inner: %ld outer: %ld product: %ld\n", inner, outer, inner*outer)
             stop while
         between
-            puts("Between while")
-        puts("Finished inner")
+            $puts("Between while")
+        $puts("Finished inner")
     between
-        puts("Between inner")
-    puts("Finished outer")
+        $puts("Between inner")
+    $puts("Finished outer")
 between
-    puts("Between outer")
+    $puts("Between outer")
