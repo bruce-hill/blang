@@ -4,8 +4,6 @@ import log, viz, print_err, assert_node from require 'util'
 
 local get_type, parse_type
 
-parents = setmetatable {}, __mode:"k"
-
 class Type
     is_a: (cls)=> @ == cls or cls\contains @
     contains: (other)=> @ == other
@@ -90,7 +88,6 @@ memoize = (fn)->
 add_parenting = (ast)->
     for k,node in pairs ast
         if type(node) == 'table' and k != "__parent"
-            parents[node] = ast
             node.__parent = ast
             add_parenting node
 
@@ -128,7 +125,13 @@ find_declared_type = (scope, name, arg_signature=nil)->
                 assert_node iter_type.__class == ListType or iter_type.__class == Range, scope.iterable[1], "Not an iterable"
                 return iter_type.item_type
     
-    return find_declared_type(parents[scope], name, arg_signature)
+    if scope.__parent and (scope.__parent.__tag == "For" or scope.__parent.__tag == "While")
+        loop = scope.__parent
+        if loop.between and scope == loop.body
+            t = find_declared_type(loop.between, name, arg_signature)
+            return t if t
+            
+    return find_declared_type(scope.__parent, name, arg_signature)
 
 find_type_alias = (scope, name)->
     while scope
@@ -138,7 +141,7 @@ find_type_alias = (scope, name)->
                     stmt = scope[i]
                     if stmt.__tag == "TypeDeclaration" and stmt[1][0] == name
                         return parse_type stmt[2]
-        scope = parents[scope]
+        scope = scope.__parent
 
 parse_type = memoize (type_node)->
     switch type_node.__tag
@@ -247,7 +250,7 @@ get_type = memoize (node)->
                 assert_node decl_ret_type == ret_type, node, "Conflicting return types"
             return FnType([parse_type a.type[1] for a in *node.args], ret_type)
         when "Var"
-            var_type = find_declared_type(parents[node], node[0])
+            var_type = find_declared_type(node.__parent, node[0])
             if not var_type
                 return Int if node[0] == "argc"
                 return ListType(String) if node[0] == "argv"
@@ -269,6 +272,8 @@ get_type = memoize (node)->
             alias = find_type_alias node, node.name[0]
             assert_node alias, node, "Undefined struct"
             return alias
+        when "Stop","Skip"
+            return Void
         else
             assert_node not node.__tag, node, "Unknown node tag: #{node.__tag}"
     if #node > 0

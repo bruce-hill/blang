@@ -1,7 +1,10 @@
 Types = require 'typecheck'
+bp = require 'bp'
 import add_parenting, get_type, parse_type from Types
 import log, viz, assert_node, print_err from require 'util'
 concat = table.concat
+
+has_jump = bp.compile('^_("jmp"/"jnz"/"ret")\\b ..$ $$')
 
 local compile_stmt, to_reg, store_to
 
@@ -24,6 +27,16 @@ label_counts = {}
 fresh_label = (template="label")->
     label_counts[template] = (label_counts[template] or 0) + 1
     return "@#{template}.#{label_counts[template]}"
+
+each_tag = (...)=>
+    return unless type(@) == 'table'
+
+    tags = {...}
+    for tag in *tags
+        coroutine.yield @ if @__tag == tag
+
+    for k,v in pairs(@)
+        each_tag(v, ...) if type(v) == 'table' and k != "__parent"
 
 get_function_reg = (scope, name, arg_signature)->
     return nil unless scope
@@ -352,6 +365,12 @@ stmt_compilers =
             return "#{code}ret #{reg}\n"
         else
             return "ret\n"
+    Stop: (vars)=>
+        assert @jump_label, "Jump label should have been populated by outer loop"
+        return "jmp #{@jump_label}\n"
+    Skip: (vars)=>
+        assert @jump_label, "Jump label should have been populated by outer loop"
+        return "jmp #{@jump_label}\n"
     If: (vars)=>
         code = ""
         end_label = fresh_label "if.end"
@@ -362,13 +381,13 @@ stmt_compilers =
             true_label = fresh_label "if.true"
             code ..= "jnz #{r}, #{true_label}, #{false_label}\n#{true_label}\n"
             code ..= compile_stmt cond.body, vars
-            unless code\match("%f[%w]ret%f[ \n][^\n]*\n$")
+            unless has_jump\match(code)
                 code ..= "jmp #{end_label}\n"
             code ..= "#{false_label}\n"
             false_label = fresh_label "if.else"
         if @elseBody
             code ..= compile_stmt @elseBody, vars
-            unless code\match("%f[%w]ret%f[ \n][^\n]*\n$")
+            unless has_jump\match(code)
                 code ..= "jmp #{end_label}\n"
         code ..= "#{end_label}\n"
         return code
@@ -391,20 +410,38 @@ stmt_compilers =
             code ..= "#{next_body}\n"
             next_body = fresh_label "when.body"
             code ..= compile_stmt branch.body, vars
-            unless code\match("%f[%w]ret%f[ \n][^\n]*\n$")
+            unless has_jump\match(code)
                 code ..= "jmp #{end_label}\n"
         if @elseBody
             code ..= "#{next_case}\n"
             code ..= compile_stmt @elseBody, vars
-            unless code\match("%f[%w]ret%f[ \n][^\n]*\n$")
+            unless has_jump\match(code)
                 code ..= "jmp #{end_label}\n"
         code ..= "#{end_label}\n"
         return code
     While: (vars)=>
+        -- Rough breakdown:
+        -- jmp @while.condition
+        -- jnz (condition), @while.body, @while.end
+        -- @while.body
+        -- // body code
+        -- jmp @while.between
+        -- // between code
+        -- jnz (condition), @while.body, @while.end
+        -- @while.end
         cond_label = fresh_label "while.condition"
         body_label = fresh_label "while.body"
         between_label = fresh_label "while.between"
         end_label = fresh_label "while.end"
+
+        for skip in coroutine.wrap(-> each_tag(@, "Skip"))
+            if not skip.target or skip.target[0] == "while"
+                skip.jump_label = cond_label
+
+        for stop in coroutine.wrap(-> each_tag(@, "Stop"))
+            if not stop.target or stop.target[0] == "while"
+                stop.jump_label = end_label
+
         cond_reg,cond_code = to_reg @condition[1], vars
         code = "jmp #{cond_label}\n#{cond_label}\n"
         code ..= cond_code
@@ -412,29 +449,54 @@ stmt_compilers =
         code ..= "#{body_label}\n#{compile_stmt @body[1], vars}"
         if @between
             code ..= cond_code
-            code ..= "jnz #{cond_reg}, #{between_label}, #{end_label}\n"
+            unless has_jump\match(code)
+                code ..= "jnz #{cond_reg}, #{between_label}, #{end_label}\n"
             code ..= "#{between_label}\n#{compile_stmt @between[1], vars}"
-            code ..= "jmp #{body_label}\n"
+            unless has_jump\match(code)
+                code ..= "jmp #{body_label}\n"
         else
-            code ..= "jmp #{cond_label}\n"
+            unless has_jump\match(code)
+                code ..= "jmp #{cond_label}\n"
         code ..= "#{end_label}\n"
         return code
     For: (vars)=>
+        -- Rough breakdown:
+        -- len = #list; i = 1
+        -- jmp @for.body
+        -- @for.body
+        -- item = list[i]
+        -- // body code
+        -- jmp @for.noskip
+        -- i += 1
+        -- jnz (i <= len), @for.end, @for.between
+        -- @for.between
+        -- // between code
+        -- jmp @for.body
+        -- @for.skip
+        -- i += 1
+        -- jnz (i <= len), @for.end, @for.body
+        -- @for.end
         list_type = get_type @iterable[1]
         assert_node list_type.__class == Types.ListType or list_type == Types.Range, @iterable[1], "Expected a List or Range, not #{list_type}"
 
-        start_label = fresh_label "for.start"
         body_label = fresh_label "for.body"
         between_label = fresh_label "for.between"
-        cont_label = fresh_label "for.continue"
+        noskip_label = fresh_label "for.noskip"
+        skip_label = fresh_label "for.skip"
         end_label = fresh_label "for.end"
+
+        for skip in coroutine.wrap(-> each_tag(@, "Skip"))
+            if not skip.target or skip.target[0] == "for" or (@var and skip.target[0] == @var[0]) or (@index and skip.target[0] == @index[0])
+                skip.jump_label = skip_label
+
+        for stop in coroutine.wrap(-> each_tag(@, "Stop"))
+            if not stop.target or stop.target[0] == "for" or (@var and stop.target[0] == @var[0]) or (@index and stop.target[0] == @index[0])
+                stop.jump_label = end_label
 
         i = fresh_reg vars, "i"
         len = fresh_reg vars, "len"
 
-        code = "jmp #{start_label}\n#{start_label}\n"
-        list_reg,list_code = to_reg @iterable[1], vars
-        code ..= list_code
+        list_reg,code = to_reg @iterable[1], vars
         code ..= "#{i} =l copy 1\n"
         if list_type == Types.Range
             code ..= "#{len} =l call $range_len(l #{list_reg})\n"
@@ -459,15 +521,22 @@ stmt_compilers =
                 code ..= "#{item_addr} =l add #{list_reg}, #{item_addr}\n"
                 code ..= "#{var_reg} =#{list_type.item_type.abi_type} load#{list_type.item_type.base_type} #{item_addr}\n"
         code ..= "#{compile_stmt @body[1], vars}"
-        code ..= "jmp #{cont_label}\n#{cont_label}\n"
+        unless has_jump\match(code)
+            code ..= "jmp #{noskip_label}\n"
+        code ..= "#{noskip_label}\n"
         code ..= "#{i} =l add #{i}, 1\n"
         code ..= "#{finished} =l csgtl #{i}, #{len}\n"
         if @between
             code ..= "jnz #{finished}, #{end_label}, #{between_label}\n"
             code ..= "#{between_label}\n#{compile_stmt @between[1], vars}"
-            code ..= "jmp #{body_label}\n"
+            unless has_jump\match(code)
+                code ..= "jmp #{body_label}\n"
         else
             code ..= "jnz #{finished}, #{end_label}, #{body_label}\n"
+        code ..= "#{skip_label}\n"
+        code ..= "#{i} =l add #{i}, 1\n"
+        code ..= "#{finished} =l csgtl #{i}, #{len}\n"
+        code ..= "jnz #{finished}, #{end_label}, #{body_label}\n"
         code ..= "#{end_label}\n"
         return code
         
@@ -526,16 +595,6 @@ compile_stmt = (vars)=>
     assert_node stmt_compilers[@__tag], @, "Not implemented: #{@__tag}"
     stmt_compilers[@__tag](@, vars)
 
-each_tag = (...)=>
-    return unless type(@) == 'table'
-
-    tags = {...}
-    for tag in *tags
-        coroutine.yield @ if @__tag == tag
-
-    for k,v in pairs(@)
-        each_tag(v, ...) if type(v) == 'table' and k != "__parent"
-
 compile_prog = (ast, filename)->
     add_parenting(ast)
     s_i = 0
@@ -576,7 +635,7 @@ compile_prog = (ast, filename)->
         fn_code ..= "#{fn_name}(#{concat args, ", "}) {\n@start\n#{body_code}"
         if ret_type == Types.Void
             fn_code ..= "  ret\n"
-        elseif not fn_code\match("%f[%w]ret%f[ \n][^\n]*\n$")
+        elseif not has_jump\match(fn_code)
             fn_code ..= "  ret 0\n"
         fn_code ..= "}\n"
         return fn_name

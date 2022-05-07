@@ -23,3 +23,26 @@ def retry():
     return r mod 4 != 0
 
 printf("doop\n") while retry()
+
+for i in [1,-2,3,-4,5]
+    skip if i < 0
+    printf("i = %ld\n", i)
+between
+    printf("---\n")
+
+for outer in [-10,1,2,-2,3000,4]
+    skip if outer < 0
+    for inner in [10,-1,20,-3,30,40,100,15]
+        skip if inner < 0
+        stop outer if inner*outer > 1000
+        while yes
+            printf("inner: %ld outer: %ld product: %ld\n", inner, outer, inner*outer)
+            stop while
+        between
+            puts("Between while")
+        puts("Finished inner")
+    between
+        puts("Between inner")
+    puts("Finished outer")
+between
+    puts("Between outer")
