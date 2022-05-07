@@ -8,3 +8,6 @@ elseif x > 100
     say("x is HUGE")
 else
     say("x is big")
+
+say("Done") if x == 5
+say("Done2") unless x < 5

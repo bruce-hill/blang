@@ -198,7 +198,7 @@ get_type = memoize (node)->
             return Bool
         when "Equal","NotEqual","Less","LessEq","Greater","GreaterEq"
             return Bool
-        when "Add","Sub","Mul","Div"
+        when "Add","Sub","Mul","Div","Mod"
             lhs_type = get_type node[1]
             rhs_type = get_type node[2]
             assert_node lhs_type == rhs_type and (lhs_type == Int or lhs_type == Float), node,

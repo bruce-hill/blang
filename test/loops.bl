@@ -14,3 +14,12 @@ for i,num in nums
 between
     printf(", ")
 printf("\n")
+
+printf("%ld\n", i) for i in [100..102]
+
+def retry():
+    r := random():Int
+    printf("rng = %ld\n", r)
+    return r mod 4 != 0
+
+printf("doop\n") while retry()
