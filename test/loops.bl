@@ -1,0 +1,16 @@
+
+nums := [10,20,30,40]
+i := 1
+while i <= #nums
+    printf("%ld", nums.i)
+    i += 1
+between
+    printf(", ")
+printf("\n")
+
+
+for i,num in nums
+    printf("%ld)%ld", i, num)
+between
+    printf(", ")
+printf("\n")
