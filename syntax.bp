@@ -44,14 +44,14 @@ Block:: @curdent=\C +(
   / statement
   / !$ (ParseError:: @dent=\C ..$ *(\n dent (` /\t)..$) @message=(=>"Invalid statement"))) % (nl curdent !(` /\t))
 statement: (
-    Declaration / FnDecl / If / When / For / While / TypeDeclaration
+    Declaration / FnDecl / If / When / For / While / TypeDeclaration / Return
   / (If::PostfixIf) / (For::PostfixFor) / (While::PostfixWhile)
   / line-statement
   )
 line-statement: (
     (Pass:: "pass" _ [comment])
   / Assignment / AddUpdate / SubUpdate / MulUpdate / DivUpdate / AndUpdate / OrUpdate / XorUpdate
-  / Return / FnCall)
+  / FnCall)
 Declaration:: @var=Var _`: _[@type=type_] `= _ @value=required-extended-expr
 TypeDeclaration:: @(NamedType::id) _ ":::" _ (type / (ParseError:: ..$ @message=(=>"Not a valid type")))
 FnDecl:: @curdent=\C "def"\b _ (@name=Var _
@@ -86,7 +86,7 @@ If:: \b"if"\b @curdent=\C _ (
     *@(nl curdent \b"elseif"\b _ @condition=required-extended-expr [comment] nl curdent +(` /\t) @body=Block)
     [nl curdent \b"else"\b [comment] nl curdent +(` /\t) @elseBody=Block]
 )
-PostfixIf: (@(@body=(Block:: @line-statement) _
+PostfixIf: (@(@body=(Block:: @(Return / line-statement)) _
   (\b"if"\b _ @condition=required-extended-expr
   / \b"unless"\b_ @condition=(Not::required-extended-expr)) _ [comment]))
 PostfixFor: (@body=(Block:: @line-statement) _
