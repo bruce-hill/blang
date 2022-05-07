@@ -10,12 +10,18 @@ number_code = (code, color="1")->
         "\x1b[2m#{("% 4d")\format line}|\x1b[22m \x1b[#{color}m#{@}\x1b[m"
     )
 
-files = arg
-args = {}
-for i=1,#arg
-    if arg[i] == "--"
-        files = {table.unpack(arg, 1, i-1)}
+verbose = false
+files, args = {}, {}
+for i,a in ipairs arg
+    if a == "-v" or a == "--verbose"
+        verbose = true
+    elseif a == "--"
         args = {table.unpack(arg, i+1, #arg)}
+    else
+        table.insert files, a
+
+unless verbose
+    log = ->
 
 for f in *files
     log "\x1b[1;4mFile #{f}\x1b[m"
