@@ -35,7 +35,7 @@ for f in *files
         log number_code(text, "34;1")
         ast = parse text, f
         assert ast, "No match!"
-        log viz(ast)
+        -- log viz(ast)
 
         code = compile_prog ast, f
 
