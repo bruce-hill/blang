@@ -274,11 +274,11 @@ expr_compilers =
                 elseif t.__class == Types.ListType
                     code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{env\get_string_reg("[...]")})\n"
                 elseif t.__class == Types.StructType
-                    code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{env\get_string_reg("#{t.name}{")})\n"
+                    code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{env\get_string_reg("#{t.name}{#{t.members[1].name}=")})\n"
                     ptr_reg = env\fresh_local "member.loc"
                     for i,mem in ipairs t.members
                         if i > 1
-                            code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{env\get_string_reg(",", "comma")})\n"
+                            code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{env\get_string_reg(",#{mem.name}=")})\n"
                         code ..= "#{ptr_reg} =l add #{reg}, #{8*(i-1)}\n"
                         member_reg = env\fresh_local "member.#{mem.name}"
                         code ..= "#{member_reg} =#{mem.type.abi_type} load#{mem.type.base_type} #{ptr_reg}\n"
@@ -286,7 +286,7 @@ expr_compilers =
 
                     code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{env\get_string_reg("}","closecurly")})\n"
                 elseif t.__class == Types.FnType
-                    code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{env\get_string_reg("(...)->...")})\n"
+                    code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{env\get_string_reg("#{t}")})\n"
                 else
                     assert_node false, val, "Unsupported interpolation type"
 
