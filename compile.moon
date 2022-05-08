@@ -89,7 +89,7 @@ class Environment
         @string_code = ""
         @fn_code = ""
         @main_code = ""
-        @tostring_funcs = {}
+        @concat_funcs = {}
 
     inner_scope: (inner_vars=nil)=>
         return setmetatable({used_names:setmetatable(inner_vars or {}, __index:@used_vars)}, {
@@ -138,16 +138,15 @@ class Environment
             @fn_code ..= "  ret 0\n"
         @fn_code ..= "}\n"
 
-    get_tostring: (t)=>
-        if @tostring_funcs["#{t}"]
-            return @tostring_funcs["#{t}"]
+    get_concat_fn: (t)=>
+        if @concat_funcs["#{t}"]
+            return @concat_funcs["#{t}"]
 
-        fn_name = @fresh_global "tostring"
-        @tostring_funcs["#{t}"] = fn_name
+        fn_name = @fresh_global "concat.value"
+        @concat_funcs["#{t}"] = fn_name
 
-        code = "function l #{fn_name}(#{t.base_type} %obj) {\n@start\n"
-        str = @fresh_local "str"
-        code ..= "#{str} =l call $blang_string(l #{@get_string_reg("", "emptystr")})\n"
+        code = "function l #{fn_name}(l %initialstring, #{t.base_type} %obj) {\n@start\n"
+        str = "%initialstring"
 
         append_reg = (reg, t)->
             if t == Types.Int
@@ -220,7 +219,7 @@ class Environment
             elseif t.__class == Types.FnType
                 code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{@get_string_reg("#{t}")})\n"
             else
-                assert_node false, val, "Unsupported tostring type"
+                assert_node false, val, "Unsupported concat type"
 
         append_reg "%obj", t
         code ..= "ret #{str}\n"
@@ -349,12 +348,10 @@ expr_compilers =
                 code ..= "#{str} =l call $blang_string_append_char(l #{str}, l #{c})\n"
             else
                 t = get_type(val)
-                fn_name = env\get_tostring t
+                fn_name = env\get_concat_fn t
                 val_reg,val_code = env\to_reg val
                 code ..= val_code
-                val_str = env\fresh_local "interp.string"
-                code ..= "#{val_str} =l call #{fn_name}(#{t.base_type} #{val_reg})\n"
-                code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{val_str})\n"
+                code ..= "#{str} =l call #{fn_name}(l #{str}, #{t.base_type} #{val_reg})\n"
 
         i = @content.start
         for interp in *@content
