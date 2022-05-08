@@ -181,8 +181,7 @@ class Environment
                             node.__register = var.__register
                             node.__decl = var
                     when "FnDecl"
-                        -- Nothing
-                        _ = nil
+                        hook_up_refs var, node.body, true if var.__register\match("^%$")
                     else
                         hook_up_refs var, node
 

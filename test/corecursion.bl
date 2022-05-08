@@ -1,0 +1,12 @@
+
+def ping(i:Int):
+    return unless i > 0
+    $printf("Ping %ld\n", i)
+    pong(i-1)
+
+def pong(i:Int):
+    return unless i > 0
+    $printf("Pong %ld\n", i)
+    ping(i-1)
+
+ping(5)

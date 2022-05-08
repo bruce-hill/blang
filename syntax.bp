@@ -120,7 +120,7 @@ Return:: \b"return"\b _ [extended-expr]
 Range:: `[__@first=(Int/!Float extended-expr) __ [`,__@next=(Int/ !Float required-extended-expr)]__".."__@last=(Int/!Float required-extended-expr)__`] # [0,2..4] [x..y] [1..#list]
 comment: "//" *.
 
-keyword: "nil"/"yes"/"no"/"for"/"while"/"between"/"if"/"elseif"/"else"/"with"/"and"/"or"/"xor"/"pass"/"not"/"skip"/"stop"
+keyword: "nil"/"yes"/"no"/"for"/"while"/"between"/"if"/"elseif"/"else"/"with"/"and"/"or"/"xor"/"pass"/"not"/"skip"/"stop"/"unless"
 hex: `0-9,a-f,A-F
 nl: +\n % (*(` /\t) [comment])
 __: *(` /\t/\n/\r/comment)
