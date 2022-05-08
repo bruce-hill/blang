@@ -1,7 +1,9 @@
-#include <string.h>
-#include <stdio.h>
 #include <bhash.h>
 #include <ctype.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/param.h>
 
 #define RETURN_FMT(fmt, ...) do { char *ret; asprintf(&ret, fmt, __VA_ARGS__); return intern_str_transfer(ret); } while(0)
 
@@ -23,20 +25,26 @@ char *blang_string_append_range(char *s, Range *r) {
 
 char *blang_string_concat(char *a, char *b) { RETURN_FMT("%s%s", a, b); }
 
-char *blang_string_slice(char *s, long first, long last) {
+char *blang_string_slice(char *s, Range *r) {
+    long step = r->next - r->first;
+    if (step == 0) return intern_str("");
+
+    long first = r->first-1, last = r->last-1;
     long len = (long)strlen(s);
-    if (len == 0) return intern_str("");
-
-    if (first < 1) first = 1;
-    else if (first > len) first = len;
-
-    if (last < 1) last = 1;
-    else if (last > len) last = len;
-
-    if (last < first) return intern_str("");
-
-    long slice_len = 1 + (last - first);
-    RETURN_FMT("%.*s", (int)slice_len, &s[first-1]);
+    long slice_len;
+    if (step > 0) {
+        first = MAX(first, 0);
+        last = MIN(last, len-1);
+        slice_len = MAX(1 + (last - first), len - first);
+    } else {
+        last = MAX(last, 0);
+        first = MIN(first, len-1);
+        slice_len = MAX(1 + (first - last), len - last);
+    }
+    char *buf = calloc(slice_len+1, 1);
+    for (long i = first, b_i = 0; step > 0 ? i <= last : i >= last; i += step)
+        buf[b_i++] = s[i];
+    return intern_str_transfer(buf);
 }
 
 char *blang_string_upper(char *s) {
@@ -51,4 +59,12 @@ char *blang_string_lower(char *s) {
     for (int i = 0; s2[i]; i++)
         s2[i] = tolower(s2[i]);
     return intern_str_transfer(s2);
+}
+
+long blang_string_nth_char(char *s, long n) {
+    --n;
+    if (n < 0) return -1;
+    long len = (long)strlen(s);
+    if (n > len) return -1;
+    return s[n];
 }

@@ -3,7 +3,7 @@ prog: ^^__Block__ [ParseError:: +(./\n) @message=(""=>"Invalid code")]$$
 term: (
     Bool / Nil / String / Float / Int / unaryOp / Global !(_`(,{) / Var !(_`(,{) / Struct / FnCall / Lambda / Range / List / `(__extended-expr__`)
 )
-IndexedTerm:: !`0-9 (IndexedTerm / term) `. (Int / term)
+IndexedTerm:: !`0-9 (IndexedTerm / term) `. !`. (Int / term)
 expr: Mod / Add / Sub / Mul / Div / Pow / IndexedTerm / term
 extended-expr: TernaryOp / And / Or / Xor / comparison / expr
 unaryOp: Negative / Len / Not

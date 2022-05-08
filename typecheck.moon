@@ -192,6 +192,14 @@ get_type = memoize (node)->
                 member_name = node[2][0]
                 assert_node t.members_by_name[member_name], node[2], "Not a valid struct member of #{t}"
                 return t.members_by_name[member_name].type
+            elseif t == String
+                index_type = get_type(node[2], vars)
+                if index_type == Int
+                    return Int
+                elseif index_type == Range
+                    return String
+                else
+                    assert_node false, node[2], "Strings can only be indexed by Ints or Ranges"
             else
                 print_err node, "Indexing is only valid on structs and lists"
         when "And","Or"
@@ -220,7 +228,7 @@ get_type = memoize (node)->
             return t
         when "Len"
             t = get_type node[1]
-            assert_node t.__class == ListType or t == Range, node, "Attempt to get length of non-iterable: #{t}"
+            assert_node t.__class == ListType or t == Range or t == String, node, "Attempt to get length of non-iterable: #{t}"
             return Int
         when "Not"
             t = get_type node[1]

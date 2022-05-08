@@ -393,6 +393,10 @@ expr_compilers =
             list,code = env\to_reg @[1]
             len = env\fresh_local "list.len"
             return len, "#{code}#{len} =l loadl #{list}\n"
+        elseif t == Types.String
+            str,code = env\to_reg @[1]
+            len = env\fresh_local "str.len"
+            return len, "#{code}#{len} =l call $strlen(l #{str})\n"
         else
             assert_node false, @, "Expected List or Range type, not #{t}"
     Not: (env)=>
@@ -406,6 +410,7 @@ expr_compilers =
         if t.__class == Types.ListType
             item_type = t.item_type
             index_type = get_type(@[2])
+            -- TODO: support list slicing
             assert_node index_type == Types.Int, @[2], "Index is #{index_type} instead of Int"
             list_reg,list_code = env\to_reg @[1]
             index_reg,index_code = env\to_reg @[2]
@@ -431,6 +436,7 @@ expr_compilers =
             return ret,code
         elseif t.__class == Types.Range
             index_type = get_type(@[2])
+            -- TODO: Slice ranges
             assert_node index_type == Types.Int, @[2], "Index is #{index_type} instead of Int"
             range_reg,code = env\to_reg @[1]
             index_reg,index_code = env\to_reg @[1]
@@ -438,6 +444,24 @@ expr_compilers =
             ret = env\fresh_local "range.nth"
             code ..= "#{ret} =l call $range_nth(l #{range_reg}, l #{index_reg})\n"
             return ret, code
+        elseif t == Types.String
+            index_type = get_type(@[2])
+            str,code = env\to_reg @[1]
+            index_reg,index_code = env\to_reg @[2]
+            code ..= index_code
+            if index_type == Types.Int -- Get nth character as an Int
+                char = env\fresh_local "char"
+                code ..= "#{char} =l call $blang_string_nth_char(l #{str}, l #{index_reg})\n"
+                -- code ..= "#{char} =l add #{str}, #{index_reg}\n"
+                -- code ..= "#{char} =l sub #{char}, 1\n"
+                -- code ..= "#{char} =l loadub #{char}\n"
+                return char, code
+            elseif index_type == Types.Range -- Get a slice of the string
+                slice = env\fresh_local "slice"
+                code ..= "#{slice} =l call $blang_string_slice(l #{str}, l #{index_reg})\n"
+                return slice, code
+            else
+                assert_node false, @[2], "Index is #{index_type} instead of Int or Range"
         else
             assert_node false, @[1], "Indexing is only valid on lists and structs, not #{t}"
     List: (env)=>

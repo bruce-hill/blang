@@ -14,7 +14,7 @@ void init_range3(Range *r, long first, long next, long last) {
 
 void init_range2(Range *r, long first, long last) {
     r->first = first;
-    r->next = first < last ? first+1 : first-1;
+    r->next = first <= last ? first+1 : first-1;
     r->last = last;
 }
 
