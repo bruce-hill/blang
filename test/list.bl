@@ -1,4 +1,4 @@
-L := [10, 20, 30]
+L := [10, 20, 30, 40, 50]
 x := L.3
 $printf("%ld\n", x)
 L.3 = 99
@@ -14,6 +14,6 @@ L3.2.1 = 99
 $printf("Inner: %ld\n", L3.2.1)
 L4 := []:Int
 
-$puts("L: $L")
+$puts("L: $L sliced: $(L.[2..4])")
 // L @= 99
 // $puts("After append: $L")

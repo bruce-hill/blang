@@ -66,7 +66,7 @@ list_t *blang_list_slice(list_t *list, Range *r) {
     list_t *slice = calloc(1+slice_len, sizeof(long));
     long final_len = 0;
     for (long i = first; step > 0 ? i <= last : i >= last; i += step)
-        slice[final_len++] = list[i];
+        slice->items.ints[final_len++] = list->items.ints[i];
     slice->len = final_len;
     return slice;
 }

@@ -410,17 +410,22 @@ expr_compilers =
         if t.__class == Types.ListType
             item_type = t.item_type
             index_type = get_type(@[2])
-            -- TODO: support list slicing
-            assert_node index_type == Types.Int, @[2], "Index is #{index_type} instead of Int"
             list_reg,list_code = env\to_reg @[1]
             index_reg,index_code = env\to_reg @[2]
             code = list_code..index_code
-            loc = env\fresh_local "item.loc"
-            code ..= "#{loc} =l mul #{index_reg}, 8\n"
-            code ..= "#{loc} =l add #{loc}, #{list_reg}\n"
-            ret = env\fresh_local "item"
-            code ..= "#{ret} =#{item_type.abi_type} load#{item_type.base_type} #{loc}\n"
-            return ret,code
+            if index_type == Types.Int
+                loc = env\fresh_local "item.loc"
+                code ..= "#{loc} =l mul #{index_reg}, 8\n"
+                code ..= "#{loc} =l add #{loc}, #{list_reg}\n"
+                ret = env\fresh_local "item"
+                code ..= "#{ret} =#{item_type.abi_type} load#{item_type.base_type} #{loc}\n"
+                return ret,code
+            elseif index_type == Types.Range
+                slice = env\fresh_local "slice"
+                code ..= "#{slice} =l call $blang_list_slice(l #{list_reg}, l #{index_reg})\n"
+                return slice,code
+            else
+                assert_node false, @[2], "Index is #{index_type} instead of Int or Range"
         elseif t.__class == Types.StructType
             assert_node @[2].__tag == "Var", @[2], "Structs can only be indexed by member"
             member_name = @[2][0]

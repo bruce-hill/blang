@@ -185,8 +185,12 @@ get_type = memoize (node)->
             t = get_type node[1]
             if t.__class == ListType
                 index_type = get_type(node[2], vars)
-                assert_node index_type == Int, node[2], "Index has type #{index_type}, but expected Int"
-                return t.item_type
+                if index_type == Int
+                    return t.item_type
+                elseif index_type == Range
+                    return t
+                else
+                    assert_node false, node[2], "Index has type #{index_type}, but expected Int or Range"
             elseif t.__class == StructType
                 assert_node node[2].__tag == "Var", node[2], "Structs can only be indexed by member"
                 member_name = node[2][0]
