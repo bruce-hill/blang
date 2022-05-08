@@ -1,4 +1,11 @@
 
+def selfrec(i:Int):
+    return unless i > 0
+    $printf("Selfrec %ld\n", i)
+    selfrec(i-1)
+
+selfrec(4)
+
 def ping(i:Int):
     return unless i > 0
     $printf("Ping %ld\n", i)
