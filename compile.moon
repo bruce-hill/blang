@@ -236,7 +236,79 @@ expr_compilers =
     Bool: (env)=> (@[0] == "yes" and "1" or "0"),""
     Float: (env)=> "d_#{@[0]}",""
     String: (env)=>
-        return env\get_string_reg(@content[0]),"" --if #@ == 0
+        return env\get_string_reg(@content[0]),"" if #@content == 0
+        str = env\fresh_local "str"
+        code = "#{str} =l call $blang_string(l #{env\get_string_reg("")})\n"
+
+        stringify = (val)->
+            if val.__tag == "Escape"
+               --Escape:: `\ (`x 2 hex / `a,b,t,n,r,v / 3 `0-8 / .)
+                esc = {a:'\a',b:'\b',t:'\t',n:'\n',r:'\r',v:'\v'}
+                text = val[0]\sub(2)
+                c = if esc[text]
+                    esc[text]\byte(1)
+                elseif text\match('[0-8][0-8][0-8]')
+                    tonumber(text, 8)
+                elseif text\match('x[0-9a-fA-F][0-9a-fA-F]')
+                    tonumber(text\sub(2), 16)
+                else
+                    text\byte(1)
+                code ..= "#{str} =l call $blang_string_append_char(l #{str}, l #{c})\n"
+                return
+
+            append_reg = (reg, t)->
+                if t == Types.Int
+                    code ..= "#{str} =l call $blang_string_append_int(l #{str}, l #{reg})\n"
+                elseif t == Types.Float
+                    code ..= "#{str} =l call $blang_string_append_float(l #{str}, d #{reg})\n"
+                elseif t == Types.Bool
+                    code ..= "#{str} =l call $blang_string_append_bool(l #{str}, l #{reg})\n"
+                elseif t == Types.Nil
+                    code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{env\get_string_reg("nil", "nil")})\n"
+                elseif t == Types.Void
+                    code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{env\get_string_reg("Void", "void")})\n"
+                elseif t == Types.String
+                    code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{reg})\n"
+                elseif t == Types.Range
+                    code ..= "#{str} =l call $blang_string_range(l #{str}, :Range #{reg})\n"
+                elseif t.__class == Types.ListType
+                    code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{env\get_string_reg("[...]")})\n"
+                elseif t.__class == Types.StructType
+                    code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{env\get_string_reg("#{t.name}{")})\n"
+                    ptr_reg = env\fresh_local "member.loc"
+                    for i,mem in ipairs t.members
+                        if i > 1
+                            code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{env\get_string_reg(",", "comma")})\n"
+                        code ..= "#{ptr_reg} =l add #{reg}, #{8*(i-1)}\n"
+                        member_reg = env\fresh_local "member.#{mem.name}"
+                        code ..= "#{member_reg} =#{mem.type.abi_type} load#{mem.type.base_type} #{ptr_reg}\n"
+                        append_reg member_reg, mem.type
+
+                    code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{env\get_string_reg("}","closecurly")})\n"
+                elseif t.__class == Types.FnType
+                    code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{env\get_string_reg("(...)->...")})\n"
+                else
+                    assert_node false, val, "Unsupported interpolation type"
+
+            val_reg,val_code = env\to_reg val
+            code ..= val_code
+            append_reg val_reg, get_type(val)
+
+        i = @content.start
+        for interp in *@content
+            if interp.start > i
+                chunk = @content[0]\sub(1+(i-@content.start), interp.start-@content.start)
+                code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{env\get_string_reg chunk})\n"
+
+            stringify interp[1]
+            i = interp.after
+
+        if @content.after > i
+            chunk = @content[0]\sub(1+(i-@content.start), @content.after-@content.start)
+            code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{env\get_string_reg chunk})\n"
+
+        return str,code
+
     Negative: (env)=>
         t = get_type @[1]
         if t == Types.Int or t == Types.Float
