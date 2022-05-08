@@ -89,6 +89,7 @@ class Environment
         @string_code = ""
         @fn_code = ""
         @main_code = ""
+        @tostring_funcs = {}
 
     inner_scope: (inner_vars=nil)=>
         return setmetatable({used_names:setmetatable(inner_vars or {}, __index:@used_vars)}, {
@@ -136,6 +137,98 @@ class Environment
         elseif not has_jump\match(@fn_code)
             @fn_code ..= "  ret 0\n"
         @fn_code ..= "}\n"
+
+    get_tostring: (t)=>
+        if @tostring_funcs["#{t}"]
+            return @tostring_funcs["#{t}"]
+
+        fn_name = @fresh_global "tostring"
+        @tostring_funcs["#{t}"] = fn_name
+
+        code = "function l #{fn_name}(#{t.base_type} %obj) {\n@start\n"
+        str = @fresh_local "str"
+        code ..= "#{str} =l call $blang_string(l #{@get_string_reg("", "emptystr")})\n"
+
+        append_reg = (reg, t)->
+            if t == Types.Int
+                code ..= "#{str} =l call $blang_string_append_int(l #{str}, l #{reg})\n"
+            elseif t == Types.Float
+                code ..= "#{str} =l call $blang_string_append_float(l #{str}, d #{reg})\n"
+            elseif t == Types.Bool
+                code ..= "#{str} =l call $blang_string_append_bool(l #{str}, l #{reg})\n"
+            elseif t == Types.Nil
+                code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{@get_string_reg("nil", "nil")})\n"
+            elseif t == Types.Void
+                code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{@get_string_reg("Void", "void")})\n"
+            elseif t == Types.String
+                code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{reg})\n"
+            elseif t == Types.Range
+                code ..= "#{str} =l call $blang_string_range(l #{str}, :Range #{reg})\n"
+            elseif t.__class == Types.ListType
+                code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{@get_string_reg("[","sqbracket.open")})\n"
+
+                len = @fresh_local "list.len"
+                code ..= "#{len} =l loadl #{reg}\n"
+                i = @fresh_local "list.i"
+                code ..= "#{i} =l copy 1\n"
+
+                loop_label = @fresh_label "list.loop"
+                body_label = @fresh_label "list.loop.body"
+                end_label = @fresh_label "list.loop.end"
+
+                code ..= "jmp #{loop_label}\n#{loop_label}\n"
+                finished = @fresh_local "list.finished"
+                code ..= "#{finished} =l csgtl #{i}, #{len}\n"
+                code ..= "jnz #{finished}, #{end_label}, #{body_label}\n"
+                code ..= "#{body_label}\n"
+
+                comma_label = @fresh_label "list.loop.needscomma"
+                skip_comma_label = @fresh_label "list.loop.skipcomma"
+                comma = @fresh_local "list.needscomma"
+                code ..= "#{comma} =l csgtl #{i}, 1\n"
+                code ..= "jnz #{comma}, #{comma_label}, #{skip_comma_label}\n"
+                code ..= "#{comma_label}\n"
+                code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{@get_string_reg(", ","comma.space")})\n"
+                code ..= "jmp #{skip_comma_label}\n"
+                code ..= "#{skip_comma_label}\n"
+                
+                item = @fresh_local "list.item"
+                item_addr = @fresh_local "item.addr"
+                code ..= "#{item_addr} =l mul #{i}, 8\n"
+                code ..= "#{item_addr} =l add #{reg}, #{item_addr}\n"
+                code ..= "#{item} =#{t.item_type.abi_type} load#{t.item_type.base_type} #{item_addr}\n"
+
+                append_reg item, t.item_type
+
+                code ..= "#{i} =l add #{i}, 1\n"
+
+                code ..= "jmp #{loop_label}\n#{end_label}\n"
+
+                code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{@get_string_reg("]","sqbracket.close")})\n"
+            elseif t.__class == Types.StructType
+                code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{@get_string_reg("#{t.name}{#{t.members[1].name}=")})\n"
+                ptr_reg = @fresh_local "member.loc"
+                for i,mem in ipairs t.members
+                    if i > 1
+                        code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{@get_string_reg(", #{mem.name}=")})\n"
+                    code ..= "#{ptr_reg} =l add #{reg}, #{8*(i-1)}\n"
+                    member_reg = @fresh_local "member.#{mem.name}"
+                    code ..= "#{member_reg} =#{mem.type.abi_type} load#{mem.type.base_type} #{ptr_reg}\n"
+                    append_reg member_reg, mem.type
+
+                code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{@get_string_reg("}","closecurly")})\n"
+            elseif t.__class == Types.FnType
+                code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{@get_string_reg("#{t}")})\n"
+            else
+                assert_node false, val, "Unsupported tostring type"
+
+        append_reg "%obj", t
+        code ..= "ret #{str}\n"
+        code ..= "}\n"
+        code = code\gsub("[^\n]+", =>((@\match("^[@}]") or @\match("^function")) and @ or "  "..@))
+        @fn_code ..= code
+
+        return fn_name
 
     to_reg: (node, ...)=>
         if not node.__tag
@@ -238,7 +331,7 @@ expr_compilers =
     String: (env)=>
         return env\get_string_reg(@content[0]),"" if #@content == 0
         str = env\fresh_local "str"
-        code = "#{str} =l call $blang_string(l #{env\get_string_reg("")})\n"
+        code = "#{str} =l call $blang_string(l #{env\get_string_reg("", "emptystr")})\n"
 
         stringify = (val)->
             if val.__tag == "Escape"
@@ -254,45 +347,14 @@ expr_compilers =
                 else
                     text\byte(1)
                 code ..= "#{str} =l call $blang_string_append_char(l #{str}, l #{c})\n"
-                return
-
-            append_reg = (reg, t)->
-                if t == Types.Int
-                    code ..= "#{str} =l call $blang_string_append_int(l #{str}, l #{reg})\n"
-                elseif t == Types.Float
-                    code ..= "#{str} =l call $blang_string_append_float(l #{str}, d #{reg})\n"
-                elseif t == Types.Bool
-                    code ..= "#{str} =l call $blang_string_append_bool(l #{str}, l #{reg})\n"
-                elseif t == Types.Nil
-                    code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{env\get_string_reg("nil", "nil")})\n"
-                elseif t == Types.Void
-                    code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{env\get_string_reg("Void", "void")})\n"
-                elseif t == Types.String
-                    code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{reg})\n"
-                elseif t == Types.Range
-                    code ..= "#{str} =l call $blang_string_range(l #{str}, :Range #{reg})\n"
-                elseif t.__class == Types.ListType
-                    code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{env\get_string_reg("[...]")})\n"
-                elseif t.__class == Types.StructType
-                    code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{env\get_string_reg("#{t.name}{#{t.members[1].name}=")})\n"
-                    ptr_reg = env\fresh_local "member.loc"
-                    for i,mem in ipairs t.members
-                        if i > 1
-                            code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{env\get_string_reg(",#{mem.name}=")})\n"
-                        code ..= "#{ptr_reg} =l add #{reg}, #{8*(i-1)}\n"
-                        member_reg = env\fresh_local "member.#{mem.name}"
-                        code ..= "#{member_reg} =#{mem.type.abi_type} load#{mem.type.base_type} #{ptr_reg}\n"
-                        append_reg member_reg, mem.type
-
-                    code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{env\get_string_reg("}","closecurly")})\n"
-                elseif t.__class == Types.FnType
-                    code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{env\get_string_reg("#{t}")})\n"
-                else
-                    assert_node false, val, "Unsupported interpolation type"
-
-            val_reg,val_code = env\to_reg val
-            code ..= val_code
-            append_reg val_reg, get_type(val)
+            else
+                t = get_type(val)
+                fn_name = env\get_tostring t
+                val_reg,val_code = env\to_reg val
+                code ..= val_code
+                val_str = env\fresh_local "interp.string"
+                code ..= "#{val_str} =l call #{fn_name}(#{t.base_type} #{val_reg})\n"
+                code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{val_str})\n"
 
         i = @content.start
         for interp in *@content
