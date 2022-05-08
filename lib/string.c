@@ -5,9 +5,9 @@
 #include <string.h>
 #include <sys/param.h>
 
-#define RETURN_FMT(fmt, ...) do { char *ret; asprintf(&ret, fmt, __VA_ARGS__); return intern_str_transfer(ret); } while(0)
+#include "types.h"
 
-typedef struct { long first, next, last; } Range;
+#define RETURN_FMT(fmt, ...) do { char *ret; asprintf(&ret, fmt, __VA_ARGS__); return intern_str_transfer(ret); } while(0)
 
 char *blang_string(char *s) { return intern_str(s); }
 char *blang_tostring_int(long i) { RETURN_FMT("%ld", i); }

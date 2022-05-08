@@ -29,17 +29,17 @@ long product_int(long *vals) {
     return product;
 }
 
-float sum_float(float *vals) {
+double sum_float(double *vals) {
     long len = ((long*)vals)[0];
-    float sum = 0;
+    double sum = 0;
     for (long i = 1; i <= len; i++)
         sum += vals[i];
     return sum;
 }
 
-float product_float(float *vals) {
+double product_float(double *vals) {
     long len = ((long*)vals)[0];
-    float product = 0;
+    double product = 0;
     for (long i = 1; i <= len; i++)
         product *= vals[i];
     return product;

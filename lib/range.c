@@ -1,6 +1,6 @@
 #include <stdio.h>
 
-typedef struct { long first, next, last; } Range;
+#include "types.h"
 
 void init_range3(Range *r, long first, long next, long last) {
     r->first = first;
