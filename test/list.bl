@@ -14,3 +14,6 @@ L3.2.1 = 99
 $printf("Inner: %ld\n", L3.2.1)
 L4 := []:Int
 
+$puts("L: $L")
+// L @= 99
+// $puts("After append: $L")

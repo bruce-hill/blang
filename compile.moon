@@ -465,18 +465,14 @@ expr_compilers =
         else
             assert_node false, @[1], "Indexing is only valid on lists and structs, not #{t}"
     List: (env)=>
-        reg = env\fresh_local "list"
-        code = "#{reg} =l call $calloc(l #{1 + #@}, l 8)\n"
-        -- code = "#{reg} =l alloc8 #{(1 + #@)*8}\n"
-        code ..= "storel #{#@}, #{reg}\n"
+        list = env\fresh_local "list"
+        code = "#{list} =l call $blang_list_new(l #{1 + #@}, l #{#@})\n"
         if #@ > 0
-            p = env\fresh_local "p"
-            for i,val in ipairs @
+            for val in *@
                 val_reg,val_code = env\to_reg val
-                code ..= val_code
-                code ..= "#{p} =l add #{reg}, #{8*i}\n"
-                code ..= "storel #{val_reg}, #{p}\n"
-        return reg, code
+                t = get_type val
+                code ..= "#{val_code}#{list} =l call $blang_list_append#{t.base_type}(l #{list}, #{t.abi_type} #{val_reg})\n"
+        return list, code
     Range: (env)=>
         range = env\fresh_local "range"
         code = "#{range} =l call $calloc(l 1, l #{3*8})\n"
@@ -625,6 +621,18 @@ stmt_compilers =
     OrUpdate: update "or"
     XorUpdate: update "xor"
     AndUpdate: update "and"
+    AppendUpdate: (env)=>
+        lhs_type = get_type @[1]
+        rhs_type = get_type @[2]
+        if lhs_type == Types.String
+            -- TODO: implement
+            assert_node false, @[1], "Not implemented"
+        elseif lhs_type.__class == Types.ListType
+            -- TODO: implement
+            assert_node rhs_type == lhs_type.item_type, @[2], "You can't append a #{rhs_type} to a list of #{lhs_type.item_type}s"
+            assert_node false, @[1], "Not implemented"
+        else
+            assert_node false, @[1], "Only Lists and Strings can be appended to"
     FnDecl: (env)=> ""
     Pass: (env)=> ""
     TypeDeclaration: (env)=> ""

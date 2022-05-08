@@ -8,15 +8,16 @@ list_t *blang_list_new(long minsize) {
     return calloc(1+minsize, sizeof(long));
 }
 
+#include <stdio.h>
 list_t *blang_list_appendl(list_t *list, long item) {
     list = reallocarray(list, 1+list->len+1, sizeof(long));
-    list->items.ints[1+(list->len++)] = item;
+    list->items.ints[list->len++] = item;
     return list;
 }
 
-list_t *blang_list_appendf(list_t *list, double item) {
+list_t *blang_list_appendd(list_t *list, double item) {
     list = reallocarray(list, 1+list->len+1, sizeof(long));
-    list->items.floats[1+(list->len++)] = item;
+    list->items.floats[list->len++] = item;
     return list;
 }
 
@@ -32,8 +33,18 @@ long blang_list_nthl(list_t *list, long i) {
     return list->items.ints[i];
 }
 
-double blang_list_nthf(list_t *list, long i) {
+double blang_list_nthd(list_t *list, long i) {
     return list->items.floats[i];
+}
+
+void blang_list_set_nthl(list_t *list, long i, long val) {
+    if (i < 1 || i > list->len) return;
+    list->items.ints[i] = val;
+}
+
+void blang_list_set_nthd(list_t *list, long i, double val) {
+    if (i < 1 || i > list->len) return;
+    list->items.floats[i] = val;
 }
 
 list_t *blang_list_slice(list_t *list, Range *r) {

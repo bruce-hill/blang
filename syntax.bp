@@ -54,7 +54,7 @@ Skip:: \b"skip"\b [_ @target=(\b"for"\b / \b"while"\b / Var)]
 Stop:: \b"stop"\b [_ @target=(\b"for"\b / \b"while"\b / Var)]
 line-statement: (
     (Pass:: "pass" _ [comment])
-  / Assignment / AddUpdate / SubUpdate / MulUpdate / DivUpdate / AndUpdate / OrUpdate / XorUpdate
+  / Assignment / AddUpdate / SubUpdate / MulUpdate / DivUpdate / AndUpdate / OrUpdate / XorUpdate / AppendUpdate
   / FnCall) _ [comment]
 Declaration:: @var=Var _`: _[@type=type_] `= _ @value=required-extended-expr
 TypeDeclaration:: @(NamedType::id) _ ":::" _ (type / (ParseError:: ..$ @message=(=>"Not a valid type")))
@@ -75,6 +75,7 @@ DivUpdate:: Var _ "/=" _ required-extended-expr
 AndUpdate:: Var _ "and=" _ required-extended-expr
 OrUpdate:: Var _ "or=" _ required-extended-expr
 XorUpdate:: Var _ "xor=" _ required-extended-expr
+AppendUpdate:: Var _ "@=" _ required-extended-expr
 required-extended-expr: extended-expr / (ParseError:: ..$ @message=(=>"Invalid expression"))
 type: (
     # (VariantType:: 2+ type%`|)
