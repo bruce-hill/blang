@@ -206,7 +206,11 @@ class Environment
                 code ..= "#{skip_comma_label}\n"
                 
                 item = @fresh_local "list.item"
-                code ..= "#{item} =#{t.item_type.abi_type} call $blang_list_nth#{t.item_type.base_type}(l #{reg}, l #{i})\n"
+                code ..= "#{item} =l call $blang_list_nth(l #{reg}, l #{i})\n"
+                if t.item_type.abi_type == "d"
+                    item2 = @fresh_local "list.item.float"
+                    code ..= "#{item2} =d cast #{item}\n"
+                    item = item2
 
                 append_reg item, t.item_type
 
@@ -425,9 +429,13 @@ expr_compilers =
             index_reg,index_code = env\to_reg @[2]
             code = list_code..index_code
             if index_type == Types.Int
-                ret = env\fresh_local "list.item"
-                code ..= "#{ret} =#{t.item_type.abi_type} call $blang_list_nth#{t.item_type.base_type}(l #{list_reg}, l #{index_reg})\n"
-                return ret,code
+                item = env\fresh_local "list.item"
+                code ..= "#{item} =l call $blang_list_nth(l #{list_reg}, l #{index_reg})\n"
+                if t.item_type.abi_type == "d"
+                    item2 = env\fresh_local "list.item.float"
+                    code ..= "#{item2} =d cast #{item}\n"
+                    item = item2
+                return item,code
             elseif index_type == Types.Range
                 slice = env\fresh_local "slice"
                 code ..= "#{slice} =l call $blang_list_slice(l #{list_reg}, l #{index_reg})\n"
@@ -478,13 +486,26 @@ expr_compilers =
         else
             assert_node false, @[1], "Indexing is only valid on lists and structs, not #{t}"
     List: (env)=>
+        if #@ == 0
+            list = env\fresh_local "list.empty"
+            code = "#{list} =l call $blang_empty_list()\n"
+            return list, code
+
+        buf = env\fresh_local "list.buf"
+        code = "#{buf} =l alloc8 #{8*#@}\n"
+        for i,val in ipairs @
+            val_reg,val_code = env\to_reg val
+            code ..= val_code
+            t = get_type val
+            if t.base_type == "d"
+                val_i = env\fresh_local "item.int"
+                code ..= "#{val_i} =l cast #{val_reg}\n"
+                val_reg = val_i
+            ptr = env\fresh_local "list.item.ptr"
+            code ..= "#{ptr} =l add #{buf}, #{8*(i-1)}\n"
+            code ..= "storel #{val_reg}, #{ptr}\n"
         list = env\fresh_local "list"
-        code = "#{list} =l call $blang_list_new(l #{1 + #@}, l #{#@})\n"
-        if #@ > 0
-            for val in *@
-                val_reg,val_code = env\to_reg val
-                t = get_type val
-                code ..= "#{val_code}call $blang_list_append#{t.base_type}(l #{list}, #{t.abi_type} #{val_reg})\n"
+        code ..= "#{list} =l call $blang_list_new(l 0, l 0, l #{#@}, l #{buf})\n"
         return list, code
     Range: (env)=>
         range = env\fresh_local "range"
@@ -722,8 +743,11 @@ stmt_compilers =
                 fn_name = env\get_concat_fn rhs_type
                 appended = env\fresh_local "str.appended"
                 rhs_reg,code = env\to_reg @[2]
-                code ..= "call $blang_list_append#{rhs_type.base_type}(l #{lhs_reg}, #{rhs_type.abi_type} #{rhs_reg})\n"
-                code ..= "#{appended} =l copy #{lhs_reg}\n"
+                if rhs_type.base_type == "d"
+                    tmp = env\fresh_local "interp.int"
+                    code ..= "#{tmp} =l cast #{rhs_reg}\n"
+                    rhs_reg = tmp
+                code ..= "#{appended} =l call $blang_list_append(l #{lhs_reg}, l #{rhs_reg})\n"
                 return rhs_type,appended,code
             return store_to @[1], make_rhs, env
         else
@@ -892,7 +916,12 @@ stmt_compilers =
             if list_type == Types.Range
                 code ..= "#{var_reg} =l call $range_nth(l #{list_reg}, l #{i})\n"
             else
-                code ..= "#{var_reg} =#{list_type.item_type.abi_type} call $blang_list_nth#{list_type.item_type.base_type}(l #{list_reg}, l #{i})\n"
+                if list_type.item_type.base_type == "d"
+                    tmp = env\fresh_local "item.int"
+                    code ..= "#{tmp} =l call $blang_list_nth(l #{list_reg}, l #{i})\n"
+                    code ..= "#{var_reg} =#{list_type.item_type.abi_type} cast #{tmp}\n"
+                else
+                    code ..= "#{var_reg} =#{list_type.item_type.abi_type} call $blang_list_nth(l #{list_reg}, l #{i})\n"
         code ..= "#{env\compile_stmt @body[1]}"
         unless has_jump\match(code)
             code ..= "jmp #{noskip_label}\n"
@@ -925,16 +954,17 @@ store_to = (val, env, ...)=>
         when "IndexedTerm"
             t = get_type @[1]
             if t.__class == Types.ListType
-                assert_node get_type(@[2]) == Types.Int, @[2], "Index is: #{get_type @[2]} instead of Int"
-                list_reg,list_code = env\to_reg @[1]
-                index_reg,index_code = env\to_reg @[2]
-                val_type,val_reg,val_code = if type(val) == 'function'
-                    val(list_reg)
-                else
-                    get_type(val), env\to_reg(val)
-                code = list_code..index_code..val_code
-                code ..= "call $blang_list_set_nth#{t.item_type.base_type}(l #{list_reg}, l #{index_reg}, #{t.item_type.base_type} #{val_reg})\n"
-                return code
+                assert_node false, @, "Lists are immutable"
+                -- assert_node get_type(@[2]) == Types.Int, @[2], "Index is: #{get_type @[2]} instead of Int"
+                -- list_reg,list_code = env\to_reg @[1]
+                -- index_reg,index_code = env\to_reg @[2]
+                -- val_type,val_reg,val_code = if type(val) == 'function'
+                --     val(list_reg)
+                -- else
+                --     get_type(val), env\to_reg(val)
+                -- code = list_code..index_code..val_code
+                -- code ..= "call $blang_list_set_nth#{t.item_type.base_type}(l #{list_reg}, l #{index_reg}, #{t.item_type.base_type} #{val_reg})\n"
+                -- return code
             elseif t.__class == Types.StructType
                 assert_node @[2].__tag == "Var", @[2], "Structs can only be indexed by member"
                 member_name = @[2][0]
