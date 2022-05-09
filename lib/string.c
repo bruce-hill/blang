@@ -19,11 +19,8 @@ char *blang_string_append_int(char *s, long i) { RETURN_FMT("%s%ld", s, i); }
 char *blang_string_append_float(char *s, double f) { RETURN_FMT("%s%g", s, f); }
 char *blang_string_append_char(char *s, long c) { RETURN_FMT("%s%c", s, (char)c); }
 char *blang_string_append_bool(char *s, long b) { RETURN_FMT("%s%s", s, b ? "yes" : "no"); }
-char *blang_string_append_range(char *s, Range *r) {
-    RETURN_FMT("%s[%ld,%ld..%ld]", s, r->first, r->next, r->last);
-}
-
-char *blang_string_concat(char *a, char *b) { RETURN_FMT("%s%s", a, b); }
+char *blang_string_append_range(char *s, Range *r) { RETURN_FMT("%s[%ld,%ld..%ld]", s, r->first, r->next, r->last); }
+char *blang_string_append_string(char *a, char *b) { RETURN_FMT("%s%s", a, b); }
 
 char *blang_string_slice(char *s, Range *r) {
     long step = r->next - r->first;

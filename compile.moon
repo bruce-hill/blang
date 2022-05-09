@@ -81,20 +81,18 @@ comparison = (env, cmp)=>
 
     return result, code
 
-update = (op, flop)->
+updater = (op, flop)->
     (env)=>
-        lhs_type = get_type(@[1])
-        rhs_type = get_type(@[2])
-        assert_node lhs_type == rhs_type, @, "Type mismatch: #{lhs_type} vs #{rhs_type}"
-        reg, code = env\to_reg @[2]
-        if @[1].__tag == "Var"
-            dest,_ = env\to_reg @[1]
+        lhs,rhs = @[1],@[2]
+        make_rhs = (lhs_reg)->
+            rhs_reg, code = env\to_reg rhs
+            lhs_type = get_type lhs
             if lhs_type.abi_type == "d" and flop
                 op = flop
-            code ..= "#{dest} =#{lhs_type.abi_type} #{op} #{dest}, #{reg}\n"
-        else
-            assert_node false, @, "Not impl: update indexes"
-        return code
+            result_reg = env\fresh_local "result"
+            code ..= "#{result_reg} =#{lhs_type.abi_type} #{op} #{lhs_reg}, #{rhs_reg}\n"
+            return get_type(rhs),result_reg,code
+        return store_to @[1], make_rhs, env
 
 class Environment
     new: =>
@@ -172,15 +170,15 @@ class Environment
             elseif t == Types.Bool
                 code ..= "#{str} =l call $blang_string_append_bool(l #{str}, l #{reg})\n"
             elseif t == Types.Nil
-                code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{@get_string_reg("nil", "nil")})\n"
+                code ..= "#{str} =l call $blang_string_append_string(l #{str}, l #{@get_string_reg("nil", "nil")})\n"
             elseif t == Types.Void
-                code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{@get_string_reg("Void", "void")})\n"
+                code ..= "#{str} =l call $blang_string_append_string(l #{str}, l #{@get_string_reg("Void", "void")})\n"
             elseif t == Types.String
-                code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{reg})\n"
+                code ..= "#{str} =l call $blang_string_append_string(l #{str}, l #{reg})\n"
             elseif t == Types.Range
                 code ..= "#{str} =l call $blang_string_range(l #{str}, :Range #{reg})\n"
             elseif t.__class == Types.ListType
-                code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{@get_string_reg("[","sqbracket.open")})\n"
+                code ..= "#{str} =l call $blang_string_append_string(l #{str}, l #{@get_string_reg("[","sqbracket.open")})\n"
 
                 len = @fresh_local "list.len"
                 code ..= "#{len} =l loadl #{reg}\n"
@@ -203,7 +201,7 @@ class Environment
                 code ..= "#{comma} =l csgtl #{i}, 1\n"
                 code ..= "jnz #{comma}, #{comma_label}, #{skip_comma_label}\n"
                 code ..= "#{comma_label}\n"
-                code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{@get_string_reg(", ","comma.space")})\n"
+                code ..= "#{str} =l call $blang_string_append_string(l #{str}, l #{@get_string_reg(", ","comma.space")})\n"
                 code ..= "jmp #{skip_comma_label}\n"
                 code ..= "#{skip_comma_label}\n"
                 
@@ -216,21 +214,21 @@ class Environment
 
                 code ..= "jmp #{loop_label}\n#{end_label}\n"
 
-                code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{@get_string_reg("]","sqbracket.close")})\n"
+                code ..= "#{str} =l call $blang_string_append_string(l #{str}, l #{@get_string_reg("]","sqbracket.close")})\n"
             elseif t.__class == Types.StructType
-                code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{@get_string_reg("#{t.name}{#{t.members[1].name}=")})\n"
+                code ..= "#{str} =l call $blang_string_append_string(l #{str}, l #{@get_string_reg("#{t.name}{#{t.members[1].name}=")})\n"
                 ptr_reg = @fresh_local "member.loc"
                 for i,mem in ipairs t.members
                     if i > 1
-                        code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{@get_string_reg(", #{mem.name}=")})\n"
+                        code ..= "#{str} =l call $blang_string_append_string(l #{str}, l #{@get_string_reg(", #{mem.name}=")})\n"
                     code ..= "#{ptr_reg} =l add #{reg}, #{8*(i-1)}\n"
                     member_reg = @fresh_local "member.#{mem.name}"
                     code ..= "#{member_reg} =#{mem.type.abi_type} load#{mem.type.base_type} #{ptr_reg}\n"
                     append_reg member_reg, mem.type
 
-                code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{@get_string_reg("}","closecurly")})\n"
+                code ..= "#{str} =l call $blang_string_append_string(l #{str}, l #{@get_string_reg("}","closecurly")})\n"
             elseif t.__class == Types.FnType
-                code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{@get_string_reg("#{t}")})\n"
+                code ..= "#{str} =l call $blang_string_append_string(l #{str}, l #{@get_string_reg("#{t}")})\n"
             else
                 assert_node false, val, "Unsupported concat type"
 
@@ -370,14 +368,14 @@ expr_compilers =
         for interp in *@content
             if interp.start > i
                 chunk = @content[0]\sub(1+(i-@content.start), interp.start-@content.start)
-                code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{env\get_string_reg chunk})\n"
+                code ..= "#{str} =l call $blang_string_append_string(l #{str}, l #{env\get_string_reg chunk})\n"
 
             stringify interp[1]
             i = interp.after
 
         if @content.after > i
             chunk = @content[0]\sub(1+(i-@content.start), @content.after-@content.start)
-            code ..= "#{str} =l call $blang_string_concat(l #{str}, l #{env\get_string_reg chunk})\n"
+            code ..= "#{str} =l call $blang_string_append_string(l #{str}, l #{env\get_string_reg chunk})\n"
 
         return str,code
 
@@ -692,6 +690,7 @@ stmt_compilers =
         if @type
             decl_type = Types.parse_type @type[1]
             value_type = get_type @value[1]
+            assert_node value_type, @value[1], "Can't infer the type of this value"
             assert_node value_type\is_a(decl_type), @value[1], "Value is type #{value_type}, not declared type #{decl_type}"
         return store_to @var[1], @value[1], env
     Assignment: (env)=>
@@ -699,25 +698,36 @@ stmt_compilers =
         value_type = get_type @[2]
         assert_node value_type\is_a(var_type), @[2], "Value is type #{value_type}, but it's being assigned to something with type #{var_type}"
         return store_to @[1], @[2], env
-    AddUpdate: update "add"
-    SubUpdate: update "sub"
-    MulUpdate: update "mul"
-    DivUpdate: update "div"
-    OrUpdate: update "or"
-    XorUpdate: update "xor"
-    AndUpdate: update "and"
+    AddUpdate: updater "add"
+    SubUpdate: updater "sub"
+    MulUpdate: updater "mul"
+    DivUpdate: updater "div"
+    OrUpdate: updater "or"
+    XorUpdate: updater "xor"
+    AndUpdate: updater "and"
     AppendUpdate: (env)=>
         lhs_type = get_type @[1]
         rhs_type = get_type @[2]
         if lhs_type == Types.String
-            -- TODO: implement
-            assert_node false, @[1], "Not implemented"
+            make_rhs = (lhs_reg)->
+                fn_name = env\get_concat_fn rhs_type
+                appended = env\fresh_local "str.appended"
+                rhs_reg,code = env\to_reg @[2]
+                code ..= "#{appended} =l call #{fn_name}(l #{lhs_reg}, #{rhs_type.base_type} #{rhs_reg})\n"
+                return rhs_type,appended,code
+            return store_to @[1], make_rhs, env
         elseif lhs_type.__class == Types.ListType
-            -- TODO: implement
             assert_node rhs_type == lhs_type.item_type, @[2], "You can't append a #{rhs_type} to a list of #{lhs_type.item_type}s"
-            assert_node false, @[1], "Not implemented"
+            make_rhs = (lhs_reg)->
+                fn_name = env\get_concat_fn rhs_type
+                appended = env\fresh_local "str.appended"
+                rhs_reg,code = env\to_reg @[2]
+                code ..= "call $blang_list_append#{rhs_type.base_type}(l #{lhs_reg}, #{rhs_type.abi_type} #{rhs_reg})\n"
+                code ..= "#{appended} =l copy #{lhs_reg}\n"
+                return rhs_type,appended,code
+            return store_to @[1], make_rhs, env
         else
-            assert_node false, @[1], "Only Lists and Strings can be appended to"
+            assert_node false, @[1], "Only Lists and Strings can be appended to, not #{lhs_type}"
     FnDecl: (env)=> ""
     Pass: (env)=> ""
     TypeDeclaration: (env)=> ""
@@ -907,15 +917,21 @@ store_to = (val, env, ...)=>
     switch @__tag
         when "Var"
             assert_node @__register, @, "Undefined variable"
-            reg,code = env\to_reg val, ...
-            return "#{code}#{@__register} =#{get_type(val).base_type} copy #{reg}\n"
+            val_type, reg, code = if type(val) == 'function'
+                val(@__register)
+            else
+                get_type(val), env\to_reg(val, ...)
+            return "#{code}#{@__register} =#{val_type.base_type} copy #{reg}\n"
         when "IndexedTerm"
             t = get_type @[1]
             if t.__class == Types.ListType
                 assert_node get_type(@[2]) == Types.Int, @[2], "Index is: #{get_type @[2]} instead of Int"
                 list_reg,list_code = env\to_reg @[1]
                 index_reg,index_code = env\to_reg @[2]
-                val_reg,val_code = env\to_reg val
+                val_type,val_reg,val_code = if type(val) == 'function'
+                    val(list_reg)
+                else
+                    get_type(val), env\to_reg(val)
                 code = list_code..index_code..val_code
                 code ..= "call $blang_list_set_nth#{t.item_type.base_type}(l #{list_reg}, l #{index_reg}, #{t.item_type.base_type} #{val_reg})\n"
                 return code
@@ -929,7 +945,10 @@ store_to = (val, env, ...)=>
                 code = struct_code
                 dest = env\fresh_local "member.loc"
                 code ..= "#{dest} =l add #{struct_reg}, #{8*(i-1)}\n"
-                val_reg,val_code = env\to_reg val
+                val_type,val_reg,val_code = if type(val) == 'function'
+                    val(list_reg)
+                else
+                    get_type(val), env\to_reg(val)
                 code ..= val_code
                 code ..= "store#{member_type.item_type.base_type} #{val_reg}, #{dest}\n"
                 return code

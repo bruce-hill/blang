@@ -30,7 +30,7 @@ TernaryOp:: @condition=(And/Or/Xor/comparison/expr) _ `? _ @ifTrue=required-exte
 Bool:: \b("yes"/"no")\b
 Nil:: \b"nil"\b
 String:: `" @content=..%(@(Escape / `$ (Var/`(__ extended-expr __`)))) `"
-List:: `[__*extended-expr %(__`,__) __ [`,__] `] [_`:_@type=type]
+List:: `[__*extended-expr %(__`,__) __ [`,__] `] [_`:_@type=type] / `[__`:__@type=@(ListType::type)__`]
 Escape:: `\ (`x 2 hex / `a,b,t,n,r,v / 3 `0-8 / .)
 Float:: [`-,+] (`0-9 *`0-9,_ `. *`0-9 / `. +`0-9)
 Int:: [`-,+] `0-9 *`0-9,_
@@ -115,7 +115,7 @@ While:: (
 )
 between: nl curdent \b"between"\b _ [comment] @between=(
   nl curdent +(` /\t) Block
-  / (Block:: line-statement)
+  / @(Block:: line-statement)
   / (ParseError:: ..$ => "Invalid 'between' body"))
 Return:: \b"return"\b _ [extended-expr]
 Range:: `[__@first=(Int/!Float extended-expr) __ [`,__@next=(Int/ !Float required-extended-expr)]__".."__@last=(Int/!Float required-extended-expr)__`] # [0,2..4] [x..y] [1..#list]

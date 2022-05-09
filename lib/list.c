@@ -12,6 +12,14 @@ list_t *blang_list_new(long minsize) {
     return list;
 }
 
+void blang_list_free(list_t *list) {
+    if (list->items.ints) {
+        free(list->items.ints);
+        list->items.ints = NULL;
+    }
+    free(list);
+}
+
 void blang_list_appendl(list_t *list, long item) {
     list->items.ints = reallocarray(list->items.ints, list->len+1, sizeof(long));
     list->items.ints[list->len++] = item;
