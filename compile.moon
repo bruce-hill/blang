@@ -47,23 +47,39 @@ get_function_reg = (scope, name, arg_signature)->
     
     return get_function_reg(scope.__parent, name, arg_signature)
 
-infixop = (op, flop, abi_type)->
-    (env)=>
-        t = get_type @[1]
-        if t.base_type == "d" and flop
-            op = flop
-        lhs_reg, lhs_code = env\to_reg @[1]
-        code = lhs_code
-        ret_reg = env\fresh_local "result"
-        for i=2,#@
-            rhs = @[i]
-            rhs_type = get_type rhs
-            assert_node rhs_type == t, rhs, "Expected type: #{t} but got type #{rhs_type}"
-            rhs_reg, rhs_code = env\to_reg rhs
-            code ..= rhs_code
-            code ..= "#{ret_reg} =#{abi_type or t.abi_type} #{op} #{lhs_reg}, #{rhs_reg}\n"
-            lhs_reg = ret_reg
-        return ret_reg, code
+infixop = (env, op)=>
+    t = get_type @[1]
+    lhs_reg, lhs_code = env\to_reg @[1]
+    code = lhs_code
+    ret_reg = env\fresh_local "result"
+    for i=2,#@
+        rhs = @[i]
+        rhs_type = get_type rhs
+        assert_node rhs_type == t, rhs, "Expected type: #{t} but got type #{rhs_type}"
+        rhs_reg, rhs_code = env\to_reg rhs
+        code ..= rhs_code
+        code ..= "#{ret_reg} =#{t.abi_type} #{op} #{lhs_reg}, #{rhs_reg}\n"
+        lhs_reg = ret_reg
+    return ret_reg, code
+
+comparison = (env, cmp)=>
+    t = get_type @[1]
+    for val in *@
+        assert_node get_type(val) == t, val, "Expected #{t} but got #{get_type(val)}"
+
+    prev_val = nil
+    lhs_reg,code = env\to_reg @[1]
+    rhs_reg,rhs_code = env\to_reg @[2]
+    code ..= rhs_code
+
+    result = env\fresh_local "comparison"
+    if t == Types.String
+        code ..= "#{result} =l call $strcmp(l #{lhs_reg}, l #{rhs_reg})\n"
+        code ..= "#{result} =l #{cmp} 0, #{result}\n"
+    else
+        code ..= "#{result} =#{t.abi_type} #{cmp} #{lhs_reg}, #{rhs_reg}\n"
+
+    return result, code
 
 update = (op, flop)->
     (env)=>
@@ -491,11 +507,6 @@ expr_compilers =
             code ..= "#{first_code}#{last_code}"
             code ..= "call $init_range2(l #{range}, l #{first_reg}, l #{last_reg})\n"
         return range, code
-    Add: infixop "add"
-    Sub: infixop "sub"
-    Mul: infixop "mul"
-    Div: infixop "div"
-    Xor: infixop "xor"
     Or: (env)=>
         true_label = env\fresh_label "or.true"
         done_label = env\fresh_label "or.end"
@@ -520,13 +531,88 @@ expr_compilers =
         ret_reg = env\fresh_local "any"
         code ..= "#{ret_reg} =#{Types.Bool.base_type} copy 1\njmp #{done_label}\n#{false_label}\n#{ret_reg} =#{Types.Bool.base_type} copy 0\n#{done_label}\n"
         return ret_reg, code
-    Mod: infixop "rem"
-    Less: infixop("csltl", "cltd", "l")
-    LessEq: infixop("cslel", "cled", "l")
-    Greater: infixop("csgtl", "cgtd", "l")
-    GreaterEq: infixop("csgel", "cged", "l")
-    Equal: infixop("ceql", "ceql", "l")
-    NotEqual: infixop("cnel", "cnel", "l")
+    Xor: (env)=>
+        for val in *@
+            assert_node get_type(val) == Types.Bool, val, "Expected Bool here, but got #{get_type val}"
+        return infixop @, env, "xor"
+    Add: (env)=>
+        t = get_type(@)
+        if t == Types.Int or t == Types.Float
+            return infixop @, env, "add"
+        elseif t == Types.String
+            -- Concat
+            error "Not impl"
+        elseif t.__class == Types.List
+            -- Concat
+            error "Not impl"
+        elseif t.__class == Types.Struct
+            -- Pairwise
+            error "Not impl"
+        else
+            assert_node false, @, "Addition is not supported for #{t}"
+    Sub: (env)=>
+        t = get_type(@)
+        if t == Types.Int or t == Types.Float
+            return infixop @, env, "sub"
+        elseif t == Types.String
+            -- Concat
+            error "Not impl"
+        elseif t.__class == Types.Struct
+            -- Pairwise
+            error "Not impl"
+        else
+            assert_node false, @, "Subtraction is not supported for #{t}"
+    Mul: (env)=>
+        t = get_type(@)
+        if t == Types.Int or t == Types.Float
+            return infixop @, env, "mul"
+        elseif t.__class == Types.Struct
+            -- Dot product
+            error "Not impl"
+        else
+            assert_node false, @, "Multiplication is not supported for #{t}"
+    Div: (env)=>
+        t = get_type(@)
+        if t == Types.Int or t == Types.Float
+            return infixop @, env, "div"
+        else
+            assert_node false, @, "Division is not supported for #{t}"
+    Mod: (env)=>
+        t = get_type(@)
+        if t == Types.Int or t == Types.Float
+            return infixop @, env, "rem"
+        else
+            assert_node false, @, "Modulus is not supported for #{t}"
+    Less: (env)=>
+        t = get_type(@[1])
+        if t == Types.Int or t == Types.String
+            return comparison @, env, "csltl"
+        elseif t == Types.Float
+            return comparison @, env, "cltd"
+        else assert_node false, @, "Comparison is not supported for #{t}"
+    LessEq: (env)=>
+        t = get_type(@[1])
+        if t == Types.Int or t == Types.String
+            return comparison @, env, "cslel"
+        elseif t == Types.Float
+            return comparison @, env, "cled"
+        else assert_node false, @, "Comparison is not supported for #{t}"
+    Greater: (env)=>
+        t = get_type(@[1])
+        if t == Types.Int or t == Types.String
+            return comparison @, env, "csgtl"
+        elseif t == Types.Float
+            return comparison @, env, "cgtd"
+        else assert_node false, @, "Comparison is not supported for #{t}"
+    GreaterEq: (env)=>
+        t = get_type(@[1])
+        if t == Types.Int or t == Types.String
+            return comparison @, env, "csgel"
+        elseif t == Types.Float
+            return comparison @, env, "cged"
+        else assert_node false, @, "Comparison is not supported for #{t}"
+    Equal: (env)=> comparison @, env, "ceql"
+    NotEqual: (env)=> comparison @, env, "cnel"
     TernaryOp: (env)=>
         cond_reg,code = env\to_reg @condition[1]
         true_reg,true_code = env\to_reg @ifTrue[1]
