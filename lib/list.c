@@ -1,3 +1,4 @@
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/param.h>
@@ -5,46 +6,47 @@
 #include "types.h"
 
 list_t *blang_list_new(long minsize) {
-    return calloc(1+minsize, sizeof(long));
+    list_t *list = calloc(1, sizeof(list_t));
+    if (minsize > 0)
+        list->items.ints = calloc(minsize, sizeof(long));
+    return list;
 }
 
-#include <stdio.h>
-list_t *blang_list_appendl(list_t *list, long item) {
-    list = reallocarray(list, 1+list->len+1, sizeof(long));
+void blang_list_appendl(list_t *list, long item) {
+    list->items.ints = reallocarray(list->items.ints, list->len+1, sizeof(long));
     list->items.ints[list->len++] = item;
-    return list;
 }
 
-list_t *blang_list_appendd(list_t *list, double item) {
-    list = reallocarray(list, 1+list->len+1, sizeof(long));
+void blang_list_appendd(list_t *list, double item) {
+    list->items.floats = reallocarray(list->items.floats, list->len+1, sizeof(double));
     list->items.floats[list->len++] = item;
-    return list;
 }
 
-list_t *blang_list_remove(list_t *list, long i) {
-    if (i < 1 || i > list->len) return list;
+void blang_list_remove(list_t *list, long i) {
+    if (i < 1 || i > list->len) return;
     if (i < list->len)
         memmove(&list->items.ints[i-1], &list->items.ints[i], list->len - i);
     --list->len;
-    return list;
 }
 
 long blang_list_nthl(list_t *list, long i) {
-    return list->items.ints[i];
+    if (i < 1 || i > list->len) return 0;
+    return list->items.ints[i-1];
 }
 
 double blang_list_nthd(list_t *list, long i) {
-    return list->items.floats[i];
+    if (i < 1 || i > list->len) return nan("Missing");
+    return list->items.floats[i-1];
 }
 
 void blang_list_set_nthl(list_t *list, long i, long val) {
     if (i < 1 || i > list->len) return;
-    list->items.ints[i] = val;
+    list->items.ints[i-1] = val;
 }
 
 void blang_list_set_nthd(list_t *list, long i, double val) {
     if (i < 1 || i > list->len) return;
-    list->items.floats[i] = val;
+    list->items.floats[i-1] = val;
 }
 
 list_t *blang_list_slice(list_t *list, Range *r) {
@@ -63,7 +65,7 @@ list_t *blang_list_slice(list_t *list, Range *r) {
         first = MIN(first, len-1);
         slice_len = MAX(1 + (first - last), len - last);
     }
-    list_t *slice = calloc(1+slice_len, sizeof(long));
+    list_t *slice = blang_list_new(slice_len);
     long final_len = 0;
     for (long i = first; step > 0 ? i <= last : i >= last; i += step)
         slice->items.ints[final_len++] = list->items.ints[i];
