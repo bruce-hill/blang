@@ -381,6 +381,8 @@ expr_compilers =
                 else
                     text\byte(1)
                 code ..= "#{str} =l call $bl_string_append_char(l #{str}, l #{c})\n"
+            elseif val.__tag == "Newline"
+                code ..= "#{str} =l call $bl_string_append_char(l #{str}, l #{10})\n"
             else
                 t = get_type(val)
                 fn_name = env\get_concat_fn t
@@ -394,7 +396,7 @@ expr_compilers =
                 chunk = @content[0]\sub(1+(i-@content.start), interp.start-@content.start)
                 code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{env\get_string_reg chunk})\n"
 
-            stringify interp[1]
+            stringify(interp[1] or interp)
             i = interp.after
 
         if @content.after > i

@@ -31,8 +31,11 @@ comparison: Equal / NotEqual / LessEq / Less / GreaterEq / Greater
 TernaryOp:: @condition=(And/Or/Xor/comparison/expr) _ `? _ @ifTrue=required-extended-expr _ `; _ @ifFalse=required-extended-expr
 Bool:: \b("yes"/"no")\b
 Nil:: \b"nil"\b
-String:: `" @content=..%(@(Escape / `$ (Var/`(__ extended-expr __`)))) `"
+String:: (
+  '"""' @curdent=\C $ \n @strdent=\C strdent @content=..%(@(Newline::\n strdent) / \n$ / @(Escape/Interp)) (\n curdent '"""')
+  / `" @content=..%(@(Escape/Interp)) `")
 List:: `[__*extended-expr %(__`,__) __ [`,__] `] [_`:_@type=type] / `[__`:__@type=@(ListType::type)__`]
+Interp: `$ (Var/`(__ extended-expr __`))
 Escape:: `\ (`x 2 hex / `a,b,t,n,r,v / 3 `0-8 / .)
 Float:: [`-,+] (`0-9 *`0-9,_ `. *`0-9 / `. +`0-9)
 Int:: [`-,+] `0-9 *`0-9,_

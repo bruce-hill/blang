@@ -18,3 +18,14 @@ $puts("Char: $char Slice: $slice")
 $puts("Invalid char: $(toslice.(-10)) Invalid slice: $(toslice.[-100..-5]) Backwards: $(toslice.[#toslice..1])")
 
 $puts("string" + "+" + "concatenation")
+
+if yes
+    multiline := """
+        Hello world
+            (indented here)
+        i is $i escape: \x41
+
+        expression: $(1 + 2)
+        the end.
+    """
+    $puts("Multliline:\n$multiline<END>")
