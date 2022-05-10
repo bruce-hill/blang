@@ -44,6 +44,12 @@ get_function_reg = (scope, name, arg_signature)->
             iter_type = get_type(scope.iterable[1])
             if scope.var and scope.var[0] == name and iter_type.__class == Types.ListType and iter_type.item_type.__class == Types.FnType
                 return "%"..scope.var[0], iter_type.item_type
+
+    if scope.__parent and (scope.__parent.__tag == "For" or scope.__parent.__tag == "While")
+        loop = scope.__parent
+        if scope == loop.between[1]
+            r = get_function_reg(loop.body[1], name, arg_signature)
+            return r if r
     
     return get_function_reg(scope.__parent, name, arg_signature)
 
@@ -315,11 +321,22 @@ class Environment
                 {table.unpack(vardec.__parent, i+1)}
             else vardec.__parent
             hook_up_refs vardec.var[1], scope -- vardec.__parent
+
+            block = vardec.__parent
+            loop = block and block.__parent
+            while loop and not loop.__tag
+                loop = loop.__parent
+            if loop and (loop.__tag == "For" or loop.__tag == "While")
+                if block == loop.body[1] and loop.between
+                    hook_up_refs vardec.var[1], loop.between[1]
+
         for for_block in coroutine.wrap(-> each_tag(ast, "For"))
             if for_block.var
                 hook_up_refs for_block.var[1], for_block.body
+                hook_up_refs for_block.var[1], for_block.between if for_block.between
             if for_block.index
                 hook_up_refs for_block.index[1], for_block.body
+                hook_up_refs for_block.index[1], for_block.between if for_block.between
 
         -- Compile functions:
         for fndec in coroutine.wrap(-> each_tag(ast, "FnDecl", "Lambda"))

@@ -127,8 +127,8 @@ find_declared_type = (scope, name, arg_signature=nil)->
     
     if scope.__parent and (scope.__parent.__tag == "For" or scope.__parent.__tag == "While")
         loop = scope.__parent
-        if loop.between and scope == loop.body
-            t = find_declared_type(loop.between, name, arg_signature)
+        if scope == loop.between
+            t = find_declared_type(loop.body[1], name, arg_signature)
             return t if t
             
     return find_declared_type(scope.__parent, name, arg_signature)
@@ -320,7 +320,7 @@ get_type = memoize (node)->
             if not var_type
                 return Int if node[0] == "argc"
                 return ListType(String) if node[0] == "argv"
-            assert_node var_type, node, "Undefined variable"
+            assert_node var_type, node, "Cannot determine type for undefined variable"
             return var_type
         when "Global"
             return nil

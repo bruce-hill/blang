@@ -1,0 +1,13 @@
+
+
+for x in [1,2,3]
+    $puts("$x")
+    y := x + 1
+between
+    $puts("$x $y")
+
+while yes
+    z := 10
+between
+    $puts("$z")
+    stop
