@@ -705,7 +705,7 @@ expr_compilers =
         code ..= fn_code
 
         if fn_type
-            assert_node fn_type and fn_type.__class == Types.FnType, @fn[1], "This is not a function, it's a #{fn_type}"
+            assert_node fn_type.__class == Types.FnType, @fn[1], "This is not a function, it's a #{fn_type or "???"}"
 
         args = {}
         for arg in *@args

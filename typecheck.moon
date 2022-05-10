@@ -342,7 +342,8 @@ get_type = memoize (node)->
                 find_declared_type node, node.fn[0], target_sig
             else
                 get_type node.fn[1]
-            assert_node fn_type and fn_type.__class == FnType, node.fn[1], "This is not a function, it's a #{fn_type}"
+            assert_node fn_type, node.fn[1], "This function's return type cannot be inferred. It must be specified manually"
+            assert_node fn_type.__class == FnType, node.fn[1], "This is not a function, it's a #{fn_type or "???"}"
             return fn_type.return_type
         when "Block"
             error "Blocks have no type"
