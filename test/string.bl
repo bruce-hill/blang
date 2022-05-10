@@ -22,9 +22,11 @@ $puts("string" + "+" + "concatenation")
 if yes
     multiline := """
         Hello world
-            (indented here)
+            (indented x4 here)
         i is $i escape: \x41
 
+
+        ^^^^ 2x blank line ^^^^^^
         expression: $(1 + 2)
         the end.
     """
