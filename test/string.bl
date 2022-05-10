@@ -28,6 +28,6 @@ if yes
 
         ^^^^ 2x blank line ^^^^^^
         expression: $(1 + 2)
-        the end.
+        the end (no trailing newline)
     """
-    $puts("Multliline:\n$multiline<END>")
+    $puts("Multliline:\n<START>$multiline<END>")
