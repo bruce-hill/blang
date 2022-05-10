@@ -1,8 +1,10 @@
-#include <stdio.h>
+#include <bhash.h>
 
 #include "types.h"
+#include "util.h"
 
-void init_range3(Range *r, long first, long next, long last) {
+range_t *range_new3(long first, long next, long last) {
+    range_t *r = calloc2(1, sizeof(range_t));
     r->first = first;
     r->next = next;
     if (next != first && last != first) {
@@ -10,35 +12,32 @@ void init_range3(Range *r, long first, long next, long last) {
         last = first + len * (next - first);
     }
     r->last = last;
+    return (range_t*)intern_bytes_transfer((char*)r, sizeof(range_t));
 }
 
-void init_range2(Range *r, long first, long last) {
+range_t *range_new2(long first, long last) {
+    range_t *r = calloc2(1, sizeof(range_t));
     r->first = first;
     r->next = first <= last ? first+1 : first-1;
     r->last = last;
+    return (range_t*)intern_bytes_transfer((char*)r, sizeof(range_t));
 }
 
-long range_len(Range *r) {
+long range_len(range_t *r) {
     long len = (r->last - r->first) / (r->next - r->first);
     return (len < 0) ? 0 : len + 1;
 }
 
-long range_nth(Range *r, long n) {
+long range_nth(range_t *r, long n) {
     long step = r->next - r->first;
     return r->first + (n-1)*step;
 }
 
-long range_step(Range *r) {
+long range_step(range_t *r) {
     return r->next - r->first;
 }
 
-void range_backwards(Range *dest, Range *src) {
+range_t *range_backwards(range_t *src) {
     long step = src->next - src->first;
-    dest->first = src->last;
-    dest->next = dest->first - step;
-    dest->last = src->first;
-}
-
-int print_range(Range *r) {
-    return printf("[%ld,%ld..%ld]", r->first, r->next, r->last);
+    return range_new3(src->last, src->last - step, src->first);
 }

@@ -176,7 +176,7 @@ class Environment
             elseif t == Types.String
                 code ..= "#{str} =l call $blang_string_append_string(l #{str}, l #{reg})\n"
             elseif t == Types.Range
-                code ..= "#{str} =l call $blang_string_range(l #{str}, :Range #{reg})\n"
+                code ..= "#{str} =l call $blang_string_append_range(l #{str}, :Range #{reg})\n"
             elseif t.__class == Types.ListType
                 code ..= "#{str} =l call $blang_string_append_string(l #{str}, l #{@get_string_reg("[","sqbracket.open")})\n"
 
@@ -392,8 +392,7 @@ expr_compilers =
         elseif t == Types.Range
             orig,code = env\to_reg @[1]
             range = env\fresh_local "neg.range"
-            code ..= "#{range} =l call $calloc(l 1, l #{3*8})\n"
-            code ..= "call $range_backwards(l #{range}, l #{orig})\n"
+            code ..= "#{range} =l call $range_backwards(l #{orig})\n"
             return range, code
         else
             assert_node false, @, "Invalid type to negate: #{t}"
@@ -509,16 +508,15 @@ expr_compilers =
         return list, code
     Range: (env)=>
         range = env\fresh_local "range"
-        code = "#{range} =l call $calloc(l 1, l #{3*8})\n"
-        first_reg,first_code = env\to_reg @first[1]
+        first_reg,code = env\to_reg @first[1]
         last_reg,last_code = env\to_reg @last[1]
+        code ..= last_code
         if @next
             next_reg,next_code = env\to_reg @next[1]
-            code ..= "#{first_code}#{next_code}#{last_code}"
-            code ..= "call $init_range3(l #{range}, l #{first_reg}, l #{next_reg}, l #{last_reg})\n"
+            code ..= next_code
+            code ..= "#{range} =l call $range_new3(l #{first_reg}, l #{next_reg}, l #{last_reg})\n"
         else
-            code ..= "#{first_code}#{last_code}"
-            code ..= "call $init_range2(l #{range}, l #{first_reg}, l #{last_reg})\n"
+            code ..= "#{range} =l call $range_new2(l #{first_reg}, l #{last_reg})\n"
         return range, code
     Or: (env)=>
         true_label = env\fresh_label "or.true"

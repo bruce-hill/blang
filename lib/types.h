@@ -1,5 +1,5 @@
 
-typedef struct { long first, next, last; } Range;
+typedef struct { long first, next, last; } range_t;
 
 typedef struct {
     long len;
