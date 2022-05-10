@@ -4,7 +4,7 @@ term: (
     Bool / Nil / String / Float / Int / unaryOp / Global !(_`(,{) / Var !(_`(,{) / Struct / FnCall / Lambda / Range / List / `(__extended-expr__`)
 )
 IndexedTerm:: !`0-9 (MethodCall / IndexedTerm / term) `. !`. (Int / term)
-MethodCall:: !`0-9 @self=@(MethodCall / IndexedTerm / term) _ `| _ (@fn=Var _ `( __ @args=(*expr % (__`,__)) __ [`,__] `) / (ParseError:: => "Not a valid method call")) [_`:_@type=type]
+MethodCall:: !`0-9 @self=@(MethodCall / IndexedTerm / term) _ `| _ (@fn=Var _ @args=[`( __ *expr % (__`,__) __ [`,__] `)] / (ParseError:: => "Not a valid method call")) [_`:_@type=type]
 maybe-index-term: MethodCall / IndexedTerm / term
 expr: Mod / Add / Sub / Mul / Div / Pow / MethodCall / IndexedTerm / term
 extended-expr: TernaryOp / And / Or / Xor / comparison / expr
