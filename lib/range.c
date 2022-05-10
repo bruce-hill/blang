@@ -3,6 +3,9 @@
 #include "types.h"
 #include "util.h"
 
+long RANGE_MIN = -999999999999999999;
+long RANGE_MAX = 999999999999999999;
+
 range_t *range_new3(long first, long next, long last) {
     range_t *r = calloc2(1, sizeof(range_t));
     r->first = first;

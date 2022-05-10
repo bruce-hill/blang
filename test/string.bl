@@ -15,7 +15,9 @@ toslice := "Hello world"
 char := toslice[1]
 slice := toslice[2..6]
 $puts("Char: $char Slice: $slice")
-$puts("Invalid char: $(toslice.(-10)) Invalid slice: $(toslice[-100..-5]) Backwards: $(toslice[#toslice..1])")
+$puts("Invalid char: $(toslice[-10]) Invalid slice: '$(toslice[-100..-5])'")
+$puts("First slice: '$(toslice[..5])' Backwards: '$(toslice[-(1..)])'")
+$puts("Whole slice: '$(toslice[..])' Every other: '$(toslice[1,3..])'")
 
 $puts("string" + "+" + "concatenation")
 

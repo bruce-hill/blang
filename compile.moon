@@ -530,9 +530,21 @@ expr_compilers =
         return list, code
     Range: (env)=>
         range = env\fresh_local "range"
-        first_reg,code = env\to_reg @first[1]
-        last_reg,last_code = env\to_reg @last[1]
-        code ..= last_code
+        code = ""
+        first_reg = if @first
+            reg,first_code = env\to_reg @first[1]
+            code ..= first_code
+            reg
+        else
+            "-999999999999999999"
+
+        last_reg = if @last
+            reg,last_code = env\to_reg @last[1]
+            code ..= last_code
+            reg
+        else
+            "999999999999999999"
+
         if @next
             next_reg,next_code = env\to_reg @next[1]
             code ..= next_code

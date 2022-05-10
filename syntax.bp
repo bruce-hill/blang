@@ -124,7 +124,9 @@ Repeat:: \b"repeat"\b @curdent=\C _ [comment] @body=maybeInlineBlock [between]
 maybeInlineBlock: nl curdent +(` /\t) Block / @(Block:: line-statement)
 between: nl curdent \b"between"\b _ [comment] @between=(maybeInlineBlock / (ParseError:: ..$ => "Invalid 'between' body"))
 Return:: \b"return"\b _ [extended-expr]
-Range:: @first=maybe-index-term [`,@next=maybe-index-term] ".." @last=maybe-index-term # 0,2..4 x..y 1..#list
+Range:: (
+  @first=maybe-index-term [`,@next=maybe-index-term] ".." [@last=maybe-index-term] # 0,2..4 x..y 1..
+  / ".." [@last=maybe-index-term]) # ..5 ..
 comment: "//" *.
 
 keyword: "nil"/"yes"/"no"/"for"/"while"/"between"/"if"/"elseif"/"else"/"with"/"and"/"or"/"xor"/"pass"/"not"/"skip"/"stop"/"unless"/"repeat"
