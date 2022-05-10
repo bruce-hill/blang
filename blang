@@ -10,10 +10,13 @@ number_code = (code, color="1")->
     )
 
 verbose = false
+compile = false
 files, args = {}, {}
 for i,a in ipairs arg
     if a == "-v" or a == "--verbose"
         verbose = true
+    elseif a == "-c" or a == "--compile"
+        compile = true
     elseif a == "--"
         args = {table.unpack(arg, i+1, #arg)}
         break
@@ -27,21 +30,27 @@ unless verbose
 parse = require 'parse'
 import compile_prog from require 'compile'
 
-for f in *files
-    log "\x1b[1;4mFile #{f}\x1b[m"
-    with io.open f
-        text = \read "*a"
-        set_file f, text
-        log number_code(text, "34;1")
-        ast = parse text, f
-        assert ast, "No match!"
-        -- log viz(ast)
+mktemp = (suffix)-> io.popen("mktemp --suffix=#{suffix} /tmp/blang.XXXXXX")\read("l")
 
-        code = compile_prog ast, f
+run_file = (filename, file, temporary=true)->
+    log "\x1b[1;4mFile #{filename}\x1b[m"
+    with file
+        text = \read "*a"
+        set_file "stdin", text
+        log number_code(text, "34;1")
+        ast = parse text, filename
+        assert ast, "No match!"
+
+        code = compile_prog ast, filename
 
         log number_code(code, "36;1")
 
-        with io.open f..".qbe", "w"
+        qbe_file,asm_file,bin_file = if temporary
+            mktemp(".qbe"), mktemp(".s"), mktemp(".o")
+        else
+            filename..".qbe", filename..".s", filename..".o"
+
+        with io.open qbe_file, "w"
             \write code
             \close!
 
@@ -50,10 +59,22 @@ for f in *files
             assert os.execute cmd
 
         log "\x1b[2mRunning QBE...\x1b[m"
-        run "qbe #{f}.qbe > #{f}.s"
+        run "qbe #{qbe_file} > #{asm_file}"
         log "\x1b[2mCompiling assembly...\x1b[m"
-        run "cc #{f}.s lib/*.o -ggdb -o #{f}.o -lm -lbhash"
-        log "\x1b[2mRunning program:\x1b[m"
-        run "./#{f}.o #{table.concat args, " "}"
+        run "cc #{asm_file} lib/*.o -ggdb -o #{bin_file} -lm -lbhash"
 
-        \close!
+        if compile
+            print "Compiled to #{bin_file}"
+        else
+            log "\x1b[2mRunning program:\x1b[m"
+            exec_path = bin_file\match("^/") and bin_file or "./"..bin_file
+            run "#{exec_path} #{table.concat args, " "}"
+            os.execute "rm -f \"#{qbe_file}\" \"#{asm_file}\" \"#{bin_file}\""
+
+        \close! unless file == io.stdin
+
+if #files == 0
+    run_file "stdin", io.stdin, true
+
+for filename in *files
+    run_file filename, assert(io.open(filename), "Couldn't open file: #{filename}"), not compile
