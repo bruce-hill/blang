@@ -12,10 +12,10 @@ $puts("\n<-newline \x21<-bang \101<-A, backslash: \\ quote: \" done")
 $puts("Fn: $( (x:Int,y:Int)-> x + y )")
 
 toslice := "Hello world"
-char := toslice.1
-slice := toslice.[2..6]
+char := toslice[1]
+slice := toslice[2..6]
 $puts("Char: $char Slice: $slice")
-$puts("Invalid char: $(toslice.(-10)) Invalid slice: $(toslice.[-100..-5]) Backwards: $(toslice.[#toslice..1])")
+$puts("Invalid char: $(toslice.(-10)) Invalid slice: $(toslice[-100..-5]) Backwards: $(toslice[#toslice..1])")
 
 $puts("string" + "+" + "concatenation")
 

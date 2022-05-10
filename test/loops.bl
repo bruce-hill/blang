@@ -5,7 +5,7 @@ repeat
 nums := [10,20,30,40]
 tmp := 1
 while tmp <= #nums
-    $printf("%ld", nums.tmp)
+    $printf("%ld", nums[tmp])
     tmp += 1
 between $printf(", ")
 $printf("\n")
@@ -16,7 +16,7 @@ for i,num in nums
 between $printf(", ")
 $printf("\n")
 
-$printf("%ld\n", i) for i in [100..102]
+$printf("%ld\n", i) for i in 100..102
 
 def retry():
     r := $random():Int

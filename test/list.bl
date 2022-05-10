@@ -1,15 +1,15 @@
 L := [10, 20, 30, 40, 50]
-x := L.3
+x := L[3]
 $printf("%ld\n", x)
 
 L2 := [1.5, 2.5, 3.5, 4.5]
-x2 := L2.3
+x2 := L2[3]
 $printf("%f\n", x2)
 
 L3 := [[10],[20]]
-$printf("Inner: %ld\n", L3.2.1)
+$printf("Inner: %ld\n", L3[2][1])
 L4 := []:Int
 
-$puts("L: $L sliced: $(L.[2..4])")
+$puts("L: $L sliced: $(L[2..4])")
 L @= 99
 $puts("After append: $L")
