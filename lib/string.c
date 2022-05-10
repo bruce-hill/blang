@@ -9,20 +9,20 @@
 
 #define RETURN_FMT(fmt, ...) do { char *ret; asprintf(&ret, fmt, __VA_ARGS__); return intern_str_transfer(ret); } while(0)
 
-char *blang_string(char *s) { return intern_str(s); }
-char *blang_tostring_int(long i) { RETURN_FMT("%ld", i); }
-char *blang_tostring_float(double f) { RETURN_FMT("%g", f); }
-char *blang_tostring_bool(long b) { return intern_str(b ? "yes" : "no"); }
-char *blang_tostring_nil(void) { return intern_str("nil"); }
+char *bl_string(char *s) { return intern_str(s); }
+char *bl_tostring_int(long i) { RETURN_FMT("%ld", i); }
+char *bl_tostring_float(double f) { RETURN_FMT("%g", f); }
+char *bl_tostring_bool(long b) { return intern_str(b ? "yes" : "no"); }
+char *bl_tostring_nil(void) { return intern_str("nil"); }
 
-char *blang_string_append_int(char *s, long i) { RETURN_FMT("%s%ld", s, i); }
-char *blang_string_append_float(char *s, double f) { RETURN_FMT("%s%g", s, f); }
-char *blang_string_append_char(char *s, long c) { RETURN_FMT("%s%c", s, (char)c); }
-char *blang_string_append_bool(char *s, long b) { RETURN_FMT("%s%s", s, b ? "yes" : "no"); }
-char *blang_string_append_range(char *s, range_t *r) { RETURN_FMT("%s[%ld,%ld..%ld]", s, r->first, r->next, r->last); }
-char *blang_string_append_string(char *a, char *b) { RETURN_FMT("%s%s", a, b); }
+char *bl_string_append_int(char *s, long i) { RETURN_FMT("%s%ld", s, i); }
+char *bl_string_append_float(char *s, double f) { RETURN_FMT("%s%g", s, f); }
+char *bl_string_append_char(char *s, long c) { RETURN_FMT("%s%c", s, (char)c); }
+char *bl_string_append_bool(char *s, long b) { RETURN_FMT("%s%s", s, b ? "yes" : "no"); }
+char *bl_string_append_range(char *s, range_t *r) { RETURN_FMT("%s[%ld,%ld..%ld]", s, r->first, r->next, r->last); }
+char *bl_string_append_string(char *a, char *b) { RETURN_FMT("%s%s", a, b); }
 
-char *blang_string_slice(char *s, range_t *r) {
+char *bl_string_slice(char *s, range_t *r) {
     long step = r->next - r->first;
     if (step == 0) return intern_str("");
 
@@ -44,21 +44,21 @@ char *blang_string_slice(char *s, range_t *r) {
     return intern_str_transfer(buf);
 }
 
-char *blang_string_upper(char *s) {
+char *bl_string_upper(char *s) {
     char *s2 = strdup(s);
     for (int i = 0; s2[i]; i++)
         s2[i] = toupper(s2[i]);
     return intern_str_transfer(s2);
 }
 
-char *blang_string_lower(char *s) {
+char *bl_string_lower(char *s) {
     char *s2 = strdup(s);
     for (int i = 0; s2[i]; i++)
         s2[i] = tolower(s2[i]);
     return intern_str_transfer(s2);
 }
 
-long blang_string_nth_char(char *s, long n) {
+long bl_string_nth_char(char *s, long n) {
     --n;
     if (n < 0) return -1;
     long len = (long)strlen(s);

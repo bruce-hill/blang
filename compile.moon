@@ -164,21 +164,21 @@ class Environment
 
         append_reg = (reg, t)->
             if t == Types.Int
-                code ..= "#{str} =l call $blang_string_append_int(l #{str}, l #{reg})\n"
+                code ..= "#{str} =l call $bl_string_append_int(l #{str}, l #{reg})\n"
             elseif t == Types.Float
-                code ..= "#{str} =l call $blang_string_append_float(l #{str}, d #{reg})\n"
+                code ..= "#{str} =l call $bl_string_append_float(l #{str}, d #{reg})\n"
             elseif t == Types.Bool
-                code ..= "#{str} =l call $blang_string_append_bool(l #{str}, l #{reg})\n"
+                code ..= "#{str} =l call $bl_string_append_bool(l #{str}, l #{reg})\n"
             elseif t == Types.Nil
-                code ..= "#{str} =l call $blang_string_append_string(l #{str}, l #{@get_string_reg("nil", "nil")})\n"
+                code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{@get_string_reg("nil", "nil")})\n"
             elseif t == Types.Void
-                code ..= "#{str} =l call $blang_string_append_string(l #{str}, l #{@get_string_reg("Void", "void")})\n"
+                code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{@get_string_reg("Void", "void")})\n"
             elseif t == Types.String
-                code ..= "#{str} =l call $blang_string_append_string(l #{str}, l #{reg})\n"
+                code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{reg})\n"
             elseif t == Types.Range
-                code ..= "#{str} =l call $blang_string_append_range(l #{str}, :Range #{reg})\n"
+                code ..= "#{str} =l call $bl_string_append_range(l #{str}, :Range #{reg})\n"
             elseif t.__class == Types.ListType
-                code ..= "#{str} =l call $blang_string_append_string(l #{str}, l #{@get_string_reg("[","sqbracket.open")})\n"
+                code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{@get_string_reg("[","sqbracket.open")})\n"
 
                 len = @fresh_local "list.len"
                 code ..= "#{len} =l loadl #{reg}\n"
@@ -201,12 +201,12 @@ class Environment
                 code ..= "#{comma} =l csgtl #{i}, 1\n"
                 code ..= "jnz #{comma}, #{comma_label}, #{skip_comma_label}\n"
                 code ..= "#{comma_label}\n"
-                code ..= "#{str} =l call $blang_string_append_string(l #{str}, l #{@get_string_reg(", ","comma.space")})\n"
+                code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{@get_string_reg(", ","comma.space")})\n"
                 code ..= "jmp #{skip_comma_label}\n"
                 code ..= "#{skip_comma_label}\n"
                 
                 item = @fresh_local "list.item"
-                code ..= "#{item} =l call $blang_list_nth(l #{reg}, l #{i})\n"
+                code ..= "#{item} =l call $bl_list_nth(l #{reg}, l #{i})\n"
                 if t.item_type.abi_type == "d"
                     item2 = @fresh_local "list.item.float"
                     code ..= "#{item2} =d cast #{item}\n"
@@ -218,21 +218,21 @@ class Environment
 
                 code ..= "jmp #{loop_label}\n#{end_label}\n"
 
-                code ..= "#{str} =l call $blang_string_append_string(l #{str}, l #{@get_string_reg("]","sqbracket.close")})\n"
+                code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{@get_string_reg("]","sqbracket.close")})\n"
             elseif t.__class == Types.StructType
-                code ..= "#{str} =l call $blang_string_append_string(l #{str}, l #{@get_string_reg("#{t.name}{#{t.members[1].name}=")})\n"
+                code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{@get_string_reg("#{t.name}{#{t.members[1].name}=")})\n"
                 ptr_reg = @fresh_local "member.loc"
                 for i,mem in ipairs t.members
                     if i > 1
-                        code ..= "#{str} =l call $blang_string_append_string(l #{str}, l #{@get_string_reg(", #{mem.name}=")})\n"
+                        code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{@get_string_reg(", #{mem.name}=")})\n"
                     code ..= "#{ptr_reg} =l add #{reg}, #{8*(i-1)}\n"
                     member_reg = @fresh_local "member.#{mem.name}"
                     code ..= "#{member_reg} =#{mem.type.abi_type} load#{mem.type.base_type} #{ptr_reg}\n"
                     append_reg member_reg, mem.type
 
-                code ..= "#{str} =l call $blang_string_append_string(l #{str}, l #{@get_string_reg("}","closecurly")})\n"
+                code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{@get_string_reg("}","closecurly")})\n"
             elseif t.__class == Types.FnType
-                code ..= "#{str} =l call $blang_string_append_string(l #{str}, l #{@get_string_reg("#{t}")})\n"
+                code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{@get_string_reg("#{t}")})\n"
             else
                 assert_node false, val, "Unsupported concat type"
 
@@ -345,7 +345,7 @@ expr_compilers =
     String: (env)=>
         return env\get_string_reg(@content[0]),"" if #@content == 0
         str = env\fresh_local "str"
-        code = "#{str} =l call $blang_string(l #{env\get_string_reg("", "emptystr")})\n"
+        code = "#{str} =l call $bl_string(l #{env\get_string_reg("", "emptystr")})\n"
 
         stringify = (val)->
             if val.__tag == "Escape"
@@ -360,7 +360,7 @@ expr_compilers =
                     tonumber(text\sub(2), 16)
                 else
                     text\byte(1)
-                code ..= "#{str} =l call $blang_string_append_char(l #{str}, l #{c})\n"
+                code ..= "#{str} =l call $bl_string_append_char(l #{str}, l #{c})\n"
             else
                 t = get_type(val)
                 fn_name = env\get_concat_fn t
@@ -372,14 +372,14 @@ expr_compilers =
         for interp in *@content
             if interp.start > i
                 chunk = @content[0]\sub(1+(i-@content.start), interp.start-@content.start)
-                code ..= "#{str} =l call $blang_string_append_string(l #{str}, l #{env\get_string_reg chunk})\n"
+                code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{env\get_string_reg chunk})\n"
 
             stringify interp[1]
             i = interp.after
 
         if @content.after > i
             chunk = @content[0]\sub(1+(i-@content.start), @content.after-@content.start)
-            code ..= "#{str} =l call $blang_string_append_string(l #{str}, l #{env\get_string_reg chunk})\n"
+            code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{env\get_string_reg chunk})\n"
 
         return str,code
 
@@ -429,7 +429,7 @@ expr_compilers =
             code = list_code..index_code
             if index_type == Types.Int
                 item = env\fresh_local "list.item"
-                code ..= "#{item} =l call $blang_list_nth(l #{list_reg}, l #{index_reg})\n"
+                code ..= "#{item} =l call $bl_list_nth(l #{list_reg}, l #{index_reg})\n"
                 if t.item_type.abi_type == "d"
                     item2 = env\fresh_local "list.item.float"
                     code ..= "#{item2} =d cast #{item}\n"
@@ -437,7 +437,7 @@ expr_compilers =
                 return item,code
             elseif index_type == Types.Range
                 slice = env\fresh_local "slice"
-                code ..= "#{slice} =l call $blang_list_slice(l #{list_reg}, l #{index_reg})\n"
+                code ..= "#{slice} =l call $bl_list_slice(l #{list_reg}, l #{index_reg})\n"
                 return slice,code
             else
                 assert_node false, @[2], "Index is #{index_type} instead of Int or Range"
@@ -471,14 +471,14 @@ expr_compilers =
             code ..= index_code
             if index_type == Types.Int -- Get nth character as an Int
                 char = env\fresh_local "char"
-                code ..= "#{char} =l call $blang_string_nth_char(l #{str}, l #{index_reg})\n"
+                code ..= "#{char} =l call $bl_string_nth_char(l #{str}, l #{index_reg})\n"
                 -- code ..= "#{char} =l add #{str}, #{index_reg}\n"
                 -- code ..= "#{char} =l sub #{char}, 1\n"
                 -- code ..= "#{char} =l loadub #{char}\n"
                 return char, code
             elseif index_type == Types.Range -- Get a slice of the string
                 slice = env\fresh_local "slice"
-                code ..= "#{slice} =l call $blang_string_slice(l #{str}, l #{index_reg})\n"
+                code ..= "#{slice} =l call $bl_string_slice(l #{str}, l #{index_reg})\n"
                 return slice, code
             else
                 assert_node false, @[2], "Index is #{index_type} instead of Int or Range"
@@ -487,7 +487,7 @@ expr_compilers =
     List: (env)=>
         if #@ == 0
             list = env\fresh_local "list.empty"
-            code = "#{list} =l call $blang_empty_list()\n"
+            code = "#{list} =l call $bl_empty_list()\n"
             return list, code
 
         buf = env\fresh_local "list.buf"
@@ -504,7 +504,7 @@ expr_compilers =
             code ..= "#{ptr} =l add #{buf}, #{8*(i-1)}\n"
             code ..= "storel #{val_reg}, #{ptr}\n"
         list = env\fresh_local "list"
-        code ..= "#{list} =l call $blang_list_new(l 0, l 0, l #{#@}, l #{buf})\n"
+        code ..= "#{list} =l call $bl_list_new(l 0, l 0, l #{#@}, l #{buf})\n"
         return list, code
     Range: (env)=>
         range = env\fresh_local "range"
@@ -745,7 +745,7 @@ stmt_compilers =
                     tmp = env\fresh_local "interp.int"
                     code ..= "#{tmp} =l cast #{rhs_reg}\n"
                     rhs_reg = tmp
-                code ..= "#{appended} =l call $blang_list_append(l #{lhs_reg}, l #{rhs_reg})\n"
+                code ..= "#{appended} =l call $bl_list_append(l #{lhs_reg}, l #{rhs_reg})\n"
                 return rhs_type,appended,code
             return store_to @[1], make_rhs, env
         else
@@ -916,10 +916,10 @@ stmt_compilers =
             else
                 if list_type.item_type.base_type == "d"
                     tmp = env\fresh_local "item.int"
-                    code ..= "#{tmp} =l call $blang_list_nth(l #{list_reg}, l #{i})\n"
+                    code ..= "#{tmp} =l call $bl_list_nth(l #{list_reg}, l #{i})\n"
                     code ..= "#{var_reg} =#{list_type.item_type.abi_type} cast #{tmp}\n"
                 else
-                    code ..= "#{var_reg} =#{list_type.item_type.abi_type} call $blang_list_nth(l #{list_reg}, l #{i})\n"
+                    code ..= "#{var_reg} =#{list_type.item_type.abi_type} call $bl_list_nth(l #{list_reg}, l #{i})\n"
         code ..= "#{env\compile_stmt @body[1]}"
         unless has_jump\match(code)
             code ..= "jmp #{noskip_label}\n"
@@ -961,7 +961,7 @@ store_to = (val, env, ...)=>
                 -- else
                 --     get_type(val), env\to_reg(val)
                 -- code = list_code..index_code..val_code
-                -- code ..= "call $blang_list_set_nth#{t.item_type.base_type}(l #{list_reg}, l #{index_reg}, #{t.item_type.base_type} #{val_reg})\n"
+                -- code ..= "call $bl_list_set_nth#{t.item_type.base_type}(l #{list_reg}, l #{index_reg}, #{t.item_type.base_type} #{val_reg})\n"
                 -- return code
             elseif t.__class == Types.StructType
                 assert_node @[2].__tag == "Var", @[2], "Structs can only be indexed by member"
