@@ -34,7 +34,8 @@ Nil:: \b"nil"\b
 String:: (
   '"""' @curdent=\C $ \n @strdent=\C strdent @content=..%(@(Newline::\n strdent) / \n$ / @(Escape/Interp)) (\n curdent '"""')
   / (ParseError:: '"""' .. % \n $$ @message=(=> "Failed to find closing triple quote with the right indentation"))
-  / `" @content=..%(@(Escape/Interp)) `")
+  / `" @content=..%(@(Escape/Interp)) `"
+  / (ParseError:: `"..$ @message=(=> "Missing closing quote")))
 List:: `[__*extended-expr %(__`,__) __ [`,__] `] [_`:_@type=type] / `[__`:__@type=@(ListType::type)__`]
 Interp: `$ (Var/`(__ extended-expr __`))
 Escape:: `\ (`x 2 hex / `a,b,t,n,r,v / 3 `0-8 / .)
