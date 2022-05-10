@@ -700,6 +700,16 @@ expr_compilers =
         code ..= "#{ret_reg} =#{ret_type.abi_type} call #{fn_reg}(#{concat args, ", "})\n"
         return ret_reg, code
 
+    MethodCall: (env, skip_ret=false)=>
+        arg_nodes = {@self[1]}
+        for a in *@args
+            table.insert arg_nodes, a
+        copy = {k,v for k,v in pairs @}
+        copy.args = arg_nodes
+        copy.__tag = "FnCall"
+        reg,code = expr_compilers.FnCall(copy, env, skip_ret)
+        return reg,code
+
     Lambda: (env)=>
         assert_node @__register, @, "Unreferenceable lambda"
         return @__register,""
@@ -785,6 +795,10 @@ stmt_compilers =
     Pass: (env)=> ""
     TypeDeclaration: (env)=> ""
     FnCall: (env)=>
+        _, code = env\to_reg @, true
+        code = code\gsub("[^\n]- (call [^\n]*\n)$", "%1")
+        return code
+    MethodCall: (env)=>
         _, code = env\to_reg @, true
         code = code\gsub("[^\n]- (call [^\n]*\n)$", "%1")
         return code

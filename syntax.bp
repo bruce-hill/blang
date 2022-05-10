@@ -3,19 +3,21 @@ prog: ^^__Block__ [ParseError:: +(./\n) @message=(""=>"Invalid code")]$$
 term: (
     Bool / Nil / String / Float / Int / unaryOp / Global !(_`(,{) / Var !(_`(,{) / Struct / FnCall / Lambda / Range / List / `(__extended-expr__`)
 )
-IndexedTerm:: !`0-9 (IndexedTerm / term) `. !`. (Int / term)
-expr: Mod / Add / Sub / Mul / Div / Pow / IndexedTerm / term
+IndexedTerm:: !`0-9 (MethodCall / IndexedTerm / term) `. !`. (Int / term)
+MethodCall:: !`0-9 @self=@(MethodCall / IndexedTerm / term) _ `| _ (@fn=Var _ `( __ @args=(*expr % (__`,__)) __ [`,__] `) / (ParseError:: => "Not a valid method call")) [_`:_@type=type]
+maybe-index-term: MethodCall / IndexedTerm / term
+expr: Mod / Add / Sub / Mul / Div / Pow / MethodCall / IndexedTerm / term
 extended-expr: TernaryOp / And / Or / Xor / comparison / expr
 unaryOp: Negative / Len / Not
-Negative:: `- !`0-9,-,. term
-Len:: `# term
+Negative:: `- !`0-9,-,. maybe-index-term
+Len:: `# maybe-index-term
 Not:: \b"not"\b _ (comparison / expr)
-Mod:: (Add / Sub / Mul / Div / Pow / term) _ \b"mod"\b _ (Add / Sub / Mul / Div / Pow / term)
-Add:: (Add / Sub / Mul / Div / Pow / term) _ `+ _ (Mul / Div / Pow / term)
-Sub:: (Add / Sub / Mul / Div / Pow / term) _ `- _ (Mul / Div / Pow / term)
-Mul:: (Mul / Div / Pow / term) _ `* _ (Pow / term)
-Div:: (Mul / Div / Pow / term) _ `/ _ (Pow / term)
-Pow:: @base=term _ `^ _ @exponent=term
+Mod:: (Add / Sub / Mul / Div / Pow / maybe-index-term) _ \b"mod"\b _ (Add / Sub / Mul / Div / Pow / maybe-index-term)
+Add:: (Add / Sub / Mul / Div / Pow / maybe-index-term) _ `+ _ (Mul / Div / Pow / maybe-index-term)
+Sub:: (Add / Sub / Mul / Div / Pow / maybe-index-term) _ `- _ (Mul / Div / Pow / maybe-index-term)
+Mul:: (Mul / Div / Pow / maybe-index-term) _ `* _ (Pow / maybe-index-term)
+Div:: (Mul / Div / Pow / maybe-index-term) _ `/ _ (Pow / maybe-index-term)
+Pow:: @base=maybe-index-term _ `^ _ @exponent=maybe-index-term
 And:: 2+(comparison / expr) % (__\b"and"\b__)
 Or:: 2+(comparison / expr) % (__\b"or"\b__)
 Xor:: 2+(comparison / expr) % (__\b"xor"\b__)
@@ -26,7 +28,7 @@ GreaterEq:: expr _ ">=" _ expr
 Equal:: expr _ "==" _ expr
 NotEqual:: expr _ "!=" _ expr
 comparison: Equal / NotEqual / LessEq / Less / GreaterEq / Greater
-TernaryOp:: @condition=(And/Or/Xor/comparison/expr) _ `? _ @ifTrue=required-extended-expr _ `| _ @ifFalse=required-extended-expr
+TernaryOp:: @condition=(And/Or/Xor/comparison/expr) _ `? _ @ifTrue=required-extended-expr _ `; _ @ifFalse=required-extended-expr
 Bool:: \b("yes"/"no")\b
 Nil:: \b"nil"\b
 String:: `" @content=..%(@(Escape / `$ (Var/`(__ extended-expr __`)))) `"

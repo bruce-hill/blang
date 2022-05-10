@@ -1,0 +1,22 @@
+
+def sqr(self:Float):Float
+    return self*self
+
+x := 5.
+s := x|sqr()
+$puts("$x|sqr() = $s")
+
+Vec:::Vec{x:Float,y:Float}
+
+def len(v:Vec):Float
+    l := $sqrt(v.x*v.x + v.y*v.y):Float
+    return l
+
+v := Vec{1., 1.}
+$puts("$v|len() = $(v|len())")
+$puts("$v|len()|sqr() = $(v | len() | sqr())")
+
+def add(v:Vec, other:Vec):Vec
+    return Vec{v.x + other.x, v.y + other.y}
+
+$puts("$v|add(Vec{10.,10.}) = $(v | add(Vec{10., 10.}))")
