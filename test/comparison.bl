@@ -1,0 +1,9 @@
+if 1 < 5 and 1 == 1
+    $puts("Int comparison working")
+else
+    $puts("Int comparison broken")
+
+if "a" < "bcde" and "a" == "a"
+    $puts("String comparison working")
+else
+    $puts("String comparison broken")
