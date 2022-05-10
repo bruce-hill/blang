@@ -1,13 +1,20 @@
 
-
 for x in [1,2,3]
     $puts("$x")
     y := x + 1
 between
     $puts("$x $y")
+    stop x
 
 while yes
     z := 10
 between
     $puts("$z")
-    stop
+    stop while
+
+repeat
+    $puts("repeat")
+    w := 100
+between
+    $puts("$w")
+    stop repeat

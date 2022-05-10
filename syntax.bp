@@ -45,13 +45,13 @@ Block:: @curdent=\C +(
   / statement
   / !$ (ParseError:: @dent=\C ..$ *(\n dent (` /\t)..$) @message=(=>"Invalid statement"))) % (nl curdent !(` /\t))
 statement: (
-    Declaration / FnDecl / If / When / For / While / TypeDeclaration
+    Declaration / FnDecl / If / When / For / While / Repeat / TypeDeclaration
   / (If::PostfixIf) / (For::PostfixFor) / (While::PostfixWhile)
   / Return / Skip / Stop
   / line-statement
   ) _ [comment]
-Skip:: \b"skip"\b [_ @target=(\b"for"\b / \b"while"\b / Var)]
-Stop:: \b"stop"\b [_ @target=(\b"for"\b / \b"while"\b / Var)]
+Skip:: \b"skip"\b [_ @target=(\b"for"\b / \b"while"\b / \b"repeat"\b / Var)]
+Stop:: \b"stop"\b [_ @target=(\b"for"\b / \b"while"\b / \b"repeat"\b / Var)]
 line-statement: (
     (Pass:: "pass" _ [comment])
   / Assignment / AddUpdate / SubUpdate / MulUpdate / DivUpdate / AndUpdate / OrUpdate / XorUpdate / AppendUpdate
@@ -89,7 +89,7 @@ type: (
 If:: \b"if"\b @curdent=\C _ (
     @(@condition=required-extended-expr [comment] nl curdent +(` /\t) @body=Block)
     *@(nl curdent \b"elseif"\b _ @condition=required-extended-expr [comment] nl curdent +(` /\t) @body=Block)
-    [nl curdent \b"else"\b [comment] nl curdent +(` /\t) @elseBody=Block]
+    [nl curdent \b"else"\b [comment] @elseBody=maybeInlineBlock]
 )
 PostfixIf: (@(@body=(Block:: @(Return / Skip / Stop / line-statement)) _
   (\b"if"\b _ @condition=required-extended-expr
@@ -101,7 +101,7 @@ PostfixWhile: (@body=(Block:: @line-statement) _
 When:: ( \b"when"\b @curdent=\C _
   @what=required-extended-expr _ [[comment] nl curdent]
   @branches=+@("is"\b _ @cases=+required-extended-expr%(_`,_) _ [comment] nl curdent +(` /\t) @body=Block)%(nl curdent)
-  [nl curdent "else" _ [comment] nl curdent +(` /\t) @elseBody=Block]
+  [nl curdent "else" _ [comment] @elseBody=maybeInlineBlock]
 )
 For:: (
   \b"for"\b @curdent=\C _ [@index=Var_`,_] @var=Var _ "in" _ @iterable=required-extended-expr _ [comment]
@@ -113,15 +113,14 @@ While:: (
   nl curdent +(` /\t) @body=Block
   [between]
 )
-between: nl curdent \b"between"\b _ [comment] @between=(
-  nl curdent +(` /\t) Block
-  / @(Block:: line-statement)
-  / (ParseError:: ..$ => "Invalid 'between' body"))
+Repeat:: \b"repeat"\b @curdent=\C _ [comment] @body=maybeInlineBlock [between]
+maybeInlineBlock: nl curdent +(` /\t) Block / @(Block:: line-statement)
+between: nl curdent \b"between"\b _ [comment] @between=(maybeInlineBlock / (ParseError:: ..$ => "Invalid 'between' body"))
 Return:: \b"return"\b _ [extended-expr]
 Range:: `[__@first=(Int/!Float extended-expr) __ [`,__@next=(Int/ !Float required-extended-expr)]__".."__@last=(Int/!Float required-extended-expr)__`] # [0,2..4] [x..y] [1..#list]
 comment: "//" *.
 
-keyword: "nil"/"yes"/"no"/"for"/"while"/"between"/"if"/"elseif"/"else"/"with"/"and"/"or"/"xor"/"pass"/"not"/"skip"/"stop"/"unless"
+keyword: "nil"/"yes"/"no"/"for"/"while"/"between"/"if"/"elseif"/"else"/"with"/"and"/"or"/"xor"/"pass"/"not"/"skip"/"stop"/"unless"/"repeat"
 hex: `0-9,a-f,A-F
 nl: +\n % (*(` /\t) [comment])
 __: *(` /\t/\n/\r/comment)

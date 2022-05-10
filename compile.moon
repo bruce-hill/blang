@@ -45,7 +45,7 @@ get_function_reg = (scope, name, arg_signature)->
             if scope.var and scope.var[0] == name and iter_type.__class == Types.ListType and iter_type.item_type.__class == Types.FnType
                 return "%"..scope.var[0], iter_type.item_type
 
-    if scope.__parent and (scope.__parent.__tag == "For" or scope.__parent.__tag == "While")
+    if scope.__parent and (scope.__parent.__tag == "For" or scope.__parent.__tag == "While" or scope.__parent.__tag == "Repeat")
         loop = scope.__parent
         if scope == loop.between[1]
             r = get_function_reg(loop.body[1], name, arg_signature)
@@ -326,7 +326,7 @@ class Environment
             loop = block and block.__parent
             while loop and not loop.__tag
                 loop = loop.__parent
-            if loop and (loop.__tag == "For" or loop.__tag == "While")
+            if loop and (loop.__tag == "For" or loop.__tag == "While" or loop.__tag == "Repeat")
                 if block == loop.body[1] and loop.between
                     hook_up_refs vardec.var[1], loop.between[1]
 
@@ -846,6 +846,37 @@ stmt_compilers =
             code ..= env\compile_stmt @elseBody
             unless has_jump\match(code)
                 code ..= "jmp #{end_label}\n"
+        code ..= "#{end_label}\n"
+        return code
+    Repeat: (env)=>
+        -- Rough breakdown:
+        -- jmp @repeat
+        -- @repeat
+        -- // body code
+        -- jmp @repeat.between
+        -- // between code
+        -- jmp @repeat
+        -- @repeat.end
+        repeat_label = env\fresh_label "repeat"
+        between_label = env\fresh_label "repeat.between"
+        end_label = env\fresh_label "repeat.end"
+
+        for skip in coroutine.wrap(-> each_tag(@, "Skip"))
+            if not skip.target or skip.target[0] == "repeat"
+                skip.jump_label = repeat_label
+
+        for stop in coroutine.wrap(-> each_tag(@, "Stop"))
+            if not stop.target or stop.target[0] == "repeat"
+                stop.jump_label = end_label
+
+        code = "jmp #{repeat_label}\n#{repeat_label}\n"
+        code ..= env\compile_stmt @body[1]
+        if @between
+            unless has_jump\match(code)
+                code ..= "jmp #{between_label}\n"
+            code ..= "#{between_label}\n#{env\compile_stmt @between[1]}"
+        unless has_jump\match(code)
+            code ..= "jmp #{repeat_label}\n"
         code ..= "#{end_label}\n"
         return code
     While: (env)=>

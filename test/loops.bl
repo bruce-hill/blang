@@ -1,4 +1,7 @@
 
+repeat
+    stop
+
 nums := [10,20,30,40]
 tmp := 1
 while tmp <= #nums

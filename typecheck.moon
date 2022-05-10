@@ -125,7 +125,7 @@ find_declared_type = (scope, name, arg_signature=nil)->
                 assert_node iter_type.__class == ListType or iter_type.__class == Range, scope.iterable[1], "Not an iterable"
                 return iter_type.item_type
     
-    if scope.__parent and (scope.__parent.__tag == "For" or scope.__parent.__tag == "While")
+    if scope.__parent and (scope.__parent.__tag == "For" or scope.__parent.__tag == "While" or scope.__parent.__tag == "Repeat")
         loop = scope.__parent
         if scope == loop.between
             t = find_declared_type(loop.body[1], name, arg_signature)
