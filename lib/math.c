@@ -1,17 +1,18 @@
 #include <math.h>
+#include <stdint.h>
 
 double sane_fmod(double x, double y) {
     double ret = fmod(x, y);
     return ret < 0 ? ret + y : ret;
 }
 
-long sane_lmod(long x, long y) {
-    long ret = x % y;
+int64_t sane_lmod(int64_t x, int64_t y) {
+    int64_t ret = x % y;
     return ret < 0 ? ret + y : ret;
 }
 
-long ipow(int base, int exp) {
-    long result = 1;
+int64_t ipow(int base, int exp) {
+    int64_t result = 1;
     while (exp != 0) {
         if ((exp & 1) == 1)
             result *= base;

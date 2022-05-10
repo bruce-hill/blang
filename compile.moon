@@ -530,27 +530,34 @@ expr_compilers =
         return list, code
     Range: (env)=>
         range = env\fresh_local "range"
-        code = ""
-        first_reg = if @first
-            reg,first_code = env\to_reg @first[1]
-            code ..= first_code
-            reg
-        else
-            "-999999999999999999"
-
-        last_reg = if @last
-            reg,last_code = env\to_reg @last[1]
-            code ..= last_code
-            reg
-        else
-            "999999999999999999"
-
-        if @next
+        local code
+        if @first and @next and @last
+            first_reg,code = env\to_reg @first[1]
             next_reg,next_code = env\to_reg @next[1]
             code ..= next_code
-            code ..= "#{range} =l call $range_new3(l #{first_reg}, l #{next_reg}, l #{last_reg})\n"
+            last_reg,last_code = env\to_reg @last[1]
+            code ..= last_code
+            code ..= "#{range} =l call $range_new(l #{first_reg}, l #{next_reg}, l #{last_reg})\n"
+        elseif @first and @next and not @last
+            first_reg,code = env\to_reg @first[1]
+            next_reg,next_code = env\to_reg @next[1]
+            code ..= next_code
+            code ..= "#{range} =l call $range_new_first_next(l #{first_reg}, l #{next_reg})\n"
+        elseif @first and not @next and @last
+            first_reg,code = env\to_reg @first[1]
+            last_reg,last_code = env\to_reg @last[1]
+            code ..= last_code
+            code ..= "#{range} =l call $range_new_first_last(l #{first_reg}, l #{last_reg})\n"
+        elseif @first and not @next and not @last
+            first_reg,code = env\to_reg @first[1]
+            code ..= "#{range} =l call $range_new_first_last(l #{first_reg}, l 999999999999999999)\n"
+        elseif not @first and not @next and @last
+            last_reg,code = env\to_reg @last[1]
+            code = "#{range} =l call $range_new_first_last(l -999999999999999999, l #{last_reg})\n"
+        elseif not @first and not @next and not @last
+            code = "#{range} =l call $range_new_first_last(l -999999999999999999, l 999999999999999999)\n"
         else
-            code ..= "#{range} =l call $range_new2(l #{first_reg}, l #{last_reg})\n"
+            assert_node false, @, "WTF"
         return range, code
     Or: (env)=>
         true_label = env\fresh_label "or.true"
