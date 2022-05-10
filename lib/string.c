@@ -6,6 +6,7 @@
 #include <sys/param.h>
 
 #include "types.h"
+#include "util.h"
 
 #define RETURN_FMT(fmt, ...) do { char *ret; asprintf(&ret, fmt, __VA_ARGS__); return intern_str_transfer(ret); } while(0)
 
@@ -38,7 +39,7 @@ char *bl_string_slice(char *s, range_t *r) {
         first = MIN(first, len-1);
         slice_len = MAX(1 + (first - last), len - last);
     }
-    char *buf = calloc(slice_len+1, 1);
+    char *buf = calloc2(slice_len+1, 1);
     for (long i = first, b_i = 0; step > 0 ? i <= last : i >= last; i += step)
         buf[b_i++] = s[i];
     return intern_str_transfer(buf);
@@ -64,4 +65,16 @@ long bl_string_nth_char(char *s, long n) {
     long len = (long)strlen(s);
     if (n > len) return -1;
     return s[n];
+}
+
+char *bl_string_repeat(char *s, long count) {
+    if (count <= 0) return intern_str("");
+    size_t len = strlen(s);
+    char *buf = calloc2(len*count + 1, 1);
+    char *p = buf;
+    for (long i = 0; i < count; i++) {
+        memcpy(p, s, len);
+        p += len;
+    }
+    return intern_str_transfer(s);
 }

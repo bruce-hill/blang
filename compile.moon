@@ -58,7 +58,10 @@ infixop = (env, op)=>
         assert_node rhs_type == t, rhs, "Expected type: #{t} but got type #{rhs_type}"
         rhs_reg, rhs_code = env\to_reg rhs
         code ..= rhs_code
-        code ..= "#{ret_reg} =#{t.abi_type} #{op} #{lhs_reg}, #{rhs_reg}\n"
+        if type(op) == 'string'
+            code ..= "#{ret_reg} =#{t.abi_type} #{op} #{lhs_reg}, #{rhs_reg}\n"
+        else
+            code ..= op(ret_reg, lhs_reg, rhs_reg)
         lhs_reg = ret_reg
     return ret_reg, code
 
@@ -386,7 +389,7 @@ expr_compilers =
     Negative: (env)=>
         t = get_type @[1]
         if t == Types.Int or t == Types.Float
-            reg,code = to_reg @[1], env
+            reg,code = env\to_reg @[1]
             ret = env\fresh_local "neg"
             return ret, "#{code}#{ret} =#{t.abi_type} neg #{reg}\n"
         elseif t == Types.Range
@@ -551,11 +554,11 @@ expr_compilers =
         if t == Types.Int or t == Types.Float
             return infixop @, env, "add"
         elseif t == Types.String
-            -- Concat
-            error "Not impl"
+            return infixop @, env, (ret,lhs,rhs)->
+                "#{ret} =l call $bl_string_append_string(l #{lhs}, l #{rhs})\n"
         elseif t.__class == Types.List
-            -- Concat
-            error "Not impl"
+            return infixop @, env, (ret,lhs,rhs)->
+                "#{ret} =l call $bl_list_concat(l #{lhs}, l #{rhs})\n"
         elseif t.__class == Types.Struct
             -- Pairwise
             error "Not impl"
@@ -591,7 +594,15 @@ expr_compilers =
     Mod: (env)=>
         t = get_type(@)
         if t == Types.Int or t == Types.Float
-            return infixop @, env, "rem"
+            lhs_reg,code = env\to_reg @[1]
+            rhs_reg,rhs_code = env\to_reg @[2]
+            code ..= rhs_code
+            ret = env\fresh_local "remainder"
+            if t == Types.Float
+                code ..= "#{ret} =d call $sane_fmod(d #{lhs_reg}, d #{rhs_reg})\n"
+            else
+                code ..= "#{ret} =l call $sane_lmod(l #{lhs_reg}, l #{rhs_reg})\n"
+            return ret, code
         else
             assert_node false, @, "Modulus is not supported for #{t}"
     Less: (env)=>
@@ -638,11 +649,14 @@ expr_compilers =
         code ..= "#{end_label}\n"
         return ret_reg, code
     Pow: (env)=>
-        -- TODO: auto-cast ints to doubles
+        t = get_type @base[1]
         base_reg, base_code = env\to_reg @base
         exponent_reg, exponent_code = env\to_reg @exponent
         ret_reg = env\fresh_local "result"
-        return ret_reg, "#{base_code}#{exponent_code}#{ret_reg} =d call $pow(d #{base_reg}, d #{exponent_reg})\n"
+        if t == Types.Int
+            return ret_reg, "#{base_code}#{exponent_code}#{ret_reg} =l call $ipow(l #{base_reg}, l #{exponent_reg})\n"
+        else
+            return ret_reg, "#{base_code}#{exponent_code}#{ret_reg} =d call $pow(d #{base_reg}, d #{exponent_reg})\n"
 
     FnCall: (env, skip_ret=false)=>
         code = ""

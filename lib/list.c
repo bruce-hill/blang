@@ -73,6 +73,10 @@ list_t *bl_list_new(list_t *before, list_t *after, long len, long *items) {
     return list;
 }
 
+list_t *bl_list_concat(list_t *a, list_t *b) {
+    return bl_list_new(a, b, 0, NULL);
+}
+
 list_t *bl_list_append(list_t *list, long item) {
     return bl_list_new(list, NULL, list->len+1, &item);
 }

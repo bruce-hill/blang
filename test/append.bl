@@ -1,0 +1,17 @@
+
+def make_list(n:Int):[Int]
+    tmp := [:Int]
+    for i in [1..n]
+        tmp @= i
+    return tmp
+
+$puts("$(make_list(100))")
+
+def make_string(n:Int):String
+    tmp := ""
+    for i in [1..n]
+        tmp @= i
+    between tmp @= ","
+    return tmp
+
+$puts(make_string(100))

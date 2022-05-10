@@ -1,0 +1,12 @@
+a := 3
+b := 2
+x := 3.5
+y := 2.5
+$puts("Addition: $(a+b) $(x+y)")
+$puts("Subtraction: $(a-b) $(x-y)")
+$puts("Multiplication: $(a*b) $(x*y)")
+$puts("Division: $(a/b) $(x/y)")
+$puts("Modulus: $(a mod b) $(x mod 1.)")
+$puts("Negative num modulus: $(-a mod b) $(-x mod 1.)")
+$puts("Negative modulus: $(a mod -b) $(x mod -1.)")
+$puts("Exponentiation: $(a^b) $(x^y)")

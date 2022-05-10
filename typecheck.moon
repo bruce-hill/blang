@@ -165,6 +165,60 @@ parse_type = memoize (type_node)->
         else
             error "Not a type node: #{viz type_node}"
 
+get_op_type = (t1, op, t2)->
+    switch op
+        when "Add", "Sub"
+            if t1.__class == StructType and t2.__class == StructType and t1 == t2
+                return nil unless t1 == t2
+                return t1
+            elseif t1.__class == StructType
+                for mem in *t1.members
+                    mt = get_op_type(mem.type, op, t2)
+                    return nil unless mt and mt == t1
+                return t1
+            elseif t2.__class == StructType
+                for mem in *t2.members
+                    mt = get_op_type(t1, op, mem.type)
+                    return nil unless mt and mt == t2
+                return t2
+            elseif op == "Add" and t1 == String and t2 == String
+                return String
+            elseif t1 == Int and t2 == Int
+                return Int
+            elseif t1 == Float and t2 == Float
+                return Float
+            elseif t1.__class == ListType and t1 == t2
+                return t1
+            else
+                return nil
+        when "Mul","Div","Mod"
+            if op == "Mul" and t1.__class == StructType and t2.__class == StructType and t1 == t2
+                memtype = t1.members[1].type
+                for m in *t1.members
+                    return nil unless m == memtype and m == Int or m == Float
+                return memtype
+            elseif op == "Mul" and t1.__class == StructType
+                for mem in *t1.members
+                    mt = get_op_type(mem.type, op, t2)
+                    return nil unless mt and mt == t1
+                return t1
+            elseif t2.__class == StructType
+                for mem in *t2.members
+                    mt = get_op_type(t1, op, mem.type)
+                    return nil unless mt and mt == t2
+                return t2
+            elseif op == "Mul" and (t1 == String and t2 == Int) or (t1 == Int and t2 == String)
+                return String
+            elseif t1 == Int and t2 == Int
+                return Int
+            elseif t1 == Float and t2 == Float
+                return Float
+            elseif t1.__class == ListType and t1 == t2
+                return t1
+            else
+                return nil
+                    
+
 get_type = memoize (node)->
     switch node.__tag
         when "Int" then return Int
@@ -223,8 +277,8 @@ get_type = memoize (node)->
         when "Add","Sub","Mul","Div","Mod"
             lhs_type = get_type node[1]
             rhs_type = get_type node[2]
-            assert_node lhs_type == rhs_type and (lhs_type == Int or lhs_type == Float), node,
-                "Invalid #{node.__tag} types: #{lhs_type} and #{rhs_type}"
+            ret_type = get_op_type(lhs_type, node.__tag, rhs_type)
+            assert_node ret_type, node, "Invalid #{node.__tag} types: #{lhs_type} and #{rhs_type}"
             return lhs_type
         when "Negative"
             t = get_type node[1]
@@ -240,10 +294,10 @@ get_type = memoize (node)->
             return Bool
         when "Pow"
             base_type = get_type node.base[1]
-            assert_node base_type == Float, node.base[1], "Expected float, not #{base_type}"
+            assert_node base_type == Float or base_type == Int, node.base[1], "Expected Float or Int, not #{base_type}"
             exponent_type = get_type node.exponent[1]
-            assert_node exponent_type == Float, node.exponent[1], "Expected float, not #{exponent_type}"
-            return Float
+            assert_node exponent_type == Float or base_type == Int, node.exponent[1], "Expected Float or Int, not #{exponent_type}"
+            return base_type
         when "Lambda","FnDecl"
             decl_ret_type = node.return and parse_type(node.return[1])
             ret_type = if node.body[1].__tag != "Block"
