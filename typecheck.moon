@@ -200,7 +200,7 @@ get_op_type = (t1, op, t2)=>
             elseif t1.__class == ListType and t1 == t2
                 return t1
 
-    overload_names = Add:"add", Sub:"subtract", Mul:"multiply", Div:"divide", Mod:"modulus", Pow:"raise"
+    overload_names = Add:"add", Sub:"subtract", Mul:"multiply", Div:"divide", Mod:"modulus", Pow:"raise", Append:"append"
     return unless overload_names[op]
     overload = find_declared_type @, overload_names[op], "(#{t1},#{t2})"
     return overload.return_type if overload
@@ -263,6 +263,16 @@ get_type = memoize (node)->
         when "Add","Sub","Mul","Div","Mod"
             lhs_type = get_type node[1]
             rhs_type = get_type node[2]
+            ret_type = get_op_type(node, lhs_type, node.__tag, rhs_type)
+            assert_node ret_type, node, "Invalid #{node.__tag} types: #{lhs_type} and #{rhs_type}"
+            return ret_type
+        when "Append"
+            lhs_type = get_type node[1]
+            if lhs_type == String
+                return String
+            rhs_type = get_type node[2]
+            if lhs_type.__class == ListType and rhs_type == lhs_type.item_type
+                return lhs_type
             ret_type = get_op_type(node, lhs_type, node.__tag, rhs_type)
             assert_node ret_type, node, "Invalid #{node.__tag} types: #{lhs_type} and #{rhs_type}"
             return ret_type
@@ -343,7 +353,7 @@ get_type = memoize (node)->
         when "Stop","Skip"
             return Void
         else
-            assert_node not node.__tag, node, "Unknown node tag: #{node.__tag}"
+            assert_node not node.__tag, node, "Cannot infer type for: #{node.__tag}"
     if #node > 0
         error "WTF: #{viz node}"
         return get_type(node[#node])

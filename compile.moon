@@ -268,7 +268,7 @@ class Environment
     to_reg: (node, ...)=>
         if not node.__tag
             return @to_reg node[1], ...
-        assert_node expr_compilers[node.__tag], node, "Expression compiler implemented for #{node.__tag}"
+        assert_node expr_compilers[node.__tag], node, "Expression compiler not implemented for #{node.__tag}"
         return expr_compilers[node.__tag](node, @, ...)
 
     compile_stmt: (node)=>
@@ -669,6 +669,28 @@ expr_compilers =
             return ret_reg, "#{base_code}#{exponent_code}#{ret_reg} =d call $pow(d #{base_reg}, d #{exponent_reg})\n"
         else
             return overload_infix @, env, "raise", "raised"
+    Append: (env)=>
+        lhs_type = get_type @[1]
+        rhs_type = get_type @[2]
+        lhs_reg,code = env\to_reg @[1]
+        rhs_reg,rhs_code = env\to_reg @[2]
+        code ..= rhs_code
+        if lhs_type == Types.String
+            fn_name = env\get_concat_fn rhs_type
+            appended = env\fresh_local "str.appended"
+            code ..= "#{appended} =l call #{fn_name}(l #{lhs_reg}, #{rhs_type.base_type} #{rhs_reg})\n"
+            return appended,code
+        elseif lhs_type.__class == Types.ListType
+            fn_name = env\get_concat_fn rhs_type
+            appended = env\fresh_local "str.appended"
+            if rhs_type.base_type == "d"
+                tmp = env\fresh_local "appending.int"
+                code ..= "#{tmp} =l cast #{rhs_reg}\n"
+                rhs_reg = tmp
+            code ..= "#{appended} =l call $bl_list_append(l #{lhs_reg}, l #{rhs_reg})\n"
+            return appended,code
+        else
+            return overload_infix @, env, "append", "appended"
     Less: (env)=>
         t = get_type(@[1])
         if t == Types.Int or t == Types.String
@@ -820,7 +842,7 @@ stmt_compilers =
                 appended = env\fresh_local "str.appended"
                 rhs_reg,code = env\to_reg @[2]
                 if rhs_type.base_type == "d"
-                    tmp = env\fresh_local "interp.int"
+                    tmp = env\fresh_local "appending.int"
                     code ..= "#{tmp} =l cast #{rhs_reg}\n"
                     rhs_reg = tmp
                 code ..= "#{appended} =l call $bl_list_append(l #{lhs_reg}, l #{rhs_reg})\n"

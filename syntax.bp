@@ -6,7 +6,7 @@ term: (
 IndexedTerm:: !`0-9 (MethodCall / IndexedTerm / term) (`. FieldName / `[ __ required-extended-expr __ `] / (ParseError:: `[ @message=(=> "Unclosed bracket")))
 MethodCall:: !`0-9 @self=@(MethodCall / IndexedTerm / term) _ `| _ (@fn=Var _ @args=[`( __ *expr % (__`,__) __ [`,__] `)] / (ParseError:: => "Not a valid method call")) [_`:_@type=type]
 maybe-index-term: MethodCall / IndexedTerm / term
-expr: Range / Mod / Add / Sub / Mul / Div / Pow / MethodCall / IndexedTerm / term
+expr: Range / Append / Mod / Add / Sub / Mul / Div / Pow / MethodCall / IndexedTerm / term
 extended-expr: TernaryOp / And / Or / Xor / comparison / expr
 unaryOp: Negative / Len / Not
 Negative:: `- !`0-9,. maybe-index-term
@@ -18,6 +18,7 @@ Sub:: (Add / Sub / Mul / Div / Pow / maybe-index-term) _ `- _ (Mul / Div / Pow /
 Mul:: (Mul / Div / Pow / maybe-index-term) _ `* _ (Pow / maybe-index-term)
 Div:: (Mul / Div / Pow / maybe-index-term) _ `/ _ (Pow / maybe-index-term)
 Pow:: @base=maybe-index-term _ `^ _ @exponent=maybe-index-term
+Append:: maybe-index-term _ `@ _ (maybe-index-term / (ParseError:: @message=(=>"Expected a value to append here")))
 And:: 2+(comparison / expr) % (__\b"and"\b__)
 Or:: 2+(comparison / expr) % (__\b"or"\b__)
 Xor:: 2+(comparison / expr) % (__\b"xor"\b__)
