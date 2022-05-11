@@ -18,7 +18,7 @@ list_t *bl_empty_list(void) {
         empty = calloc2(1, size);
         empty->before = empty;
         empty->after = empty;
-        empty = (list_t*)intern_bytes_transfer((char*)empty, size);
+        empty = (list_t*)intern_bytes_transfer((void*)empty, size);
     }
     return empty;
 }
@@ -46,7 +46,7 @@ static list_t *coalesce(list_t *list) {
     compact->depth = 0;
     for (int64_t i = 1; i <= list->len; i++)
         compact->items[i-1] = bl_list_nth(list, i);
-    compact = (list_t*)intern_bytes_transfer((char*)compact, size);
+    compact = (list_t*)intern_bytes_transfer((void*)compact, size);
     return compact;
 }
 
@@ -68,7 +68,7 @@ list_t *bl_list_new(list_t *before, list_t *after, int64_t len, int64_t *items) 
         list = coalesce(list);
         if (tofree != list) free(tofree);
     } else {
-        list = (list_t*)intern_bytes_transfer((char*)list, size);
+        list = (list_t*)intern_bytes_transfer((void*)list, size);
     }
     return list;
 }
@@ -166,5 +166,5 @@ list_t *bl_list_slice(list_t *list, range_t *r) {
     int64_t dest = 0;
     for (int64_t i = first; step > 0 ? i <= last : i >= last; i += step)
         slice->items[dest++] = list->items[i];
-    return slice;
+    return (list_t*)intern_bytes_transfer((void*)slice, size);
 }
