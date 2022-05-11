@@ -1,0 +1,17 @@
+
+def max(x:Int,y:Int):Int
+    return x >= y ? x ; y
+
+def max(x:Float,y:Float):Float
+    return x >= y ? x ; y
+
+def say_max(x:Int,y:Int):
+    m := max(x, y)
+    $puts("$m")
+
+def say_max(x:Float,y:Float):
+    m := max(x, y)
+    $puts("$m")
+
+say_max(2.3, 3.4)
+say_max(99, 100)

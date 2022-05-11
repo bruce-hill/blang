@@ -165,22 +165,20 @@ parse_type = memoize (type_node)->
         else
             error "Not a type node: #{viz type_node}"
 
-get_op_type = (t1, op, t2)->
+get_op_type = (t1, op, t2)=>
+    all_member_types = (t, pred)->
+        for mem in *t.members
+            return false unless pred(mem.type)
+        return true
+
     switch op
         when "Add", "Sub"
             if t1.__class == StructType and t2.__class == StructType and t1 == t2
-                return nil unless t1 == t2
-                return t1
+                return t1 if t1 == t2
             elseif t1.__class == StructType
-                for mem in *t1.members
-                    mt = get_op_type(mem.type, op, t2)
-                    return nil unless mt and mt == t1
-                return t1
+                return t1 if all_member_types(t1, (memtype)-> get_op_type(@, memtype, op, t2) == t2)
             elseif t2.__class == StructType
-                for mem in *t2.members
-                    mt = get_op_type(t1, op, mem.type)
-                    return nil unless mt and mt == t2
-                return t2
+                return t2 if all_member_types(t2, (memtype)-> get_op_type(@, memtype, op, t1) == t1)
             elseif op == "Add" and t1 == String and t2 == String
                 return String
             elseif t1 == Int and t2 == Int
@@ -189,24 +187,14 @@ get_op_type = (t1, op, t2)->
                 return Float
             elseif t1.__class == ListType and t1 == t2
                 return t1
-            else
-                return nil
         when "Mul","Div","Mod"
             if op == "Mul" and t1.__class == StructType and t2.__class == StructType and t1 == t2
                 memtype = t1.members[1].type
-                for m in *t1.members
-                    return nil unless m == memtype and m == Int or m == Float
-                return memtype
+                return memtype if memtype == Int or memtype == Float and all_member_types(t1, (m)-> m == memtype)
             elseif op == "Mul" and t1.__class == StructType
-                for mem in *t1.members
-                    mt = get_op_type(mem.type, op, t2)
-                    return nil unless mt and mt == t1
-                return t1
+                return t1 if all_member_types(t1, (m)-> get_op_type(@, m, op, t2) == t1)
             elseif t2.__class == StructType
-                for mem in *t2.members
-                    mt = get_op_type(t1, op, mem.type)
-                    return nil unless mt and mt == t2
-                return t2
+                return t2 if all_member_types(t2, (m)-> get_op_type(@, t1, op, m) == t2)
             elseif op == "Mul" and (t1 == String and t2 == Int) or (t1 == Int and t2 == String)
                 return String
             elseif t1 == Int and t2 == Int
@@ -215,9 +203,11 @@ get_op_type = (t1, op, t2)->
                 return Float
             elseif t1.__class == ListType and t1 == t2
                 return t1
-            else
-                return nil
-                    
+
+    log "Operator fallback #{@[0]} #{op}(#{t1},#{t2})"
+    ret = find_declared_type @, op, "(#{t1},#{t2})"
+    log "Result: #{ret and ret.return_type}"
+    return ret.return_type if ret
 
 get_type = memoize (node)->
     switch node.__tag
@@ -277,7 +267,7 @@ get_type = memoize (node)->
         when "Add","Sub","Mul","Div","Mod"
             lhs_type = get_type node[1]
             rhs_type = get_type node[2]
-            ret_type = get_op_type(lhs_type, node.__tag, rhs_type)
+            ret_type = get_op_type(node, lhs_type, node.__tag, rhs_type)
             assert_node ret_type, node, "Invalid #{node.__tag} types: #{lhs_type} and #{rhs_type}"
             return lhs_type
         when "Negative"
@@ -316,6 +306,8 @@ get_type = memoize (node)->
                 assert_node decl_ret_type == ret_type, node, "Conflicting return types"
             return FnType([parse_type a.type[1] for a in *node.args], ret_type)
         when "Var"
+            if node.__decl
+                return get_type(node.__decl)
             var_type = find_declared_type(node.__parent, node[0])
             if not var_type
                 return Int if node[0] == "argc"

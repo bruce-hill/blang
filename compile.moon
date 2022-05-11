@@ -86,7 +86,7 @@ comparison = (env, cmp)=>
         code ..= "#{result} =l call $strcmp(l #{lhs_reg}, l #{rhs_reg})\n"
         code ..= "#{result} =l #{cmp} 0, #{result}\n"
     else
-        code ..= "#{result} =#{t.abi_type} #{cmp} #{lhs_reg}, #{rhs_reg}\n"
+        code ..= "#{result} =l #{cmp} #{lhs_reg}, #{rhs_reg}\n"
 
     return result, code
 
@@ -285,7 +285,7 @@ class Environment
                 v.__register = "%__argc"
 
         -- Set up variable registers:
-        hook_up_refs = (var, scope)->
+        hook_up_refs = (var, scope, arg_signature)->
             assert var.__tag == "Var" and scope and scope != var
             var.__register or= @fresh_local var[0]
             for k,node in pairs scope
@@ -297,9 +297,14 @@ class Environment
                             node.__register = var.__register
                             node.__decl = var
                     when "FnDecl"
-                        hook_up_refs var, node.body, true if var.__register\match("^%$")
+                        hook_up_refs var, node.body, arg_signature if var.__register\match("^%$")
+                    when "FnCall"
+                        call_sig = "(#{concat [tostring(get_type(a)) for a in *node.args], ","})"
+                        if not arg_signature or call_sig == arg_signature
+                            hook_up_refs var, node.fn, arg_signature
+                        hook_up_refs var, node.args, arg_signature
                     else
-                        hook_up_refs var, node
+                        hook_up_refs var, node, arg_signature
 
         -- Set up function names (global):
         for fndec in coroutine.wrap(-> each_tag(ast, "FnDecl", "Lambda"))
@@ -308,7 +313,7 @@ class Environment
             if fndec.name
                 fndec.name[1].__register = fndec.__register
                 fndec.name[1].__decl = fndec
-                hook_up_refs fndec.name[1], fndec.__parent
+                hook_up_refs fndec.name[1], fndec.__parent, get_type(fndec)\arg_signature!
                     
         for fn in coroutine.wrap(-> each_tag(ast, "FnDecl", "Lambda"))
             for a in *fn.args
@@ -353,7 +358,7 @@ class Environment
 
 expr_compilers =
     Var: (env)=>
-        assert_node @__register, @, "Undefined variable"
+        assert_node @__register, @, "This variable is not defined"
         return @__register, ""
     Global: (env)=>
         return "#{@[0]}", ""
@@ -699,7 +704,6 @@ expr_compilers =
     FnCall: (env, skip_ret=false)=>
         code = ""
         local fn_type, fn_reg
-        target_sig = "(#{concat [tostring(get_type(a)) for a in *@args], ","})"
         fn_type = get_type @fn[1]
         fn_reg,fn_code = env\to_reg @fn
         code ..= fn_code
