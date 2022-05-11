@@ -268,6 +268,7 @@ get_type = memoize (node)->
             return ret_type
         when "Append"
             lhs_type = get_type node[1]
+            assert_node lhs_type, node[1], "This element does not have a definite type"
             if lhs_type == String
                 return String
             rhs_type = get_type node[2]

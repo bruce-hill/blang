@@ -18,7 +18,7 @@ Sub:: (Add / Sub / Mul / Div / Pow / maybe-index-term) _ `- _ (Mul / Div / Pow /
 Mul:: (Mul / Div / Pow / maybe-index-term) _ `* _ (Pow / maybe-index-term)
 Div:: (Mul / Div / Pow / maybe-index-term) _ `/ _ (Pow / maybe-index-term)
 Pow:: @base=maybe-index-term _ `^ _ @exponent=maybe-index-term
-Append:: maybe-index-term _ `@ _ (maybe-index-term / (ParseError:: @message=(=>"Expected a value to append here")))
+Append:: (Append / maybe-index-term) _ `@ _ (maybe-index-term / (ParseError:: @message=(=>"Expected a value to append here")))
 And:: 2+(comparison / expr) % (__\b"and"\b__)
 Or:: 2+(comparison / expr) % (__\b"or"\b__)
 Xor:: 2+(comparison / expr) % (__\b"xor"\b__)
