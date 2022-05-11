@@ -8,11 +8,10 @@
 #include "types.h"
 #include "util.h"
 
-static list_t *empty = NULL;
-
 #define LIST_SIZE(n) (sizeof(list_t)+((n)-1)*sizeof(int64_t))
 
 list_t *bl_empty_list(void) {
+    static list_t *empty = NULL;
     if (empty == NULL) {
         size_t size = LIST_SIZE(0);
         empty = calloc2(1, size);
@@ -38,11 +37,12 @@ int64_t bl_list_nth(list_t *list, int64_t i) {
 }
 
 static list_t *coalesce(list_t *list) {
+    list_t *empty = bl_empty_list();
     size_t size = LIST_SIZE(list->len);
     list_t *compact = calloc2(1, size);
     compact->len = list->len;
-    compact->before = bl_empty_list();
-    compact->after = compact->before;
+    compact->before = empty;
+    compact->after = empty;
     compact->depth = 0;
     for (int64_t i = 1; i <= list->len; i++)
         compact->items[i-1] = bl_list_nth(list, i);
@@ -51,8 +51,9 @@ static list_t *coalesce(list_t *list) {
 }
 
 list_t *bl_list_new(list_t *before, list_t *after, int64_t len, int64_t *items) {
-    if (len <= 0) return bl_empty_list();
-    if (before == NULL) before = bl_empty_list();
+    list_t *empty = bl_empty_list();
+    if (len <= 0) return empty;
+    if (before == NULL) before = empty;
     if (after == NULL) after = empty;
     int64_t nitems = len - (before->len + after->len);
     size_t size = LIST_SIZE(nitems);
@@ -148,8 +149,9 @@ list_t *bl_list_remove(list_t *list, int64_t i) {
 }
 
 list_t *bl_list_slice(list_t *list, range_t *r) {
+    list_t *empty = bl_empty_list();
     int64_t step = r->next - r->first;
-    if (step == 0) return bl_empty_list();
+    if (step == 0) return empty;
 
     int64_t len = list->len;
     int64_t first = MAX(0, MIN(len-1, r->first-1)), last = MAX(0, MIN(len-1, r->last-1));
@@ -160,9 +162,9 @@ list_t *bl_list_slice(list_t *list, range_t *r) {
     size_t size = LIST_SIZE(slice_len);
     list_t *slice = calloc2(1, size);
     slice->len = slice_len;
-    slice->before = bl_empty_list();
-    slice->after = slice->before;
-    slice->depth = 0;
+    slice->before = empty;
+    slice->after = empty;
+    slice->depth = 1;
     int64_t dest = 0;
     for (int64_t i = first; step > 0 ? i <= last : i >= last; i += step)
         slice->items[dest++] = list->items[i];
