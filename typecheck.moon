@@ -246,7 +246,7 @@ get_type = memoize (node)->
                 else
                     assert_node false, node[2], "Index has type #{index_type}, but expected Int or Range"
             elseif t.__class == StructType
-                assert_node node[2].__tag == "Var", node[2], "Structs can only be indexed by member"
+                assert_node node[2].__tag == "FieldName", node[2], "Structs can only be indexed by member"
                 member_name = node[2][0]
                 assert_node t.members_by_name[member_name], node[2], "Not a valid struct member of #{t}"
                 return t.members_by_name[member_name].type

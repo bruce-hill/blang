@@ -464,7 +464,7 @@ expr_compilers =
             else
                 assert_node false, @[2], "Index is #{index_type} instead of Int or Range"
         elseif t.__class == Types.StructType
-            assert_node @[2].__tag == "Var", @[2], "Structs can only be indexed by member"
+            assert_node @[2].__tag == "FieldName", @[2], "Structs can only be indexed by member"
             member_name = @[2][0]
             assert_node t.members_by_name[member_name], @[2], "Not a valid struct member of #{t}"
             struct_reg,struct_code = env\to_reg @[1]
@@ -1061,7 +1061,7 @@ store_to = (val, env, ...)=>
                 -- code ..= "call $bl_list_set_nth#{t.item_type.base_type}(l #{list_reg}, l #{index_reg}, #{t.item_type.base_type} #{val_reg})\n"
                 -- return code
             elseif t.__class == Types.StructType
-                assert_node @[2].__tag == "Var", @[2], "Structs can only be indexed by member"
+                assert_node @[2].__tag == "FieldName", @[2], "Structs can only be indexed by member"
                 member_name = @[2][0]
                 assert_node t.members_by_name[member_name], @[2], "Not a valid struct member of #{t}"
                 struct_reg,struct_code = env\to_reg @[1]
