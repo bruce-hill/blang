@@ -48,8 +48,8 @@ get_function_reg = (scope, name, arg_signature)->
     if scope.__parent and (scope.__parent.__tag == "For" or scope.__parent.__tag == "While" or scope.__parent.__tag == "Repeat")
         loop = scope.__parent
         if scope == loop.between[1]
-            r = get_function_reg(loop.body[1], name, arg_signature)
-            return r if r
+            r,t = get_function_reg(loop.body[1], name, arg_signature)
+            return r,t if r
     
     return get_function_reg(scope.__parent, name, arg_signature)
 
@@ -70,6 +70,18 @@ infixop = (env, op)=>
             code ..= op(ret_reg, lhs_reg, rhs_reg)
         lhs_reg = ret_reg
     return ret_reg, code
+
+overload_infix = (env, overload_name, regname="result")=>
+    t = get_type @
+    lhs_type, rhs_type = get_type(@[1]), get_type(@[2])
+    fn_reg, t2 = get_function_reg @__parent, overload_name, "(#{lhs_type},#{rhs_type})"
+    assert_node fn_reg, @, "#{overload_name} is not supported for #{lhs_type} and #{rhs_type}"
+    lhs_reg,code = env\to_reg @[1]
+    rhs_reg,rhs_code = env\to_reg @[2]
+    code ..= rhs_code
+    result = env\fresh_local regname
+    code ..= "#{result} =#{t.abi_type} call #{fn_reg}(#{lhs_type.abi_type} #{lhs_reg}, #{rhs_type.abi_type} #{rhs_reg})\n"
+    return result, code
 
 comparison = (env, cmp)=>
     t = get_type @[1]
@@ -596,9 +608,6 @@ expr_compilers =
         t = get_type(@)
         if t == Types.Int or t == Types.Float
             return infixop @, env, "add"
-        elseif t == Types.String
-            return infixop @, env, (ret,lhs,rhs)->
-                "#{ret} =l call $bl_string_append_string(l #{lhs}, l #{rhs})\n"
         elseif t.__class == Types.List
             return infixop @, env, (ret,lhs,rhs)->
                 "#{ret} =l call $bl_list_concat(l #{lhs}, l #{rhs})\n"
@@ -606,7 +615,8 @@ expr_compilers =
             -- Pairwise
             error "Not impl"
         else
-            assert_node false, @, "Addition is not supported for #{t}"
+            return overload_infix @, env, "add", "sum"
+
     Sub: (env)=>
         t = get_type(@)
         if t == Types.Int or t == Types.Float
@@ -618,7 +628,7 @@ expr_compilers =
             -- Pairwise
             error "Not impl"
         else
-            assert_node false, @, "Subtraction is not supported for #{t}"
+            return overload_infix @, env, "subtract", "difference"
     Mul: (env)=>
         t = get_type(@)
         if t == Types.Int or t == Types.Float
@@ -627,13 +637,13 @@ expr_compilers =
             -- Dot product
             error "Not impl"
         else
-            assert_node false, @, "Multiplication is not supported for #{t}"
+            return overload_infix @, env, "multiply", "product"
     Div: (env)=>
         t = get_type(@)
         if t == Types.Int or t == Types.Float
             return infixop @, env, "div"
         else
-            assert_node false, @, "Division is not supported for #{t}"
+            return overload_infix @, env, "divide", "quotient"
     Mod: (env)=>
         t = get_type(@)
         if t == Types.Int or t == Types.Float
@@ -647,7 +657,18 @@ expr_compilers =
                 code ..= "#{ret} =l call $sane_lmod(l #{lhs_reg}, l #{rhs_reg})\n"
             return ret, code
         else
-            assert_node false, @, "Modulus is not supported for #{t}"
+            return overload_infix @, env, "modulus", "remainder"
+    Pow: (env)=>
+        t = get_type @base[1]
+        base_reg, base_code = env\to_reg @base
+        exponent_reg, exponent_code = env\to_reg @exponent
+        ret_reg = env\fresh_local "result"
+        if t == Types.Int
+            return ret_reg, "#{base_code}#{exponent_code}#{ret_reg} =l call $ipow(l #{base_reg}, l #{exponent_reg})\n"
+        elseif t == Types.Float
+            return ret_reg, "#{base_code}#{exponent_code}#{ret_reg} =d call $pow(d #{base_reg}, d #{exponent_reg})\n"
+        else
+            return overload_infix @, env, "raise", "raised"
     Less: (env)=>
         t = get_type(@[1])
         if t == Types.Int or t == Types.String
@@ -691,15 +712,6 @@ expr_compilers =
         code ..= "#{false_label}\n#{false_code}#{ret_reg} =#{get_type(@ifFalse[1]).base_type} copy #{false_reg}\njmp #{end_label}\n"
         code ..= "#{end_label}\n"
         return ret_reg, code
-    Pow: (env)=>
-        t = get_type @base[1]
-        base_reg, base_code = env\to_reg @base
-        exponent_reg, exponent_code = env\to_reg @exponent
-        ret_reg = env\fresh_local "result"
-        if t == Types.Int
-            return ret_reg, "#{base_code}#{exponent_code}#{ret_reg} =l call $ipow(l #{base_reg}, l #{exponent_reg})\n"
-        else
-            return ret_reg, "#{base_code}#{exponent_code}#{ret_reg} =d call $pow(d #{base_reg}, d #{exponent_reg})\n"
 
     FnCall: (env, skip_ret=false)=>
         code = ""

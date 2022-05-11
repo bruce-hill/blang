@@ -179,8 +179,6 @@ get_op_type = (t1, op, t2)=>
                 return t1 if all_member_types(t1, (memtype)-> get_op_type(@, memtype, op, t2) == t2)
             elseif t2.__class == StructType
                 return t2 if all_member_types(t2, (memtype)-> get_op_type(@, memtype, op, t1) == t1)
-            elseif op == "Add" and t1 == String and t2 == String
-                return String
             elseif t1 == Int and t2 == Int
                 return Int
             elseif t1 == Float and t2 == Float
@@ -195,8 +193,6 @@ get_op_type = (t1, op, t2)=>
                 return t1 if all_member_types(t1, (m)-> get_op_type(@, m, op, t2) == t1)
             elseif t2.__class == StructType
                 return t2 if all_member_types(t2, (m)-> get_op_type(@, t1, op, m) == t2)
-            elseif op == "Mul" and (t1 == String and t2 == Int) or (t1 == Int and t2 == String)
-                return String
             elseif t1 == Int and t2 == Int
                 return Int
             elseif t1 == Float and t2 == Float
@@ -204,10 +200,10 @@ get_op_type = (t1, op, t2)=>
             elseif t1.__class == ListType and t1 == t2
                 return t1
 
-    log "Operator fallback #{@[0]} #{op}(#{t1},#{t2})"
-    ret = find_declared_type @, op, "(#{t1},#{t2})"
-    log "Result: #{ret and ret.return_type}"
-    return ret.return_type if ret
+    overload_names = Add:"add", Sub:"subtract", Mul:"multiply", Div:"divide", Mod:"modulus", Pow:"raise"
+    return unless overload_names[op]
+    overload = find_declared_type @, overload_names[op], "(#{t1},#{t2})"
+    return overload.return_type if overload
 
 get_type = memoize (node)->
     switch node.__tag
@@ -269,7 +265,7 @@ get_type = memoize (node)->
             rhs_type = get_type node[2]
             ret_type = get_op_type(node, lhs_type, node.__tag, rhs_type)
             assert_node ret_type, node, "Invalid #{node.__tag} types: #{lhs_type} and #{rhs_type}"
-            return lhs_type
+            return ret_type
         when "Negative"
             t = get_type node[1]
             assert_node t == Int or t == Float or t == Range, node, "Invalid negation type: #{t}"

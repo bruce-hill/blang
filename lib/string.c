@@ -82,5 +82,5 @@ char *bl_string_repeat(char *s, int64_t count) {
         memcpy(p, s, len);
         p += len;
     }
-    return intern_str_transfer(s);
+    return intern_str_transfer(buf);
 }
