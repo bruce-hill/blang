@@ -1,15 +1,15 @@
 
-def sqr(self:Float):Float
+def sqr(self:Num):Num
     return self*self
 
 x := 5.
 s := x|sqr
 $puts("$x|sqr = $s")
 
-Vec:::Vec{x:Float,y:Float}
+Vec:::Vec{x:Num,y:Num}
 
-def len(v:Vec):Float
-    l := $sqrt(v.x*v.x + v.y*v.y):Float
+def len(v:Vec):Num
+    l := $sqrt(v.x*v.x + v.y*v.y):Num
     return l
 
 v := Vec{1., 1.}

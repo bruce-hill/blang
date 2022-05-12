@@ -16,5 +16,5 @@ $puts("$f casts to int: $((f):Int)")
 $puts("$f rounds to int: $($float_to_int(f):Int)")
 
 i := 123
-$puts("$i casts to float: $((i):Float)")
-$puts("$f rounds to float: $($int_to_float(i):Float)")
+$puts("$i casts to float: $((i):Num)")
+$puts("$f rounds to float: $($int_to_float(i):Num)")

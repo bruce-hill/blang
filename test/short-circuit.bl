@@ -1,0 +1,23 @@
+def fail(msg:String):Bool
+    $errx(1, "Test failed: $msg")
+    return no
+
+if no or yes or fail("or failed to short circuit")
+    $puts("or pass")
+else fail("or gave wrong result")
+
+if yes and no and fail("and failed to short circuit")
+    fail("and gave wrong result")
+else $puts("and pass")
+
+tmp := no
+tmp or= yes
+tmp or= fail("or= failed to short circuit")
+$puts("or= pass")
+fail("or= gave wrong result") unless tmp
+
+tmp = yes
+tmp and= no
+tmp and= fail("and= failed to short circuit")
+$puts("and= pass")
+fail("and= gave wrong result") if tmp

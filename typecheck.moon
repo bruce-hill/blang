@@ -73,16 +73,19 @@ class StructType extends Type
     __eq: Type.__eq
 
 -- Primitive Types:
-Int = NamedType("Int")
-Float = NamedType("Float")
-Float.base_type = 'd'
-Float.abi_type = 'd'
+Num = NamedType("Num")
+Num.base_type = 'd'
+Num.abi_type = 'd'
+Int = DerivedType("Int", Num)
+Int.base_type = 'l'
+Int.abi_type = 'l'
+
 Void = NamedType("Void")
 Nil = NamedType("Nil")
 Bool = NamedType("Bool")
 String = NamedType("String")
 Range = StructType("Range", {{name:"first",type:Int},{name:"next",type:Int},{name:"last",type:Int}})
-primitive_types = {:Int, :Float, :Void, :Nil, :Bool, :String, :Range}
+primitive_types = {:Int, :Num, :Void, :Nil, :Bool, :String, :Range}
 
 tuples = {}
 tuple_index = 1
@@ -188,13 +191,13 @@ get_op_type = (t1, op, t2)=>
 
     switch op
         when "Add"
-            if t1 == t2 and (t1\is_a(Int) or t1\is_a(Float) or t1\is_a(ListType))
+            if t1 == t2 and (t1\is_a(Int) or t1\is_a(Num) or t1\is_a(ListType))
                 return t1
         when "Sub"
-            if t1 == t2 and (t1\is_a(Int) or t1\is_a(Float))
+            if t1 == t2 and (t1\is_a(Int) or t1\is_a(Num))
                 return t1
         when "Mul","Div","Mod"
-            if t1 == t2 and (t1\is_a(Int) or t1\is_a(Float))
+            if t1 == t2 and (t1\is_a(Int) or t1\is_a(Num))
                 return t1
 
     overload_names = Add:"add", Sub:"subtract", Mul:"multiply", Div:"divide", Mod:"modulus", Pow:"raise", Append:"append"
@@ -205,7 +208,7 @@ get_op_type = (t1, op, t2)=>
 get_type = memoize (node)->
     switch node.__tag
         when "Int" then return Int
-        when "Float" then return Float
+        when "Float" then return Num
         when "Bool" then return Bool
         when "Nil" then return Nil
         when "String" then return String
@@ -283,7 +286,7 @@ get_type = memoize (node)->
             return ret_type
         when "Negative"
             t = get_type node[1]
-            assert_node t\is_a(Int) or t\is_a(Float) or t\is_a(Range), node, "Invalid negation type: #{t}"
+            assert_node t\is_a(Int) or t\is_a(Num) or t\is_a(Range), node, "Invalid negation type: #{t}"
             return t
         when "Len"
             t = get_type node[1]
@@ -295,9 +298,9 @@ get_type = memoize (node)->
             return Bool
         when "Pow"
             base_type = get_type node.base[1]
-            assert_node base_type\is_a(Float) or base_type\is_a(Int), node.base[1], "Expected Float or Int, not #{base_type}"
+            assert_node base_type\is_a(Num) or base_type\is_a(Int), node.base[1], "Expected Num or Int, not #{base_type}"
             exponent_type = get_type node.exponent[1]
-            assert_node exponent_type\is_a(Float) or base_type\is_a(Int), node.exponent[1], "Expected Float or Int, not #{exponent_type}"
+            assert_node exponent_type\is_a(Num) or base_type\is_a(Int), node.exponent[1], "Expected Num or Int, not #{exponent_type}"
             return base_type
         when "Lambda","FnDecl"
             decl_ret_type = node.return and parse_type(node.return[1])
@@ -369,4 +372,4 @@ get_type = memoize (node)->
         return get_type(node[#node])
     return Void
 
-return {:add_parenting, :parse_type, :get_type, :Type, :NamedType, :ListType, :FnType, :VariantType, :StructType, :Int, :Float, :String, :Bool, :Void, :Nil, :Range}
+return {:add_parenting, :parse_type, :get_type, :Type, :NamedType, :ListType, :FnType, :VariantType, :StructType, :Int, :Num, :String, :Bool, :Void, :Nil, :Range}

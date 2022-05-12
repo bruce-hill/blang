@@ -6,7 +6,7 @@ concat = table.concat
 
 has_jump = bp.compile('^_("jmp"/"jnz"/"ret")\\b ..$ $$')
 
-local store_to, stmt_compilers, expr_compilers
+local stmt_compilers, expr_compilers
 
 each_tag = (...)=>
     return unless type(@) == 'table'
@@ -102,19 +102,6 @@ comparison = (env, cmp)=>
 
     return result, code
 
-updater = (op, flop)->
-    (env)=>
-        lhs,rhs = @[1],@[2]
-        make_rhs = (lhs_reg)->
-            rhs_reg, code = env\to_reg rhs
-            lhs_type = get_type lhs
-            if lhs_type.abi_type == "d" and flop
-                op = flop
-            result_reg = env\fresh_local "result"
-            code ..= "#{result_reg} =#{lhs_type.abi_type} #{op} #{lhs_reg}, #{rhs_reg}\n"
-            return get_type(rhs),result_reg,code
-        return store_to @[1], make_rhs, env
-
 class Environment
     new: =>
         @strings = {}
@@ -186,7 +173,7 @@ class Environment
         append_reg = (reg, t)->
             if t\is_a(Types.Int)
                 code ..= "#{str} =l call $bl_string_append_int(l #{str}, l #{reg})\n"
-            elseif t\is_a(Types.Float)
+            elseif t\is_a(Types.Num)
                 code ..= "#{str} =l call $bl_string_append_float(l #{str}, d #{reg})\n"
             elseif t\is_a(Types.Bool)
                 code ..= "#{str} =l call $bl_string_append_bool(l #{str}, l #{reg})\n"
@@ -443,7 +430,7 @@ expr_compilers =
 
     Negative: (env)=>
         t = get_type @[1]
-        if t\is_a(Types.Int) or t\is_a(Types.Float)
+        if t\is_a(Types.Int) or t\is_a(Types.Num)
             reg,code = env\to_reg @[1]
             ret = env\fresh_local "neg"
             return ret, "#{code}#{ret} =#{t.abi_type} neg #{reg}\n"
@@ -629,7 +616,7 @@ expr_compilers =
         return infixop @, env, "xor"
     Add: (env)=>
         t_lhs,t_rhs = get_type(@[1]),get_type(@[2])
-        if t_lhs == t_rhs and (t_lhs\is_a(Types.Int) or t_lhs\is_a(Types.Float))
+        if t_lhs == t_rhs and (t_lhs\is_a(Types.Int) or t_lhs\is_a(Types.Num))
             return infixop @, env, "add"
         elseif t_lhs == t_rhs and t_lhs\is_a(Types.ListType)
             return infixop @, env, (ret,lhs,rhs)->
@@ -639,44 +626,45 @@ expr_compilers =
 
     Sub: (env)=>
         t_lhs,t_rhs = get_type(@[1]),get_type(@[2])
-        if t_lhs == t_rhs and (t_lhs\is_a(Types.Int) or t_lhs\is_a(Types.Float))
+        if t_lhs == t_rhs and (t_lhs\is_a(Types.Int) or t_lhs\is_a(Types.Num))
             return infixop @, env, "sub"
         else
             return overload_infix @, env, "subtract", "difference"
     Mul: (env)=>
         t_lhs,t_rhs = get_type(@[1]),get_type(@[2])
-        if t_lhs == t_rhs and (t_lhs\is_a(Types.Int) or t_lhs\is_a(Types.Float))
+        if t_lhs == t_rhs and (t_lhs\is_a(Types.Int) or t_lhs\is_a(Types.Num))
             return infixop @, env, "mul"
         else
             return overload_infix @, env, "multiply", "product"
     Div: (env)=>
         t_lhs,t_rhs = get_type(@[1]),get_type(@[2])
-        if t_lhs == t_rhs and (t_lhs\is_a(Types.Int) or t_lhs\is_a(Types.Float))
+        if t_lhs == t_rhs and (t_lhs\is_a(Types.Int) or t_lhs\is_a(Types.Num))
             return infixop @, env, "div"
         else
             return overload_infix @, env, "divide", "quotient"
     Mod: (env)=>
         t = get_type(@)
-        if t\is_a(Types.Int) or t\is_a(Types.Float)
+        if t\is_a(Types.Int) or t\is_a(Types.Num)
             lhs_reg,code = env\to_reg @[1]
             rhs_reg,rhs_code = env\to_reg @[2]
             code ..= rhs_code
             ret = env\fresh_local "remainder"
-            if t\is_a(Types.Float)
-                code ..= "#{ret} =d call $sane_fmod(d #{lhs_reg}, d #{rhs_reg})\n"
-            else
+            if t\is_a(Types.Int)
                 code ..= "#{ret} =l call $sane_lmod(l #{lhs_reg}, l #{rhs_reg})\n"
+            else
+                code ..= "#{ret} =d call $sane_fmod(d #{lhs_reg}, d #{rhs_reg})\n"
             return ret, code
         else
             return overload_infix @, env, "modulus", "remainder"
     Pow: (env)=>
-        t = get_type @base[1]
+        base_type = get_type @base[1]
+        exponent_type = get_type @exponent[1]
         base_reg, base_code = env\to_reg @base
         exponent_reg, exponent_code = env\to_reg @exponent
         ret_reg = env\fresh_local "result"
-        if t\is_a(Types.Int)
+        if base_type == exponent_type and base_type\is_a(Types.Int)
             return ret_reg, "#{base_code}#{exponent_code}#{ret_reg} =l call $ipow(l #{base_reg}, l #{exponent_reg})\n"
-        elseif t\is_a(Types.Float)
+        elseif base_type == exponent_type and base_type\is_a(Types.Num)
             return ret_reg, "#{base_code}#{exponent_code}#{ret_reg} =d call $pow(d #{base_reg}, d #{exponent_reg})\n"
         else
             return overload_infix @, env, "raise", "raised"
@@ -706,28 +694,28 @@ expr_compilers =
         t = get_type(@[1])
         if t\is_a(Types.Int) or t\is_a(Types.String)
             return comparison @, env, "csltl"
-        elseif t\is_a(Types.Float)
+        elseif t\is_a(Types.Num)
             return comparison @, env, "cltd"
         else assert_node false, @, "Comparison is not supported for #{t}"
     LessEq: (env)=>
         t = get_type(@[1])
         if t\is_a(Types.Int) or t\is_a(Types.String)
             return comparison @, env, "cslel"
-        elseif t\is_a(Types.Float)
+        elseif t\is_a(Types.Num)
             return comparison @, env, "cled"
         else assert_node false, @, "Comparison is not supported for #{t}"
     Greater: (env)=>
         t = get_type(@[1])
         if t\is_a(Types.Int) or t\is_a(Types.String)
             return comparison @, env, "csgtl"
-        elseif t\is_a(Types.Float)
+        elseif t\is_a(Types.Num)
             return comparison @, env, "cgtd"
         else assert_node false, @, "Comparison is not supported for #{t}"
     GreaterEq: (env)=>
         t = get_type(@[1])
         if t\is_a(Types.Int) or t\is_a(Types.String)
             return comparison @, env, "csgel"
-        elseif t\is_a(Types.Float)
+        elseif t\is_a(Types.Num)
             return comparison @, env, "cged"
         else assert_node false, @, "Comparison is not supported for #{t}"
     Equal: (env)=> comparison @, env, "ceql"
@@ -809,48 +797,121 @@ stmt_compilers =
         varname = "%#{@var[0]}"
         assert_node not env.used_names[varname], @var, "Variable being shadowed: #{varname}"
         env.used_names[varname] = true
+        value_type = get_type @value[1]
+        decl_type = value_type
         if @type
             decl_type = Types.parse_type @type[1]
-            value_type = get_type @value[1]
             assert_node value_type, @value[1], "Can't infer the type of this value"
             assert_node value_type\is_a(decl_type) or decl_type\is_a(value_type), @value[1], "Value is type #{value_type}, not declared type #{decl_type}"
-        return store_to @var[1], @value[1], env
+        val_reg,code = env\to_reg @value[1]
+        assert_node @var[1].__register, @var[1], "Undefined variable"
+        code ..= "#{@var[1].__register} =#{decl_type.base_type} copy #{val_reg}\n"
+        return code
     Assignment: (env)=>
         var_type = get_type @[1]
         value_type = get_type @[2]
         assert_node value_type\is_a(var_type), @[2], "Value is type #{value_type}, but it's being assigned to something with type #{var_type}"
-        return store_to @[1], @[2], env
-    AddUpdate: updater "add"
-    SubUpdate: updater "sub"
-    MulUpdate: updater "mul"
-    DivUpdate: updater "div"
-    OrUpdate: updater "or"
-    XorUpdate: updater "xor"
-    AndUpdate: updater "and"
+        assert_node @[1].__register, @[1], "Undefined variable"
+        val_reg,code = env\to_reg @[2]
+        return "#{code}#{@[1].__register} =#{var_type.base_type} copy #{val_reg}\n"
+    AddUpdate: (env)=>
+        assert_node @[1].__register, @[1], "Undefined variable"
+        lhs_type,rhs_type = get_type(@[1]),get_type(@[2])
+        rhs_reg,code = env\to_reg @[2]
+        if lhs_type == rhs_type and (lhs_type\is_a(Types.Int) or lhs_type\is_a(Types.Num))
+            return code.."#{@[1].__register} =#{lhs_type.abi_type} add #{@[1].__register}, #{rhs_reg}\n"
+        elseif t_lhs == t_rhs and t_lhs\is_a(Types.ListType)
+            return code.."#{@[1].__register} =l call $bl_list_concat(l #{@[1].__register}, l #{rhs_reg})\n"
+        else
+            fn_reg, t2 = get_function_reg @__parent, "add", "(#{lhs_type},#{rhs_type})"
+            assert_node fn_reg, @, "addition is not supported for #{lhs_type} and #{rhs_type}"
+            assert_node t2 == lhs_type, @, "Return type for add(#{lhs_type},#{rhs_type}) is #{t2} instead of #{lhs_type}"
+            return code.."#{@[1].__register} =#{lhs_type.abi_type} call #{fn_reg}(#{lhs_type.abi_type} #{@[1].__register}, #{rhs_type.abi_type} #{rhs_reg})\n"
+    SubUpdate: (env)=>
+        assert_node @[1].__register, @[1], "Undefined variable"
+        lhs_type,rhs_type = get_type(@[1]),get_type(@[2])
+        rhs_reg,code = env\to_reg @[2]
+        if lhs_type == rhs_type and (lhs_type\is_a(Types.Int) or lhs_type\is_a(Types.Num))
+            return code.."#{@[1].__register} =#{lhs_type.abi_type} sub #{@[1].__register}, #{rhs_reg}\n"
+        else
+            fn_reg, t2 = get_function_reg @__parent, "subtract", "(#{lhs_type},#{rhs_type})"
+            assert_node fn_reg, @, "subtraction is not supported for #{lhs_type} and #{rhs_type}"
+            assert_node t2 == lhs_type, @, "Return type for subtract(#{lhs_type},#{rhs_type}) is #{t2} instead of #{lhs_type}"
+            return code.."#{@[1].__register} =#{lhs_type.abi_type} call #{fn_reg}(#{lhs_type.abi_type} #{@[1].__register}, #{rhs_type.abi_type} #{rhs_reg})\n"
+    MulUpdate: (env)=>
+        assert_node @[1].__register, @[1], "Undefined variable"
+        lhs_type,rhs_type = get_type(@[1]),get_type(@[2])
+        rhs_reg,code = env\to_reg @[2]
+        if lhs_type == rhs_type and (lhs_type\is_a(Types.Int) or lhs_type\is_a(Types.Num))
+            return code.."#{@[1].__register} =#{lhs_type.abi_type} mul #{@[1].__register}, #{rhs_reg}\n"
+        else
+            fn_reg, t2 = get_function_reg @__parent, "multiply", "(#{lhs_type},#{rhs_type})"
+            assert_node fn_reg, @, "multiplication is not supported for #{lhs_type} and #{rhs_type}"
+            assert_node t2 == lhs_type, @, "Return type for multiply(#{lhs_type},#{rhs_type}) is #{t2} instead of #{lhs_type}"
+            return code.."#{@[1].__register} =#{lhs_type.abi_type} call #{fn_reg}(#{lhs_type.abi_type} #{@[1].__register}, #{rhs_type.abi_type} #{rhs_reg})\n"
+    DivUpdate: (env)=>
+        assert_node @[1].__register, @[1], "Undefined variable"
+        lhs_type,rhs_type = get_type(@[1]),get_type(@[2])
+        rhs_reg,code = env\to_reg @[2]
+        if lhs_type == rhs_type and (lhs_type\is_a(Types.Int) or lhs_type\is_a(Types.Num))
+            return code.."#{@[1].__register} =#{lhs_type.abi_type} div #{@[1].__register}, #{rhs_reg}\n"
+        else
+            fn_reg, t2 = get_function_reg @__parent, "divide", "(#{lhs_type},#{rhs_type})"
+            assert_node fn_reg, @, "division is not supported for #{lhs_type} and #{rhs_type}"
+            assert_node t2 == lhs_type, @, "Return type for divide(#{lhs_type},#{rhs_type}) is #{t2} instead of #{lhs_type}"
+            return code.."#{@[1].__register} =#{lhs_type.abi_type} call #{fn_reg}(#{lhs_type.abi_type} #{@[1].__register}, #{rhs_type.abi_type} #{rhs_reg})\n"
+    OrUpdate: (env)=>
+        for val in *@
+            assert_node get_type(val)\is_a(Types.Bool), val, "Expected Bool here, but got #{get_type val}"
+        assert_node @[1].__register, @[1], "Undefined variable"
+        true_label = env\fresh_label "or.equal.true"
+        false_label = env\fresh_label "or.equal.false"
+        code = "jnz #{@[1].__register}, #{true_label}, #{false_label}\n"
+        code ..= "#{false_label}\n"
+        rhs_reg,rhs_code = env\to_reg @[2]
+        code ..= rhs_code
+        code ..= "#{@[1].__register} =l copy #{rhs_reg}\n"
+        code ..= "jmp #{true_label}\n#{true_label}\n"
+        return code
+    AndUpdate: (env)=>
+        for val in *@
+            assert_node get_type(val)\is_a(Types.Bool), val, "Expected Bool here, but got #{get_type val}"
+        assert_node @[1].__register, @[1], "Undefined variable"
+        true_label = env\fresh_label "and.equal.true"
+        false_label = env\fresh_label "and.equal.false"
+        code = "jnz #{@[1].__register}, #{true_label}, #{false_label}\n"
+        code ..= "#{true_label}\n"
+        rhs_reg,rhs_code = env\to_reg @[2]
+        code ..= rhs_code
+        code ..= "#{@[1].__register} =l copy #{rhs_reg}\n"
+        code ..= "jmp #{false_label}\n#{false_label}\n"
+        return code
+    XorUpdate: (env)=>
+        for val in *@
+            assert_node get_type(val)\is_a(Types.Bool), val, "Expected Bool here, but got #{get_type val}"
+        assert_node @[1].__register, @[1], "Undefined variable"
+        rhs_reg,code = env\to_reg @[2]
+        return code.."#{@[1].__register} =#{lhs_type.abi_type} xor #{@[1].__register}, #{rhs_reg}\n"
     AppendUpdate: (env)=>
         lhs_type = get_type @[1]
         rhs_type = get_type @[2]
         if lhs_type\is_a(Types.String)
-            make_rhs = (lhs_reg)->
-                fn_name = env\get_concat_fn rhs_type
-                appended = env\fresh_local "str.appended"
-                rhs_reg,code = env\to_reg @[2]
-                code ..= "#{appended} =l call #{fn_name}(l #{lhs_reg}, #{rhs_type.base_type} #{rhs_reg})\n"
-                return rhs_type,appended,code
-            return store_to @[1], make_rhs, env
+            assert_node @[1].__register, @[1], "Undefined variable"
+            fn_name = env\get_concat_fn rhs_type
+            rhs_reg,code = env\to_reg @[2]
+            code ..= "#{@[1].__register} =l call #{fn_name}(l #{@[1].__register}, #{rhs_type.base_type} #{rhs_reg})\n"
+            return code
         elseif lhs_type\is_a(Types.ListType)
             assert_node rhs_type == lhs_type.item_type, @[2], "You can't append a #{rhs_type} to a list of #{lhs_type.item_type}s"
-            make_rhs = (lhs_reg)->
-                fn_name = env\get_concat_fn rhs_type
-                appended = env\fresh_local "str.appended"
-                rhs_reg,code = env\to_reg @[2]
-                if rhs_type.base_type == "d"
-                    tmp = env\fresh_local "appending.int"
-                    code ..= "#{tmp} =l cast #{rhs_reg}\n"
-                    rhs_reg = tmp
-                code ..= "#{appended} =l call $bl_list_append(l #{lhs_reg}, l #{rhs_reg})\n"
-                return rhs_type,appended,code
-            return store_to @[1], make_rhs, env
+            assert_node @[1].__register, @[1], "Undefined variable"
+            fn_name = env\get_concat_fn rhs_type
+            rhs_reg,code = env\to_reg @[2]
+            if rhs_type.base_type == "d"
+                tmp = env\fresh_local "appending.int"
+                code ..= "#{tmp} =l cast #{rhs_reg}\n"
+                rhs_reg = tmp
+            code ..= "#{@[1].__register} =l call $bl_list_append(l #{@[1].__register}, l #{rhs_reg})\n"
+            return code
         else
             assert_node false, @[1], "Only Lists and Strings can be appended to, not #{lhs_type}"
     FnDecl: (env)=> ""
@@ -1078,41 +1139,6 @@ stmt_compilers =
         code ..= "#{end_label}\n"
         return code
         
-store_to = (val, env, ...)=>
-    switch @__tag
-        when "Var"
-            assert_node @__register, @, "Undefined variable"
-            val_type, reg, code = if type(val) == 'function'
-                val(@__register)
-            else
-                get_type(val), env\to_reg(val, ...)
-            return "#{code}#{@__register} =#{val_type.base_type} copy #{reg}\n"
-        when "IndexedTerm"
-            t = get_type @[1]
-            if t\is_a(Types.ListType)
-                assert_node false, @, "Lists are immutable"
-            elseif t\is_a(Types.StructType)
-                assert_node @[2].__tag == "FieldName", @[2], "Structs can only be indexed by member"
-                member_name = @[2][0]
-                assert_node t.members_by_name[member_name], @[2], "Not a valid struct member of #{t}"
-                struct_reg,struct_code = env\to_reg @[1]
-                i = t.members_by_name[member_name].index
-                member_type = t.members_by_name[member_name].type
-                code = struct_code
-                dest = env\fresh_local "member.loc"
-                code ..= "#{dest} =l add #{struct_reg}, #{8*(i-1)}\n"
-                val_type,val_reg,val_code = if type(val) == 'function'
-                    val(list_reg)
-                else
-                    get_type(val), env\to_reg(val)
-                code ..= val_code
-                code ..= "store#{member_type.item_type.base_type} #{val_reg}, #{dest}\n"
-                return code
-            else
-                assert_node false, @[1], "Indexing is only valid on a list or struct, but this is a #{t}"
-        else
-            error "Not implemented: store to #{@__tag}"
-
 compile_prog = (ast, filename)->
     env = Environment!
     return env\compile_program(ast, filename)

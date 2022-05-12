@@ -1,9 +1,9 @@
-Vec ::: Vec{x: Float, y: Float}
+Vec ::: Vec{x:Num,y:Num}
 
 def add(a:Vec, b:Vec):= Vec{a.x+b.x, a.y+b.y}
 def multiply(a:Vec, b:Vec):= a.x*b.x + a.y*b.y
-def multiply(k:Float, v:Vec):= Vec{k*v.x, k*v.y}
-def multiply(v:Vec, k:Float):= Vec{k*v.x, k*v.y}
+def multiply(k:Num, v:Vec):= Vec{k*v.x, k*v.y}
+def multiply(v:Vec, k:Num):= Vec{k*v.x, k*v.y}
 
 v := Vec{2.3, 4.5}
 $puts("v = $v")

@@ -1,4 +1,4 @@
-Vec ::: Vec{x: Float, y: Float}
+Vec ::: Vec{x:Num,y:Num}
 
 i := 5
 f := 3.14159

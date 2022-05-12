@@ -77,7 +77,7 @@ Lambda:: (@curdent:\C
   (@body=funcBody / (ParseError:: @message=(..$ =>"Invalid lambda body")))
 )
 funcBody: extended-expr / nl curdent +(` /\t) Block
-Assignment:: (IndexedTerm/Var) _ `= _ required-extended-expr
+Assignment:: Var _ `= _ required-extended-expr
 AddUpdate:: Var _ "+=" _ required-extended-expr
 SubUpdate:: Var _ "-=" _ required-extended-expr
 MulUpdate:: Var _ "*=" _ required-extended-expr
@@ -125,7 +125,7 @@ While:: (
   [between]
 )
 Repeat:: \b"repeat"\b @curdent:\C _ [comment] @body=maybeInlineBlock [between]
-maybeInlineBlock: nl curdent +(` /\t) Block / @(Block:: line-statement)
+maybeInlineBlock: nl curdent +(` /\t) Block / _ @(Block:: line-statement)
 between: nl curdent \b"between"\b _ [comment] @between=(maybeInlineBlock / (ParseError:: ..$ => "Invalid 'between' body"))
 Return:: \b"return"\b _ [extended-expr]
 Range:: (

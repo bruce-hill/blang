@@ -2,14 +2,14 @@
 def max(x:Int,y:Int):Int
     return x >= y ? x ; y
 
-def max(x:Float,y:Float):Float
+def max(x:Num,y:Num):Num
     return x >= y ? x ; y
 
 def say_max(x:Int,y:Int):
     m := max(x, y)
     $puts("$m")
 
-def say_max(x:Float,y:Float):
+def say_max(x:Num,y:Num):
     m := max(x, y)
     $puts("$m")
 
