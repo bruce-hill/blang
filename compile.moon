@@ -24,7 +24,6 @@ get_function_reg = (scope, name, arg_signature)->
         when "Block"
             for i=#scope,1,-1
                 stmt = scope[i]
-                log "Checking for #{name} #{arg_signature} in #{stmt}" if stmt.__tag == "FnDecl"
                 if stmt.__tag == "FnDecl" and stmt.name[0] == name and get_type(stmt)\arg_signature! == arg_signature
                     return assert_node(stmt.__register, stmt, "Function without a name"), get_type(stmt)
                 elseif stmt.__tag == "Declaration" and stmt.var[0] == name
@@ -690,6 +689,42 @@ expr_compilers =
             return appended,code
         else
             return overload_infix @, env, "append", "appended"
+    ButWith: (env)=>
+        t = get_type @base[1]
+        if t\is_a(Types.ListType)
+            error "Not impl"
+        elseif t\is_a(Types.String)
+            error "Not impl"
+        elseif t\is_a(Types.StructType)
+            lhs_reg,code = env\to_reg @base[1]
+            ret = env\fresh_local "#{t.name\lower!}.butwith"
+            struct_size = 8*#t.members
+            code ..= "#{ret} =l alloc8 #{struct_size}\n"
+            code ..= "call $memcpy(l #{ret}, l #{lhs_reg}, l #{struct_size})\n"
+            p = env\fresh_local "#{t.name\lower!}.butwith.member.loc"
+            used = {}
+            for override in *@
+                i = if override.index
+                    tonumber(override.index[0])
+                elseif override.field
+                    t.members_by_name[override.field[0]].index
+                else
+                    assert_node false, override, "I don't know what this is"
+
+                assert_node not used[i], override, "Redundant value, this field is already being overwritten"
+                used[i] = true
+
+                assert_node 1 <= i and i <= #t.members, override, "Not a valid member of #{t}"
+                assert_node get_type(override.value[1])\is_a(t.members[i].type), override.value[1], "Not a #{t.members[i].type}"
+                val_reg,val_code = env\to_reg override.value[1]
+                code ..= val_code
+                code ..= "#{p} =l add #{ret}, #{8*(i-1)}\n"
+                code ..= "store#{t.members[i].type.base_type} #{val_reg}, #{p}\n"
+
+            code ..= "#{ret} =l call $intern_bytes(l #{ret}, l #{struct_size})\n"
+            return ret, code
+        else
+            assert_node false, @, "| operator is only supported for List and Struct types"
     Less: (env)=>
         t = get_type(@[1])
         if t\is_a(Types.Int) or t\is_a(Types.String)
@@ -768,7 +803,6 @@ expr_compilers =
         t = get_type @
         struct_size = 8*#t.members
         ret = env\fresh_local "#{t.name\lower!}"
-        -- code = "#{ret} =l call $calloc3(l 1, l #{struct_size})\n"
         code = "#{ret} =l alloc8 #{struct_size}\n"
         p = env\fresh_local "#{t.name\lower!}.member.loc"
         named_members = {m.name[0],m.value[1] for m in *@ when m.name}
@@ -915,6 +949,42 @@ stmt_compilers =
             return code
         else
             assert_node false, @[1], "Only Lists and Strings can be appended to, not #{lhs_type}"
+    ButWithUpdate: (env)=>
+        t = get_type @base[1]
+        if t\is_a(Types.ListType)
+            error "Not impl"
+        elseif t\is_a(Types.String)
+            error "Not impl"
+        elseif t\is_a(Types.StructType)
+            assert_node @base[1].__register, @[1], "Undefined variable"
+            struct_size = 8*#t.members
+            ret = env\fresh_local "#{t.name\lower!}.butwith"
+            code = "#{ret} =l alloc8 #{struct_size}\n"
+            code ..= "call $memcpy(l #{ret}, l #{@base[1].__register}, l #{struct_size})\n"
+            p = env\fresh_local "#{t.name\lower!}.butwith.member.loc"
+            used = {}
+            for override in *@
+                i = if override.index
+                    tonumber(override.index[0])
+                elseif override.field
+                    t.members_by_name[override.field[0]].index
+                else
+                    assert_node false, override, "I don't know what this is"
+
+                assert_node not used[i], override, "Redundant value, this field is already being overwritten"
+                used[i] = true
+
+                assert_node 1 <= i and i <= #t.members, override, "Not a valid member of #{t}"
+                assert_node get_type(override.value[1])\is_a(t.members[i].type), override.value[1], "Not a #{t.members[i].type}"
+                val_reg,val_code = env\to_reg override.value[1]
+                code ..= val_code
+                code ..= "#{p} =l add #{ret}, #{8*(i-1)}\n"
+                code ..= "store#{t.members[i].type.base_type} #{val_reg}, #{p}\n"
+
+            code ..= "#{@base[1].__register} =l call $intern_bytes(l #{ret}, l #{struct_size})\n"
+            return code
+        else
+            assert_node false, @, "| operator is only supported for List and Struct types"
     FnDecl: (env)=> ""
     Pass: (env)=> ""
     TypeDeclaration: (env)=> ""

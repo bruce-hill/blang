@@ -13,9 +13,13 @@ $puts("v[2] = $(v[2])")
 $puts("v + v = $(v + v)")
 $puts("100. * v = $(100. * v)")
 $puts("v * v = $(v * v)")
+butwith := v & .x=999.999
+$puts("v&.x=999.999 = $butwith")
 
 // Anonymous structs (tuples)
 x := {1, 2.3, "hello"}
+$puts("Tuple: $x")
+x &= [2]=5.5
 $puts("Tuple: $x")
 
 // Return values

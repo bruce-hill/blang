@@ -284,6 +284,42 @@ get_type = memoize (node)->
             ret_type = get_op_type(node, lhs_type, node.__tag, rhs_type)
             assert_node ret_type, node, "Invalid #{node.__tag} types: #{lhs_type} and #{rhs_type}"
             return ret_type
+        when "ButWith"
+            base_type = get_type node.base[1]
+            if base_type\is_a(ListType)
+                for i in *node
+                    assert_node i.index, i, "Field names are not allowed for Lists"
+                    i_type = get_type(i.index[1])
+                    value_type = get_type(i.value[1])
+                    if i_type\is_a(Int)
+                        assert_node value_type == base_type.item_type, i.value[1], "Value is #{value_type} not #{base_type.item_type}"
+                    elseif i_type\is_a(Range)
+                        assert_node value_type == base_type, i.value[1], "Value is #{value_type} not #{base_type}"
+                    else
+                        assert_node false, i.index[1], "Value is #{value_type} not Int or Range"
+                return base_type
+            elseif base_type\is_a(String)
+                for i in *node
+                    assert_node i.index, i, "Field names are not allowed for Strings"
+                    if get_type(i.index[1])\is_a(Range)
+                        value_type = get_type(i.value[1])
+                        assert_node value_type == base_type, i.value[1], "Value is #{value_type} not #{base_type}"
+                    else
+                        assert_node false, i.index[1], "Value is #{value_type} not Range"
+                return base_type
+            elseif base_type\is_a(StructType)
+                for i in *node
+                    if i.field
+                        assert_node base_type.members_by_name[i.field[0]], i.field, "Not a valid struct member of #{base_type}"
+                    elseif i.index
+                        assert_node i.index[1].__tag == "Int", i.index[1], "Only field names and integer literals are supported for using |[..]=.. on Structs"
+                        n = tonumber(i.index[0])
+                        assert_node 1 <= n and n <= #base_type.members, i.index[i], "#{base_type} only has members between 1 and #{#base_type.members}"
+                return base_type
+            else
+                assert_node false, node, "| operator is only supported for List and Struct types"
+
+            return base_type
         when "Negative"
             t = get_type node[1]
             assert_node t\is_a(Int) or t\is_a(Num) or t\is_a(Range), node, "Invalid negation type: #{t}"

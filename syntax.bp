@@ -5,7 +5,7 @@ term: (
 )
 IndexedTerm:: !`0-9 (MethodCall / IndexedTerm / term) (`. FieldName / `[ __ required-extended-expr __ `] / (ParseError:: `[ @message=(=> "Unclosed bracket")))
 maybe-index-term: MethodCall / IndexedTerm / term
-expr: Range / Append / Mod / Add / Sub / Mul / Div / Pow / MethodCall / IndexedTerm / term
+expr: Range / Append / ButWith / Mod / Add / Sub / Mul / Div / Pow / MethodCall / IndexedTerm / term
 extended-expr: TernaryOp / And / Or / Xor / comparison / expr
 unaryOp: Negative / Len / Not
 Negative:: `- !`0-9,. maybe-index-term
@@ -18,6 +18,7 @@ Mul:: (Mul / Div / Pow / maybe-index-term) _ `* _ (Pow / maybe-index-term)
 Div:: (Mul / Div / Pow / maybe-index-term) _ `/ _ (Pow / maybe-index-term)
 Pow:: @base=maybe-index-term _ `^ _ @exponent=maybe-index-term
 Append:: (Append / maybe-index-term) _ `@ _ (maybe-index-term / (ParseError:: @message=(=>"Expected a value to append here")))
+ButWith:: @base=maybe-index-term _ `& _ *@((`. @field=FieldName / `[__@index=required-extended-expr__`]) _`=_ @value=required-extended-expr) % (_`,,|_) [_`,]
 And:: 2+(comparison / expr) % (__\b"and"\b__)
 Or:: 2+(comparison / expr) % (__\b"or"\b__)
 Xor:: 2+(comparison / expr) % (__\b"xor"\b__)
@@ -52,7 +53,7 @@ TypeVar:: id !~ (^^keyword$$)
 id: \b(\I *\i)
 Block:: @curdent:\C +(
     comment
-  / statement
+  / statement _ [comment] [(ParseError:: +. @message=(=> "Cannot parse this code"))]
   / !$ (ParseError:: @dent:\C ..$ *(\n dent (` /\t)..$) @message=(=>"Invalid statement"))) % (nl curdent !(` /\t))
 statement: (
     Declaration / FnDecl / If / When / For / While / Repeat / TypeDeclaration
@@ -64,7 +65,7 @@ Skip:: \b"skip"\b [_ @target=(\b"for"\b / \b"while"\b / \b"repeat"\b / Var)]
 Stop:: \b"stop"\b [_ @target=(\b"for"\b / \b"while"\b / \b"repeat"\b / Var)]
 line-statement: (
     (Pass:: "pass" _ [comment])
-  / Assignment / AddUpdate / SubUpdate / MulUpdate / DivUpdate / AndUpdate / OrUpdate / XorUpdate / AppendUpdate
+  / Assignment / AddUpdate / SubUpdate / MulUpdate / DivUpdate / AndUpdate / OrUpdate / XorUpdate / AppendUpdate / ButWithUpdate
   / FnCall) _ [comment]
 Declaration:: @var=Var _`: _[@type=type_] `= _ @value=required-extended-expr
 TypeDeclaration:: @(NamedType::id) _ ":::" _ (type / (ParseError:: ..$ @message=(=>"Not a valid type")))
@@ -86,6 +87,7 @@ AndUpdate:: Var _ "and=" _ required-extended-expr
 OrUpdate:: Var _ "or=" _ required-extended-expr
 XorUpdate:: Var _ "xor=" _ required-extended-expr
 AppendUpdate:: Var _ "@=" _ required-extended-expr
+ButWithUpdate:: @base=Var _ "&=" _ *@((`. @field=FieldName / `[__@index=required-extended-expr__`]) _`=_ @value=required-extended-expr) % (_`,,|_) [_`,]
 required-extended-expr: extended-expr / (ParseError:: ..$ @message=(=>"Invalid expression"))
 type: (
     # (VariantType:: 2+ type%`|)
