@@ -15,3 +15,15 @@ def say_max(x:Num,y:Num):
 
 say_max(2.3, 3.4)
 say_max(99, 100)
+
+// "Generics" can be accomplished unsafely:
+def map(list:[Int], fn:(Int)->Int):[Int]
+    ret := [:Int]
+    for x in list
+        ret @= x|fn
+    return ret
+
+to_map := ["hello","world"]
+def bye(s:String):= s == "hello" ? "bye" ; s
+mapped := map((to_map):[Int], (bye):(Int)->Int):[String]
+$puts("map($to_map, bye) -> $mapped")

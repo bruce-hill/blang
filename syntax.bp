@@ -44,8 +44,8 @@ Escape:: `\ (`x 2 hex / `a,b,t,n,r,v / 3 `0-8 / .)
 Float:: [`-,+] (`0-9 *`0-9,_ `. !`. *`0-9 / `. +`0-9)
 Int:: [`-,+] `0-9 *`0-9,_
 Struct:: [@name=Var] _ `{ __ *@([@name=FieldName __`=__] @value=required-extended-expr) % (__`,__) [__`,] __ `}
-FnCall:: @fn=(FnCall / Global / Var / `(__expr__`)) `( __ *expr % (__`,__) __ [`,__] `) [_`:_@type=type]
-MethodCall:: !`0-9 (MethodCall / IndexedTerm / term) _ `| _ (@fn=Var _ [`( __ *expr % (__`,__) __ [`,__] `)] / (ParseError:: => "Not a valid method call")) [_`:_@type=type]
+FnCall:: @fn=(FnCall / Global / Var / `(__required-extended-expr__`)) `( __ *expr % (__`,__) __ [`,__] `) [_`:_@type=type]
+MethodCall:: !`0-9 (MethodCall / IndexedTerm / term) _ `| _ (@fn=(Global / Var / `(__required-extended-expr__`)) _ [`( __ *expr % (__`,__) __ [`,__] `)] / (ParseError:: => "Not a valid method call")) [_`:_@type=type]
 Var:: id !~ (^^keyword$$)
 FieldName:: id !~ (^^keyword$$)
 Global:: `$ id
@@ -66,7 +66,7 @@ Stop:: \b"stop"\b [_ @target=(\b"for"\b / \b"while"\b / \b"repeat"\b / Var)]
 line-statement: (
     (Pass:: "pass" _ [comment])
   / Assignment / AddUpdate / SubUpdate / MulUpdate / DivUpdate / AndUpdate / OrUpdate / XorUpdate / AppendUpdate / ButWithUpdate
-  / FnCall) _ [comment]
+  / FnCall / MethodCall) _ [comment]
 Declaration:: @var=Var _`: _[@type=type_] `= _ @value=required-extended-expr
 TypeDeclaration:: @(NamedType::id) _ ":::" _ (type / (ParseError:: ..$ @message=(=>"Not a valid type")))
 FnDecl:: @curdent:\C "def"\b _ (@name=Var _

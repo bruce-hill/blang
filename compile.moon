@@ -379,7 +379,8 @@ expr_compilers =
     Cast: (env)=>
         reg,code = env\to_reg @[1]
         t = parse_type @type[1]
-        if t.abi_type == get_type(@[1]).abi_type
+        actual_type = get_type(@[1])
+        if actual_type and t.abi_type == actual_type.abi_type
             return reg,code
         c = env\fresh_local "casted"
         code ..= "#{c} =#{t.abi_type} cast #{reg}\n"
