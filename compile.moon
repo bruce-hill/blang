@@ -768,7 +768,8 @@ expr_compilers =
         t = get_type @
         struct_size = 8*#t.members
         ret = env\fresh_local "#{t.name\lower!}"
-        code = "#{ret} =l call $calloc3(l 1, l #{struct_size})\n"
+        -- code = "#{ret} =l call $calloc3(l 1, l #{struct_size})\n"
+        code = "#{ret} =l alloc8 #{struct_size}\n"
         p = env\fresh_local "#{t.name\lower!}.member.loc"
         named_members = {m.name[0],m.value[1] for m in *@ when m.name}
         unnamed_members = [m.value[1] for m in *@ when not m.name]
@@ -787,7 +788,7 @@ expr_compilers =
                 code ..= val_code
                 m_t = get_type val
                 code ..= "store#{m_t.base_type} #{val_reg}, #{p}\n"
-                
+        code ..= "#{ret} =l call $intern_bytes(l #{ret}, l #{struct_size})\n"
         return ret, code
 
 stmt_compilers =

@@ -28,3 +28,5 @@ def foo(n:Int):
 result := foo(4)
 if result.ok
     $puts(result.msg)
+
+$puts("Equality: $(Vec{1,1} == Vec{1,1})")
