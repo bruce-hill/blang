@@ -1,4 +1,7 @@
 #include <bhash.h>
+#include <bp/pattern.h>
+#include <bp/match.h>
+#include <bp/printmatch.h>
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -83,4 +86,34 @@ char *bl_string_repeat(char *s, int64_t count) {
         p += len;
     }
     return intern_str_transfer(buf);
+}
+
+char *bl_string_replace(char *text, char *pat_text, char *rep_text) {
+    maybe_pat_t maybe_pat = bp_pattern(pat_text, pat_text + strlen(pat_text));
+    if (!maybe_pat.success) {
+        return text;
+    }
+    pat_t *pat = maybe_pat.value.pat;
+
+    maybe_pat_t maybe_replacement = bp_replacement(pat, rep_text, rep_text + strlen(rep_text));
+    if (!maybe_replacement.success) {
+        return text;
+    }
+
+    char *buf = NULL;
+    size_t size = 0;
+    FILE *out = open_memstream(&buf, &size);
+    const char *prev = text;
+    pat_t *rep_pat = maybe_replacement.value.pat;
+    size_t textlen = strlen(text);
+    for (match_t *m = NULL; next_match(&m, text, &text[textlen], rep_pat, NULL, NULL, false); ) {
+        fwrite(prev, sizeof(char), (size_t)(m->start - prev), out);
+        fprint_match(out, text, m, NULL);
+        prev = m->end;
+    }
+    fwrite(prev, sizeof(char), (size_t)(&text[textlen] - prev), out);
+    fflush(out);
+    char *replaced = intern_bytes(buf, size);
+    fclose(out);
+    return replaced;
 }

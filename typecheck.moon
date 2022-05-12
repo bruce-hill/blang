@@ -5,7 +5,7 @@ import log, viz, print_err, assert_node from require 'util'
 local get_type, parse_type
 
 class Type
-    is_a: (cls)=> @ == cls or cls\contains @
+    is_a: (cls)=> @ == cls or @.__class == cls or cls\contains @
     contains: (other)=> @ == other
     base_type: 'l'
     abi_type: 'l'
@@ -15,6 +15,12 @@ class NamedType extends Type
     new: (@name)=>
     __tostring: => @name
     __eq: Type.__eq
+
+class DerivedType extends Type
+    new: (@name, @derived_from)=>
+    __tostring: => @name
+    __eq: Type.__eq
+    is_a: (cls)=> @ == cls or @derived_from\is_a(cls) or @.__class == cls or cls\contains @
 
 class ListType extends Type
     new: (@item_type)=>
@@ -146,6 +152,8 @@ find_type_alias = (scope, name)->
                         return parse_type stmt[2]
         scope = scope.__parent
 
+derived_types = {}
+
 parse_type = memoize (type_node)->
     switch type_node.__tag
         when "NamedType"
@@ -154,6 +162,10 @@ parse_type = memoize (type_node)->
             alias = find_type_alias type_node, type_node[0]
             assert_node alias, type_node, "Undefined type"
             return alias
+        when "DerivedType"
+            unless derived_types[type_node.name[0]]
+                derived_types[type_node.name[0]] = DerivedType type_node.name[0], parse_type(type_node.derivesFrom[1])
+            return derived_types[type_node.name[0]]
         when "ListType"
             return ListType(parse_type(type_node[1]))
         when "FnType"
@@ -176,16 +188,14 @@ get_op_type = (t1, op, t2)=>
 
     switch op
         when "Add"
-            if t1 == t2 and (t1 == Int or t1 == Float or t1.__class == ListType)
+            if t1 == t2 and (t1\is_a(Int) or t1\is_a(Float) or t1\is_a(ListType))
                 return t1
         when "Sub"
-            if t1 == t2 and (t1 == Int or t1 == Float)
+            if t1 == t2 and (t1\is_a(Int) or t1\is_a(Float))
                 return t1
         when "Mul","Div","Mod"
-            if t1 == Int and t2 == Int
-                return Int
-            elseif t1 == Float and t2 == Float
-                return Float
+            if t1 == t2 and (t1\is_a(Int) or t1\is_a(Float))
+                return t1
 
     overload_names = Add:"add", Sub:"subtract", Mul:"multiply", Div:"divide", Mod:"modulus", Pow:"raise", Append:"append"
     return unless overload_names[op]
@@ -200,6 +210,7 @@ get_type = memoize (node)->
         when "Nil" then return Nil
         when "String" then return String
         when "Range" then return Range
+        when "Cast" then return parse_type(node.type[1])
         when "List"
             decl_type = node.type and parse_type(node.type[1])
             return decl_type if #node == 0
@@ -272,7 +283,7 @@ get_type = memoize (node)->
             return ret_type
         when "Negative"
             t = get_type node[1]
-            assert_node t == Int or t == Float or t == Range, node, "Invalid negation type: #{t}"
+            assert_node t\is_a(Int) or t\is_a(Float) or t\is_a(Range), node, "Invalid negation type: #{t}"
             return t
         when "Len"
             t = get_type node[1]
@@ -284,9 +295,9 @@ get_type = memoize (node)->
             return Bool
         when "Pow"
             base_type = get_type node.base[1]
-            assert_node base_type == Float or base_type == Int, node.base[1], "Expected Float or Int, not #{base_type}"
+            assert_node base_type\is_a(Float) or base_type\is_a(Int), node.base[1], "Expected Float or Int, not #{base_type}"
             exponent_type = get_type node.exponent[1]
-            assert_node exponent_type == Float or base_type == Int, node.exponent[1], "Expected Float or Int, not #{exponent_type}"
+            assert_node exponent_type\is_a(Float) or base_type\is_a(Int), node.exponent[1], "Expected Float or Int, not #{exponent_type}"
             return base_type
         when "Lambda","FnDecl"
             decl_ret_type = node.return and parse_type(node.return[1])
@@ -299,7 +310,7 @@ get_type = memoize (node)->
                         t = ret[1] and get_type(ret[1]) or Void
                     else
                         t2 = ret[1] and get_type(ret[1]) or Void
-                        unless t2\is_a t
+                        unless t2\is_a(t)
                             t = Types.VariantType({t, t2})
                 t or Void
             if decl_ret_type

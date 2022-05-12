@@ -1,2 +1,25 @@
-Foo ::: Int
+Foo ::: Foo:Int
 x:Foo= 5
+
+MyString ::: MyString:String
+s := ("Hello"):MyString
+$puts("$x $s")
+
+ShellCode ::: ShellCode:String
+
+def shell_escape(unsafe:String):String
+    escaped := $bl_string_replace(unsafe, "`\",\\,\$,`", "\\\\@0"):String
+    return "\"$escaped\""
+
+def add(unsafe:String,sh:ShellCode):ShellCode
+    return $bl_string_append_string(shell_escape(unsafe), sh):ShellCode
+
+def add(sh:ShellCode,unsafe:String):ShellCode
+    return $bl_string_append_string(sh, shell_escape(unsafe)):ShellCode
+
+def add(sh1:ShellCode,sh2:ShellCode):ShellCode
+    return $bl_string_append_string(sh1, sh2):ShellCode
+
+file := "`rm -rf \$HOME`" 
+cmd := ("cp "):ShellCode + file + (" /tmp"):ShellCode
+$puts("> $cmd")

@@ -1,7 +1,7 @@
 prog: ^^__Block__ [ParseError:: +(./\n) @message=(""=>"Invalid code")]$$
 
 term: (
-    Bool / Nil / String / Float / Int / unaryOp / Global !(_`(,{) / Var !(_`(,{) / Struct / FnCall / Lambda / List / `(__extended-expr__`)
+    Bool / Nil / String / Float / Int / unaryOp / Global !(_`(,{) / Var !(_`(,{) / Struct / FnCall / Lambda / List / Cast / `(__extended-expr__`)
 )
 IndexedTerm:: !`0-9 (MethodCall / IndexedTerm / term) (`. FieldName / `[ __ required-extended-expr __ `] / (ParseError:: `[ @message=(=> "Unclosed bracket")))
 maybe-index-term: MethodCall / IndexedTerm / term
@@ -37,6 +37,7 @@ String:: (
   / `" @content=..%(@(Escape/Interp)) `"
   / (ParseError:: `"..$ @message=(=> "Missing closing quote")))
 List:: `[__*extended-expr %(__`,__) __ [`,__] `] [_`:_@type=type] / `[__`:__@type=@(ListType::type)__`]
+Cast:: `(__extended-expr__`)_`:_@type=type
 Interp: `$ (Var/`(__ extended-expr __`))
 Escape:: `\ (`x 2 hex / `a,b,t,n,r,v / 3 `0-8 / .)
 Float:: [`-,+] (`0-9 *`0-9,_ `. !`. *`0-9 / `. +`0-9)
@@ -88,8 +89,9 @@ AppendUpdate:: Var _ "@=" _ required-extended-expr
 required-extended-expr: extended-expr / (ParseError:: ..$ @message=(=>"Invalid expression"))
 type: (
     # (VariantType:: 2+ type%`|)
-    (StructType:: @name=Var `{__ *@(@name=FieldName_`:_@type=type) % (__`,__) [__`,] __`})
-  / (NamedType::Var)
+    (StructType:: @name=id `{__ *@(@name=FieldName_`:_@type=type) % (__`,__) [__`,] __`})
+  / (DerivedType:: @name=id ":" @derivesFrom=(type / (ParseError:: ..$ @message=(=>"Not a valid type"))))
+  / (NamedType::id)
   / TypeVar
   / (ListType::`[type`])
   #/ (OptionalType:: `? type)
@@ -131,7 +133,7 @@ Range:: (
   / ".." [@last=maybe-index-term]) # ..5 ..
 comment: "//" *.
 
-keyword: "nil"/"yes"/"no"/"for"/"while"/"between"/"if"/"elseif"/"else"/"with"/"and"/"or"/"xor"/"pass"/"not"/"skip"/"stop"/"unless"/"repeat"
+keyword: "nil"/"yes"/"no"/"for"/"while"/"between"/"if"/"elseif"/"else"/"with"/"and"/"or"/"xor"/"pass"/"not"/"skip"/"stop"/"unless"/"repeat"/"as"
 hex: `0-9,a-f,A-F
 nl: +\n % (*(` /\t) [comment])
 __: *(` /\t/\n/\r/comment)
