@@ -8,7 +8,7 @@ O=-O3
 LIBS=-lm -lbhash
 ALL_FLAGS=$(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(LIBS)
 
-CFILES=lib/range.c lib/string.c lib/reduce.c lib/list.c lib/array.c lib/math.c
+CFILES=lib/range.c lib/string.c lib/reduce.c lib/list.c lib/array.c lib/math.c lib/safealloc.c
 OBJFILES=$(CFILES:.c=.o)
 
 all: $(OBJFILES)

@@ -61,9 +61,9 @@ class StructType extends Type
     new: (@name, @members)=> -- Members: {{type=t, name="Foo"}, {type=t2, name="Baz"}, ...}
         @members_by_name = {}
         for i,m in ipairs @members
-            @members_by_name[m.name] = {index: i, type: m.type}
+            @members_by_name[m.name] = {index: i, type: m.type} if m.name
         @abi_type = ":#{@name}"
-    __tostring: => "#{@name}{#{concat ["#{m.name}:#{m.type}" for m in *@members], ","}}"
+    __tostring: => "#{@name}{#{concat ["#{m.name and m.name..':' or ''}#{m.type}" for m in *@members], ","}}"
     __eq: Type.__eq
 
 -- Primitive Types:
@@ -77,6 +77,9 @@ Bool = NamedType("Bool")
 String = NamedType("String")
 Range = StructType("Range", {{name:"first",type:Int},{name:"next",type:Int},{name:"last",type:Int}})
 primitive_types = {:Int, :Float, :Void, :Nil, :Bool, :String, :Range}
+
+tuples = {}
+tuple_index = 1
 
 memoize = (fn)->
     cache = setmetatable {}, __mode:'k'
@@ -172,33 +175,17 @@ get_op_type = (t1, op, t2)=>
         return true
 
     switch op
-        when "Add", "Sub"
-            if t1.__class == StructType and t2.__class == StructType and t1 == t2
-                return t1 if t1 == t2
-            elseif t1.__class == StructType
-                return t1 if all_member_types(t1, (memtype)-> get_op_type(@, memtype, op, t2) == t2)
-            elseif t2.__class == StructType
-                return t2 if all_member_types(t2, (memtype)-> get_op_type(@, memtype, op, t1) == t1)
-            elseif t1 == Int and t2 == Int
-                return Int
-            elseif t1 == Float and t2 == Float
-                return Float
-            elseif t1.__class == ListType and t1 == t2
+        when "Add"
+            if t1 == t2 and (t1 == Int or t1 == Float or t1.__class == ListType)
+                return t1
+        when "Sub"
+            if t1 == t2 and (t1 == Int or t1 == Float)
                 return t1
         when "Mul","Div","Mod"
-            if op == "Mul" and t1.__class == StructType and t2.__class == StructType and t1 == t2
-                memtype = t1.members[1].type
-                return memtype if memtype == Int or memtype == Float and all_member_types(t1, (m)-> m == memtype)
-            elseif op == "Mul" and t1.__class == StructType
-                return t1 if all_member_types(t1, (m)-> get_op_type(@, m, op, t2) == t1)
-            elseif t2.__class == StructType
-                return t2 if all_member_types(t2, (m)-> get_op_type(@, t1, op, m) == t2)
-            elseif t1 == Int and t2 == Int
+            if t1 == Int and t2 == Int
                 return Int
             elseif t1 == Float and t2 == Float
                 return Float
-            elseif t1.__class == ListType and t1 == t2
-                return t1
 
     overload_names = Add:"add", Sub:"subtract", Mul:"multiply", Div:"divide", Mod:"modulus", Pow:"raise", Append:"append"
     return unless overload_names[op]
@@ -232,10 +219,16 @@ get_type = memoize (node)->
                 else
                     assert_node false, node[2], "Index has type #{index_type}, but expected Int or Range"
             elseif t.__class == StructType
-                assert_node node[2].__tag == "FieldName", node[2], "Structs can only be indexed by member"
-                member_name = node[2][0]
-                assert_node t.members_by_name[member_name], node[2], "Not a valid struct member of #{t}"
-                return t.members_by_name[member_name].type
+                if node[2].__tag == "FieldName"
+                    member_name = node[2][0]
+                    assert_node t.members_by_name[member_name], node[2], "Not a valid struct member of #{t}"
+                    return t.members_by_name[member_name].type
+                elseif node[2].__tag == "Int"
+                    i = tonumber(node[2][0])
+                    assert_node 1 <= i and i <= #t.members, node[2], "#{t} only has members between 1 and #{#t.members}"
+                    return t.members[i].type
+                else
+                    assert_node false, node[2], "Structs can only be indexed by a field name or Int literal"
             elseif t == String
                 index_type = get_type(node[2], vars)
                 if index_type == Int
@@ -348,15 +341,24 @@ get_type = memoize (node)->
             error "Blocks have no type"
             -- return get_type(node[#node])
         when "Struct"
-            alias = find_type_alias node, node.name[0]
-            assert_node alias, node, "Undefined struct"
-            return alias
+            if node.name
+                alias = find_type_alias node, node.name[0]
+                -- assert_node alias, node, "Undefined struct"
+                return alias if alias
+
+            key = "{#{concat ["#{m.name and "#{m.name[0]}=" or ""}#{get_type m.value[1]}" for m in *node], ","}}"
+            unless tuples[key]
+                members = [{type: get_type(m.value[1]), name: m.name and m.name[0]} for m in *node]
+                name = node.name and node.name[0] or "Tuple.#{tuple_index}"
+                tuple_index += 1
+                tuples[key] = StructType(name, members)
+            return tuples[key]
         when "Stop","Skip"
             return Void
         else
             assert_node not node.__tag, node, "Cannot infer type for: #{node.__tag}"
     if #node > 0
-        error "WTF: #{viz node}"
+        error "Getting a node without a tag: #{viz node}"
         return get_type(node[#node])
     return Void
 

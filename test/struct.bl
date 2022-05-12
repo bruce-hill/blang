@@ -1,10 +1,30 @@
 Vec ::: Vec{x: Float, y: Float}
 
-def print_vec(v:Vec):
-    $printf("Vec<%f,%f>\n", v.x, v.y)
+def add(a:Vec, b:Vec):= Vec{a.x+b.x, a.y+b.y}
+def multiply(a:Vec, b:Vec):= a.x*b.x + a.y*b.y
+def multiply(k:Float, v:Vec):= Vec{k*v.x, k*v.y}
+def multiply(v:Vec, k:Float):= Vec{k*v.x, k*v.y}
 
 v := Vec{2.3, 4.5}
-print_vec(v)
-print_vec(v)
-print_vec(v)
-print_vec(v)
+$puts("v = $v")
+$puts("v.x = $(v.x)")
+$puts("v[1] = $(v[1])")
+$puts("v[2] = $(v[2])")
+$puts("v + v = $(v + v)")
+$puts("100. * v = $(100. * v)")
+$puts("v * v = $(v * v)")
+
+// Anonymous structs (tuples)
+x := {1, 2.3, "hello"}
+$puts("Tuple: $x")
+
+// Return values
+def foo(n:Int):
+    if n > 0
+        return {ok=yes, msg="Can be used for multi-returns"}
+    else
+        return {ok=no, msg="Uh oh"}
+
+result := foo(4)
+if result.ok
+    $puts(result.msg)

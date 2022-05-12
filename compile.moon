@@ -6,7 +6,7 @@ concat = table.concat
 
 has_jump = bp.compile('^_("jmp"/"jnz"/"ret")\\b ..$ $$')
 
-local compile_stmt, to_reg, store_to, stmt_compilers, expr_compilers
+local store_to, stmt_compilers, expr_compilers
 
 each_tag = (...)=>
     return unless type(@) == 'table'
@@ -241,11 +241,15 @@ class Environment
 
                 code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{@get_string_reg("]","sqbracket.close")})\n"
             elseif t.__class == Types.StructType
-                code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{@get_string_reg("#{t.name}{#{t.members[1].name}=")})\n"
+                if t.name\match "^Tuple%.[0-9]+$"
+                    code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{@get_string_reg("{", "curly")})\n"
+                else
+                    code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{@get_string_reg("#{t.name}{")})\n"
                 ptr_reg = @fresh_local "member.loc"
                 for i,mem in ipairs t.members
                     if i > 1
-                        code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{@get_string_reg(", #{mem.name}=")})\n"
+                        code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{@get_string_reg(", ", "comma.space")})\n"
+                    code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{@get_string_reg("#{mem.name}=")})\n" if mem.name
                     code ..= "#{ptr_reg} =l add #{reg}, #{8*(i-1)}\n"
                     member_reg = @fresh_local "member.#{mem.name}"
                     code ..= "#{member_reg} =#{mem.type.abi_type} load#{mem.type.base_type} #{ptr_reg}\n"
@@ -280,10 +284,17 @@ class Environment
     compile_program: (ast, filename)=>
         add_parenting(ast)
 
-        @type_code = "type :Range = { l, l, l }\n"
-        for s in coroutine.wrap(-> each_tag(ast, "StructType"))
-            t = parse_type s
-            @type_code ..= "type :#{t.name} = { #{concat [m.type.abi_type for m in *t.members], ", "} }"
+        @type_code = "type :Range = {l,l,l}\n"
+        declared_structs = {}
+        for s in coroutine.wrap(-> each_tag(ast, "StructType", "Struct"))
+            t = if s.__tag == "StructType" then parse_type(s)
+            else get_type(s)
+
+            if declared_structs[t.name]
+                assert_node declared_structs[t.name] == t, s, "Struct declaration shadows"
+                continue
+            declared_structs[t.name] = t
+            @type_code ..= "type :#{t.name} = {#{concat [m.type.abi_type for m in *t.members], ","}}\n"
 
         @used_names["%__argc"] = true
         @used_names["%argc"] = true
@@ -403,8 +414,10 @@ expr_compilers =
             else
                 t = get_type(val)
                 fn_name = env\get_concat_fn t
+                code ..= "# xxxx start #{val.__tag} xxxxx\n"
                 val_reg,val_code = env\to_reg val
                 code ..= val_code
+                code ..= "# xxxxxx end xxxxx\n"
                 code ..= "#{str} =l call #{fn_name}(l #{str}, #{t.base_type} #{val_reg})\n"
 
         i = @content.start
@@ -481,13 +494,17 @@ expr_compilers =
             else
                 assert_node false, @[2], "Index is #{index_type} instead of Int or Range"
         elseif t.__class == Types.StructType
-            assert_node @[2].__tag == "FieldName", @[2], "Structs can only be indexed by member"
-            member_name = @[2][0]
-            assert_node t.members_by_name[member_name], @[2], "Not a valid struct member of #{t}"
-            struct_reg,struct_code = env\to_reg @[1]
-            i = t.members_by_name[member_name].index
-            member_type = t.members_by_name[member_name].type
-            code = struct_code
+            i,member_type = if @[2].__tag == "FieldName"
+                member_name = @[2][0]
+                assert_node t.members_by_name[member_name], @[2], "Not a valid struct member of #{t}"
+                t.members_by_name[member_name].index, t.members_by_name[member_name].type
+            elseif @[2].__tag == "Int"
+                i = tonumber(@[2][0])
+                assert_node 1 <= i and i <= #t.members, @[2], "#{t} only has members between 1 and #{#t.members}"
+                i, t.members[i].type
+            else
+                assert_node false, @[2], "Structs can only be indexed by a field name or Int literal"
+            struct_reg,code = env\to_reg @[1]
             loc = env\fresh_local "member.loc"
             code ..= "#{loc} =l add #{struct_reg}, #{8*(i-1)}\n"
             ret = env\fresh_local "member"
@@ -605,42 +622,30 @@ expr_compilers =
             assert_node get_type(val) == Types.Bool, val, "Expected Bool here, but got #{get_type val}"
         return infixop @, env, "xor"
     Add: (env)=>
-        t = get_type(@)
-        if t == Types.Int or t == Types.Float
+        t_lhs,t_rhs = get_type(@[1]),get_type(@[2])
+        if t_lhs == t_rhs and (t_lhs == Types.Int or t_lhs == Types.Float)
             return infixop @, env, "add"
-        elseif t.__class == Types.List
+        elseif t_lhs == t_rhs and t_lhs.__class == Types.List
             return infixop @, env, (ret,lhs,rhs)->
                 "#{ret} =l call $bl_list_concat(l #{lhs}, l #{rhs})\n"
-        elseif t.__class == Types.Struct
-            -- Pairwise
-            error "Not impl"
         else
             return overload_infix @, env, "add", "sum"
 
     Sub: (env)=>
-        t = get_type(@)
-        if t == Types.Int or t == Types.Float
+        t_lhs,t_rhs = get_type(@[1]),get_type(@[2])
+        if t_lhs == t_rhs and (t_lhs == Types.Int or t_lhs == Types.Float)
             return infixop @, env, "sub"
-        elseif t == Types.String
-            -- Concat
-            error "Not impl"
-        elseif t.__class == Types.Struct
-            -- Pairwise
-            error "Not impl"
         else
             return overload_infix @, env, "subtract", "difference"
     Mul: (env)=>
-        t = get_type(@)
-        if t == Types.Int or t == Types.Float
+        t_lhs,t_rhs = get_type(@[1]),get_type(@[2])
+        if t_lhs == t_rhs and (t_lhs == Types.Int or t_lhs == Types.Float)
             return infixop @, env, "mul"
-        elseif t.__class == Types.Struct
-            -- Dot product
-            error "Not impl"
         else
             return overload_infix @, env, "multiply", "product"
     Div: (env)=>
-        t = get_type(@)
-        if t == Types.Int or t == Types.Float
+        t_lhs,t_rhs = get_type(@[1]),get_type(@[2])
+        if t_lhs == t_rhs and (t_lhs == Types.Int or t_lhs == Types.Float)
             return infixop @, env, "div"
         else
             return overload_infix @, env, "divide", "quotient"
@@ -777,7 +782,7 @@ expr_compilers =
         t = get_type @
         struct_size = 8*#t.members
         ret = env\fresh_local "#{t.name\lower!}"
-        code = "#{ret} =#{t.abi_type} call $calloc(l 1, l #{struct_size})\n"
+        code = "#{ret} =l call $calloc3(l 1, l #{struct_size})\n"
         p = env\fresh_local "#{t.name\lower!}.member.loc"
         named_members = {m.name[0],m.value[1] for m in *@ when m.name}
         unnamed_members = [m.value[1] for m in *@ when not m.name]

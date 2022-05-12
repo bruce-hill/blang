@@ -42,7 +42,7 @@ Interp: `$ (Var/`(__ extended-expr __`))
 Escape:: `\ (`x 2 hex / `a,b,t,n,r,v / 3 `0-8 / .)
 Float:: [`-,+] (`0-9 *`0-9,_ `. !`. *`0-9 / `. +`0-9)
 Int:: [`-,+] `0-9 *`0-9,_
-Struct:: @name=Var _ `{ __ *@([@name=FieldName __`=__] @value=required-extended-expr) % (__`,__) [__`,] __ `}
+Struct:: [@name=Var] _ `{ __ *@([@name=FieldName __`=__] @value=required-extended-expr) % (__`,__) [__`,] __ `}
 FnCall:: @fn=(FnCall / Global / Var / `(__expr__`)) `( __ @args=(*expr % (__`,__)) __ [`,__] `) [_`:_@type=type]
 Var:: id !~ (^^keyword$$)
 FieldName:: id !~ (^^keyword$$)
@@ -68,7 +68,7 @@ line-statement: (
 Declaration:: @var=Var _`: _[@type=type_] `= _ @value=required-extended-expr
 TypeDeclaration:: @(NamedType::id) _ ":::" _ (type / (ParseError:: ..$ @message=(=>"Not a valid type")))
 FnDecl:: @curdent=\C "def"\b _ (@name=Var _
-  `( __ @args=*@(@arg=Var_`:_@type=type)%(__`,__)__[`,__]`)_`:_[@return=type]_ [comment]
+  `( __ @args=*@((@arg=Var_`:_@type=type) / (ParseError:: Var @message=(=>"This argument doesn't have a type")))%(__`,__)__[`,__]`)_`:_[@return=type]_ [comment]
   @body=(`= _ extended-expr / nl curdent +(` /\t) Block))
 Lambda:: (@curdent=\C
   `(__@args=*@(@arg=Var__`:__@type=type)%(__`,__)__[`,__]`)
