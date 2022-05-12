@@ -36,18 +36,20 @@ int64_t bl_list_nth(list_t *list, int64_t i) {
     }
 }
 
-static list_t *coalesce(list_t *list) {
+list_t *bl_list_coalesce(list_t *list) {
     list_t *empty = bl_empty_list();
+    if (list->before == empty && list->after == empty)
+        return list;
     size_t size = LIST_SIZE(list->len);
-    list_t *compact = calloc2(1, size);
-    compact->len = list->len;
-    compact->before = empty;
-    compact->after = empty;
-    compact->depth = 0;
+    list_t *coalesced = calloc2(1, size);
+    coalesced->len = list->len;
+    coalesced->before = empty;
+    coalesced->after = empty;
+    coalesced->depth = 0;
     for (int64_t i = 1; i <= list->len; i++)
-        compact->items[i-1] = bl_list_nth(list, i);
-    compact = (list_t*)intern_bytes_transfer((void*)compact, size);
-    return compact;
+        coalesced->items[i-1] = bl_list_nth(list, i);
+    coalesced = (list_t*)intern_bytes_transfer((void*)coalesced, size);
+    return coalesced;
 }
 
 list_t *bl_list_new(list_t *before, list_t *after, int64_t len, int64_t *items) {
@@ -66,7 +68,7 @@ list_t *bl_list_new(list_t *before, list_t *after, int64_t len, int64_t *items) 
     memcpy(list->items, items, nitems*sizeof(int64_t));
     if (1<<list->depth > 3*list->len) {
         list_t *tofree = list;
-        list = coalesce(list);
+        list = bl_list_coalesce(list);
         if (tofree != list) free(tofree);
     } else {
         list = (list_t*)intern_bytes_transfer((void*)list, size);
@@ -148,16 +150,32 @@ list_t *bl_list_remove(list_t *list, int64_t i) {
     }
 }
 
-list_t *bl_list_slice(list_t *list, range_t *r) {
+list_t *bl_list_slice(list_t *list, int64_t first, int64_t next, int64_t last) {
     list_t *empty = bl_empty_list();
-    int64_t step = r->next - r->first;
-    if (step == 0) return empty;
-
+    int64_t step = next - first;
     int64_t len = list->len;
-    int64_t first = MAX(0, MIN(len-1, r->first-1)), last = MAX(0, MIN(len-1, r->last-1));
+    if (step == 0 || (first < 1 && last < 1) || (first > len && last > len))
+        return empty;
+
+    first = MAX(1, MIN(len, first));
+    last = MAX(1, MIN(len, last));
+    if (first == 1 && last == len && step == 1) // Entire slice
+        return list;
+
     int64_t slice_len = 0;
     for (int64_t i = first; step > 0 ? i <= last : i >= last; i += step)
         ++slice_len;
+
+    if (slice_len == 0) return empty;
+
+    if (step == 1) { // Optimization to avoid copying
+        list_t *before = bl_list_slice(list->before, first, first+step, last);
+        int64_t nonafter = list->len - list->after->len;
+        list_t *after = bl_list_slice(list->after, first-nonafter, first-nonafter+step, last-nonafter);
+        int64_t chunk_start = MAX(0, first - list->before->len - 1);
+        int64_t chunk_len = slice_len - before->len - after->len;
+        return bl_list_new(before, after, chunk_len, &list->items[chunk_start]);
+    }
 
     size_t size = LIST_SIZE(slice_len);
     list_t *slice = calloc2(1, size);
@@ -167,6 +185,10 @@ list_t *bl_list_slice(list_t *list, range_t *r) {
     slice->depth = 1;
     int64_t dest = 0;
     for (int64_t i = first; step > 0 ? i <= last : i >= last; i += step)
-        slice->items[dest++] = list->items[i];
+        slice->items[dest++] = list->items[i-1];
     return (list_t*)intern_bytes_transfer((void*)slice, size);
+}
+
+list_t *bl_list_slice_range(list_t *list, range_t *r) {
+    return bl_list_slice(list, r->first, r->next, r->last);
 }

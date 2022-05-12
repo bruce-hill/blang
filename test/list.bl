@@ -10,7 +10,7 @@ L3 := [[10],[20]]
 $printf("Inner: %ld\n", L3[2][1])
 L4 := []:Int
 
-$puts("L: $L sliced: $(L[2..4])")
+$puts("L: $L sliced[2..4]: $(L[2..4])")
 $puts("Expression append: $(L @ -123)")
 L @= 99
 $puts("After append: $L")

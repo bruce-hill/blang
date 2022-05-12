@@ -476,7 +476,7 @@ expr_compilers =
                 return item,code
             elseif index_type == Types.Range
                 slice = env\fresh_local "slice"
-                code ..= "#{slice} =l call $bl_list_slice(l #{list_reg}, l #{index_reg})\n"
+                code ..= "#{slice} =l call $bl_list_slice_range(l #{list_reg}, l #{index_reg})\n"
                 return slice,code
             else
                 assert_node false, @[2], "Index is #{index_type} instead of Int or Range"
@@ -1088,16 +1088,6 @@ store_to = (val, env, ...)=>
             t = get_type @[1]
             if t.__class == Types.ListType
                 assert_node false, @, "Lists are immutable"
-                -- assert_node get_type(@[2]) == Types.Int, @[2], "Index is: #{get_type @[2]} instead of Int"
-                -- list_reg,list_code = env\to_reg @[1]
-                -- index_reg,index_code = env\to_reg @[2]
-                -- val_type,val_reg,val_code = if type(val) == 'function'
-                --     val(list_reg)
-                -- else
-                --     get_type(val), env\to_reg(val)
-                -- code = list_code..index_code..val_code
-                -- code ..= "call $bl_list_set_nth#{t.item_type.base_type}(l #{list_reg}, l #{index_reg}, #{t.item_type.base_type} #{val_reg})\n"
-                -- return code
             elseif t.__class == Types.StructType
                 assert_node @[2].__tag == "FieldName", @[2], "Structs can only be indexed by member"
                 member_name = @[2][0]
