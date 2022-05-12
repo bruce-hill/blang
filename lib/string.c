@@ -117,3 +117,25 @@ char *bl_string_replace(char *text, char *pat_text, char *rep_text) {
     fclose(out);
     return replaced;
 }
+
+char *bl_string_match(char *text, char *pat_text) {
+    maybe_pat_t maybe_pat = bp_pattern(pat_text, pat_text + strlen(pat_text));
+    if (!maybe_pat.success) {
+        return intern_str("");
+    }
+
+    char *buf = NULL;
+    size_t size = 0;
+    FILE *out = open_memstream(&buf, &size);
+    size_t textlen = strlen(text);
+    pat_t *pat = maybe_pat.value.pat;
+    for (match_t *m = NULL; next_match(&m, text, &text[textlen], pat, NULL, NULL, false); ) {
+        fprint_match(out, text, m, NULL);
+        stop_matching(&m);
+        break;
+    }
+    fflush(out);
+    char *match = buf ? intern_bytes(buf, size) : intern_str("");
+    fclose(out);
+    return match;
+}
