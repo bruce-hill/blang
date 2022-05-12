@@ -322,10 +322,10 @@ class Environment
                     when "FnDecl"
                         hook_up_refs var, node.body, arg_signature if var.__register\match("^%$")
                     when "FnCall"
-                        call_sig = "(#{concat [tostring(get_type(a)) for a in *node.args], ","})"
+                        call_sig = "(#{concat [tostring(get_type(a)) for a in *node], ","})"
                         if not arg_signature or call_sig == arg_signature
                             hook_up_refs var, node.fn, arg_signature
-                        hook_up_refs var, node.args, arg_signature
+                        hook_up_refs var, {table.unpack(node)}, arg_signature
                     else
                         hook_up_refs var, node, arg_signature
 
@@ -751,7 +751,7 @@ expr_compilers =
             assert_node fn_type.__class == Types.FnType, @fn[1], "This is not a function, it's a #{fn_type or "???"}"
 
         args = {}
-        for arg in *@args
+        for arg in *@
             arg_reg, arg_code = env\to_reg arg
             code ..= arg_code
             table.insert args, "#{get_type(arg).abi_type} #{arg_reg}"
@@ -764,15 +764,7 @@ expr_compilers =
         code ..= "#{ret_reg} =#{ret_type.abi_type} call #{fn_reg}(#{concat args, ", "})\n"
         return ret_reg, code
 
-    MethodCall: (env, skip_ret=false)=>
-        arg_nodes = {@self[1]}
-        for a in *@args
-            table.insert arg_nodes, a
-        copy = {k,v for k,v in pairs @}
-        copy.args = arg_nodes
-        copy.__tag = "FnCall"
-        reg,code = expr_compilers.FnCall(copy, env, skip_ret)
-        return reg,code
+    MethodCall: (env, skip_ret=false)=> expr_compilers.FnCall(@, env, skip_ret)
 
     Lambda: (env)=>
         assert_node @__register, @, "Unreferenceable lambda"

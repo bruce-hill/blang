@@ -318,19 +318,15 @@ get_type = memoize (node)->
             return nil
         when "MethodCall"
             return parse_type(node.type[1]) if node.type
-            assert_node node.self[1], node, "WTF: #{viz node}"
-            self_type = get_type node.self[1]
-            args = {node.self[1]}
-            for a in *node.args
-                table.insert args, a
-            target_sig = "(#{concat [tostring(get_type(a)) for a in *args], ","})"
+            self_type = get_type node[1]
+            target_sig = "(#{concat [tostring(get_type(a)) for a in *node], ","})"
             fn_type = find_declared_type node, node.fn[0], target_sig
             assert_node fn_type and fn_type.__class == FnType, node.fn[1], "This is not a method, it's a #{fn_type}"
             return fn_type.return_type
         when "FnCall"
             return parse_type(node.type[1]) if node.type
             fn_type = if node.fn[1].__tag == "Var"
-                target_sig = "(#{concat [tostring(get_type(a)) for a in *node.args], ","})"
+                target_sig = "(#{concat [tostring(get_type(a)) for a in *node], ","})"
                 find_declared_type node, node.fn[0], target_sig
             else
                 get_type node.fn[1]

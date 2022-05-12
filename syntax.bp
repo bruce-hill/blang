@@ -4,7 +4,6 @@ term: (
     Bool / Nil / String / Float / Int / unaryOp / Global !(_`(,{) / Var !(_`(,{) / Struct / FnCall / Lambda / List / `(__extended-expr__`)
 )
 IndexedTerm:: !`0-9 (MethodCall / IndexedTerm / term) (`. FieldName / `[ __ required-extended-expr __ `] / (ParseError:: `[ @message=(=> "Unclosed bracket")))
-MethodCall:: !`0-9 @self=@(MethodCall / IndexedTerm / term) _ `| _ (@fn=Var _ @args=[`( __ *expr % (__`,__) __ [`,__] `)] / (ParseError:: => "Not a valid method call")) [_`:_@type=type]
 maybe-index-term: MethodCall / IndexedTerm / term
 expr: Range / Append / Mod / Add / Sub / Mul / Div / Pow / MethodCall / IndexedTerm / term
 extended-expr: TernaryOp / And / Or / Xor / comparison / expr
@@ -43,7 +42,8 @@ Escape:: `\ (`x 2 hex / `a,b,t,n,r,v / 3 `0-8 / .)
 Float:: [`-,+] (`0-9 *`0-9,_ `. !`. *`0-9 / `. +`0-9)
 Int:: [`-,+] `0-9 *`0-9,_
 Struct:: [@name=Var] _ `{ __ *@([@name=FieldName __`=__] @value=required-extended-expr) % (__`,__) [__`,] __ `}
-FnCall:: @fn=(FnCall / Global / Var / `(__expr__`)) `( __ @args=(*expr % (__`,__)) __ [`,__] `) [_`:_@type=type]
+FnCall:: @fn=(FnCall / Global / Var / `(__expr__`)) `( __ *expr % (__`,__) __ [`,__] `) [_`:_@type=type]
+MethodCall:: !`0-9 (MethodCall / IndexedTerm / term) _ `| _ (@fn=Var _ [`( __ *expr % (__`,__) __ [`,__] `)] / (ParseError:: => "Not a valid method call")) [_`:_@type=type]
 Var:: id !~ (^^keyword$$)
 FieldName:: id !~ (^^keyword$$)
 Global:: `$ id
