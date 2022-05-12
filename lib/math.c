@@ -11,7 +11,7 @@ int64_t sane_lmod(int64_t x, int64_t y) {
     return ret < 0 ? ret + y : ret;
 }
 
-int64_t ipow(int base, int exp) {
+int64_t ipow(int64_t base, int64_t exp) {
     int64_t result = 1;
     while (exp != 0) {
         if ((exp & 1) == 1)
@@ -20,4 +20,12 @@ int64_t ipow(int base, int exp) {
         base *= base;
     }
     return result;
+}
+
+double int_to_float(int64_t i) {
+    return (double)i;
+}
+
+int64_t float_to_int(double f) {
+    return (int64_t)f;
 }

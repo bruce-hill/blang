@@ -397,7 +397,7 @@ expr_compilers =
             return reg,code
         c = env\fresh_local "casted"
         code ..= "#{c} =#{t.abi_type} cast #{reg}\n"
-        return reg,code
+        return c,code
     String: (env)=>
         return env\get_string_reg(@content[0]),"" if #@content == 0
         str = env\fresh_local "str"
