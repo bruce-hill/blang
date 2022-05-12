@@ -32,7 +32,7 @@ TernaryOp:: @condition=(And/Or/Xor/comparison/expr) _ `? _ @ifTrue=required-exte
 Bool:: \b("yes"/"no")\b
 Nil:: \b"nil"\b
 String:: (
-  '"""' @curdent=\C $ \n @strdent=\C strdent @content=..%(@(Newline::\n strdent) / \n$ / @(Escape/Interp)) (\n curdent '"""')
+  '"""' @curdent:\C $ \n @strdent:\C strdent @content=..%(@(Newline::\n strdent) / \n$ / @(Escape/Interp)) (\n curdent '"""')
   / (ParseError:: '"""' .. % \n $$ @message=(=> "Failed to find closing triple quote with the right indentation"))
   / `" @content=..%(@(Escape/Interp)) `"
   / (ParseError:: `"..$ @message=(=> "Missing closing quote")))
@@ -49,10 +49,10 @@ FieldName:: id !~ (^^keyword$$)
 Global:: `$ id
 TypeVar:: id !~ (^^keyword$$)
 id: \b(\I *\i)
-Block:: @curdent=\C +(
+Block:: @curdent:\C +(
     comment
   / statement
-  / !$ (ParseError:: @dent=\C ..$ *(\n dent (` /\t)..$) @message=(=>"Invalid statement"))) % (nl curdent !(` /\t))
+  / !$ (ParseError:: @dent:\C ..$ *(\n dent (` /\t)..$) @message=(=>"Invalid statement"))) % (nl curdent !(` /\t))
 statement: (
     Declaration / FnDecl / If / When / For / While / Repeat / TypeDeclaration
   / (If::PostfixIf) / (For::PostfixFor) / (While::PostfixWhile)
@@ -67,10 +67,10 @@ line-statement: (
   / FnCall) _ [comment]
 Declaration:: @var=Var _`: _[@type=type_] `= _ @value=required-extended-expr
 TypeDeclaration:: @(NamedType::id) _ ":::" _ (type / (ParseError:: ..$ @message=(=>"Not a valid type")))
-FnDecl:: @curdent=\C "def"\b _ (@name=Var _
+FnDecl:: @curdent:\C "def"\b _ (@name=Var _
   `( __ @args=*@((@arg=Var_`:_@type=type) / (ParseError:: Var @message=(=>"This argument doesn't have a type")))%(__`,__)__[`,__]`)_`:_[@return=type]_ [comment]
   @body=(`= _ extended-expr / nl curdent +(` /\t) Block))
-Lambda:: (@curdent=\C
+Lambda:: (@curdent:\C
   `(__@args=*@(@arg=Var__`:__@type=type)%(__`,__)__[`,__]`)
   [_`:_@return=type]_"->"_ [comment]
   (@body=funcBody / (ParseError:: @message=(..$ =>"Invalid lambda body")))
@@ -95,7 +95,7 @@ type: (
   #/ (OptionalType:: `? type)
   / (FnType:: `(__ @args=(*type % (__`,__)) __ `) _ "->" __ @return=type)
 )
-If:: \b"if"\b @curdent=\C _ (
+If:: \b"if"\b @curdent:\C _ (
     @(@condition=required-extended-expr [comment] nl curdent +(` /\t) @body=Block)
     *@(nl curdent \b"elseif"\b _ @condition=required-extended-expr [comment] nl curdent +(` /\t) @body=Block)
     [nl curdent \b"else"\b [comment] @elseBody=maybeInlineBlock]
@@ -107,22 +107,22 @@ PostfixFor: (@body=(Block:: @line-statement) _
   \b"for"\b _ [@index=Var_`,_] @var=Var _ "in" _ @iterable=required-extended-expr _ [comment])
 PostfixWhile: (@body=(Block:: @line-statement) _
   \b"while"\b _ @condition=extended-expr _ [comment])
-When:: ( \b"when"\b @curdent=\C _
+When:: ( \b"when"\b @curdent:\C _
   @what=required-extended-expr _ [[comment] nl curdent]
   @branches=+@("is"\b _ @cases=+required-extended-expr%(_`,_) _ [comment] nl curdent +(` /\t) @body=Block)%(nl curdent)
   [nl curdent "else" _ [comment] @elseBody=maybeInlineBlock]
 )
 For:: (
-  \b"for"\b @curdent=\C _ [@index=Var_`,_] @var=Var _ "in" _ @iterable=required-extended-expr _ [comment]
+  \b"for"\b @curdent:\C _ [@index=Var_`,_] @var=Var _ "in" _ @iterable=required-extended-expr _ [comment]
   nl curdent +(` /\t) @body=Block
   [between]
 )
 While:: (
-  \b"while"\b @curdent=\C _ @condition=extended-expr _ [comment]
+  \b"while"\b @curdent:\C _ @condition=extended-expr _ [comment]
   nl curdent +(` /\t) @body=Block
   [between]
 )
-Repeat:: \b"repeat"\b @curdent=\C _ [comment] @body=maybeInlineBlock [between]
+Repeat:: \b"repeat"\b @curdent:\C _ [comment] @body=maybeInlineBlock [between]
 maybeInlineBlock: nl curdent +(` /\t) Block / @(Block:: line-statement)
 between: nl curdent \b"between"\b _ [comment] @between=(maybeInlineBlock / (ParseError:: ..$ => "Invalid 'between' body"))
 Return:: \b"return"\b _ [extended-expr]
