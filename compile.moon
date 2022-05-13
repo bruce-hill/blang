@@ -851,7 +851,14 @@ expr_compilers =
         if lhs_type\is_a(Types.String)
             fn_name = env\get_concat_fn rhs_type
             appended = env\fresh_local "str.appended"
-            code ..= "#{appended} =l call #{fn_name}(l #{lhs_reg}, #{rhs_type.base_type} #{rhs_reg})\n"
+            if lhs_type == Types.String or rhs_type == lhs_type
+                code ..= "#{appended} =l call #{fn_name}(l #{lhs_reg}, #{rhs_type.base_type} #{rhs_reg})\n"
+            else -- DSL
+                fn_reg = get_function_reg @__parent, "escape", "(#{rhs_type})=>#{lhs_type}"
+                node_assert fn_reg, @[2], "No escape(#{rhs_type})=>#{lhs_type} function is implemented, so this value cannot be safely appended"
+                escaped = env\fresh_local "escaped"
+                code ..= "#{escaped} =l call #{fn_reg}(#{rhs_type.base_type} #{rhs_reg})\n"
+                code ..= "#{appended} =l call $bl_string_append_string(l #{lhs_reg}, l #{escaped})\n"
             return appended,code
         elseif lhs_type.__class\is_a(Types.ListType)
             fn_name = env\get_concat_fn rhs_type
@@ -1050,12 +1057,12 @@ stmt_compilers =
         rhs_reg,code = env\to_reg @[2]
         if lhs_type == rhs_type and (lhs_type\is_a(Types.Int) or lhs_type\is_a(Types.Num))
             return code.."#{@[1].__register} =#{lhs_type.abi_type} add #{@[1].__register}, #{rhs_reg}\n"
-        elseif t_lhs == t_rhs and t_lhs\is_a(Types.ListType)
+        elseif lhs_type == rhs_type and lhs_type\is_a(Types.ListType)
             return code.."#{@[1].__register} =l call $bl_list_concat(l #{@[1].__register}, l #{rhs_reg})\n"
         else
             fn_reg, t2 = get_function_reg @__parent, "add", "(#{lhs_type},#{rhs_type})"
             node_assert fn_reg, @, "addition is not supported for #{lhs_type} and #{rhs_type}"
-            node_assert t2 == lhs_type, @, "Return type for add(#{lhs_type},#{rhs_type}) is #{t2} instead of #{lhs_type}"
+            node_assert t2.return_type == lhs_type, @, "Return type for add(#{lhs_type},#{rhs_type}) is #{t2.return_type} instead of #{lhs_type}"
             return code.."#{@[1].__register} =#{lhs_type.abi_type} call #{fn_reg}(#{lhs_type.abi_type} #{@[1].__register}, #{rhs_type.abi_type} #{rhs_reg})\n"
     SubUpdate: (env)=>
         node_assert @[1].__register, @[1], "Undefined variable"
@@ -1066,7 +1073,7 @@ stmt_compilers =
         else
             fn_reg, t2 = get_function_reg @__parent, "subtract", "(#{lhs_type},#{rhs_type})"
             node_assert fn_reg, @, "subtraction is not supported for #{lhs_type} and #{rhs_type}"
-            node_assert t2 == lhs_type, @, "Return type for subtract(#{lhs_type},#{rhs_type}) is #{t2} instead of #{lhs_type}"
+            node_assert t2.return_type == lhs_type, @, "Return type for subtract(#{lhs_type},#{rhs_type}) is #{t2.return_type} instead of #{lhs_type}"
             return code.."#{@[1].__register} =#{lhs_type.abi_type} call #{fn_reg}(#{lhs_type.abi_type} #{@[1].__register}, #{rhs_type.abi_type} #{rhs_reg})\n"
     MulUpdate: (env)=>
         node_assert @[1].__register, @[1], "Undefined variable"
@@ -1077,7 +1084,7 @@ stmt_compilers =
         else
             fn_reg, t2 = get_function_reg @__parent, "multiply", "(#{lhs_type},#{rhs_type})"
             node_assert fn_reg, @, "multiplication is not supported for #{lhs_type} and #{rhs_type}"
-            node_assert t2 == lhs_type, @, "Return type for multiply(#{lhs_type},#{rhs_type}) is #{t2} instead of #{lhs_type}"
+            node_assert t2.return_type == lhs_type, @, "Return type for multiply(#{lhs_type},#{rhs_type}) is #{t2.return_type} instead of #{lhs_type}"
             return code.."#{@[1].__register} =#{lhs_type.abi_type} call #{fn_reg}(#{lhs_type.abi_type} #{@[1].__register}, #{rhs_type.abi_type} #{rhs_reg})\n"
     DivUpdate: (env)=>
         node_assert @[1].__register, @[1], "Undefined variable"
@@ -1088,7 +1095,7 @@ stmt_compilers =
         else
             fn_reg, t2 = get_function_reg @__parent, "divide", "(#{lhs_type},#{rhs_type})"
             node_assert fn_reg, @, "division is not supported for #{lhs_type} and #{rhs_type}"
-            node_assert t2 == lhs_type, @, "Return type for divide(#{lhs_type},#{rhs_type}) is #{t2} instead of #{lhs_type}"
+            node_assert t2.return_type == lhs_type, @, "Return type for divide(#{lhs_type},#{rhs_type}) is #{t2.return_type} instead of #{lhs_type}"
             return code.."#{@[1].__register} =#{lhs_type.abi_type} call #{fn_reg}(#{lhs_type.abi_type} #{@[1].__register}, #{rhs_type.abi_type} #{rhs_reg})\n"
     OrUpdate: (env)=>
         for val in *@
@@ -1127,9 +1134,16 @@ stmt_compilers =
         rhs_type = get_type @[2]
         if lhs_type\is_a(Types.String)
             node_assert @[1].__register, @[1], "Undefined variable"
-            fn_name = env\get_concat_fn rhs_type
             rhs_reg,code = env\to_reg @[2]
-            code ..= "#{@[1].__register} =l call #{fn_name}(l #{@[1].__register}, #{rhs_type.base_type} #{rhs_reg})\n"
+            if lhs_type == Types.String or rhs_type == lhs_type
+                fn_name = env\get_concat_fn rhs_type
+                code ..= "#{@[1].__register} =l call #{fn_name}(l #{@[1].__register}, #{rhs_type.base_type} #{rhs_reg})\n"
+            else -- DSL:
+                fn_reg = get_function_reg @__parent, "escape", "(#{rhs_type})=>#{lhs_type}"
+                node_assert fn_reg, @[2], "No escape(#{rhs_type})=>#{lhs_type} function is implemented, so this value cannot be safely appended"
+                escaped = env\fresh_local "escaped"
+                code ..= "#{escaped} =l call #{fn_reg}(#{rhs_type.base_type} #{rhs_reg})\n"
+                code ..= "#{@[1].__register} =l call $bl_string_append_string(l #{@[1].__register}, l #{escaped})\n"
             return code
         elseif lhs_type\is_a(Types.ListType)
             node_assert rhs_type == lhs_type.item_type, @[2], "You can't append a #{rhs_type} to a list of #{lhs_type.item_type}s"

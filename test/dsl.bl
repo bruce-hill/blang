@@ -1,0 +1,56 @@
+BP ::: BP:String
+
+def hl(s:String):String
+    return "\x1b[36;7m$s\x1b[m"
+
+def replace(str:String,pat:BP,rep:String):String
+    return $bl_string_replace(str, pat, rep):String
+
+def escape(str:String):BP
+    return ("\"$(str | replace(%BP{`",\}, '\@0'))\""):BP
+
+SQL ::: SQL:String
+
+def escape(str:String):SQL
+    return ("'$(str|replace(%BP{`'}, "''")|hl)'"):SQL
+
+def escape(n:Int):SQL
+    return ("$n"|hl):SQL
+
+limit := 10
+name := "name'; DROP TABLE users; --"
+query := %SQL[select * from users where name = $name limit $limit]
+
+$puts("\x1b[1mSQL Query:\x1b[m $query")
+
+Shell ::: Shell:String
+def escape(str:String):Shell
+    return ("'$(str | replace(%BP{`'}, "'\"'\"'") | hl)'"):Shell
+
+def escape(strings:[String]):Shell
+    ret := %Shell""
+    for str in strings
+        ret @= %Shell[$str]
+    between ret @= %Shell' '
+    return ret
+
+files := ['one', 'file space', 'malicious `rm -f $HOME`', "don't screw up"]
+dest := "/tmp"
+cmd := %Shell[cp $files $dest]
+$puts("\x1b[1mShell command:\x1b[m $cmd")
+
+HTML ::: HTML:String
+
+def escape(str:String):HTML
+    return (str | replace(%BP{`&},"&amp;") | replace(%BP{`<},"&lt;") | replace(%BP{`>},"&gt;") | replace(%BP{`"},"&quot;") | replace(%BP{`'},"&#39;")|hl):HTML
+
+html_val := "I <3 things and don't care"
+html := %HTML"""
+    <html>
+        <body>
+        $html_val
+        </body>
+"""
+html @= %HTML[\n</html>]
+
+$puts("\x1b[1mHTML:\x1b[m\n$html")
