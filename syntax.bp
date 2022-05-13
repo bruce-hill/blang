@@ -138,7 +138,7 @@ Range:: (
   / ".." [@last=maybe-index-term]) # ..5 ..
 comment: "//" *.
 
-keyword: "nil"/"yes"/"no"/"for"/"while"/"between"/"if"/"elseif"/"else"/"with"/"and"/"or"/"xor"/"pass"/"not"/"skip"/"stop"/"unless"/"repeat"/"as"/"fail"
+keyword: "nil"/"yes"/"no"/"for"/"while"/"between"/"if"/"elseif"/"else"/"with"/"and"/"or"/"xor"/"pass"/"not"/"skip"/"stop"/"unless"/"repeat"/"as"/"fail"/"return"
 hex: `0-9,a-f,A-F
 nl: +\n % (*(` /\t) [comment])
 __: *(` /\t/\n/\r/comment)
