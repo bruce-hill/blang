@@ -36,7 +36,7 @@ run_file = (filename, file, temporary=true)->
     log "\x1b[1;4mFile #{filename}\x1b[m"
     with file
         text = \read "*a"
-        set_file "stdin", text
+        set_file filename, text
         log number_code(text, "34;1")
         ast = parse text, filename
         assert ast, "No match!"
@@ -57,7 +57,10 @@ run_file = (filename, file, temporary=true)->
 
         run = (cmd)->
             log "> \x1b[1m#{cmd}\x1b[m"
-            assert os.execute cmd
+            success,how,what = os.execute cmd
+            if not success
+                log "\x1b[31;1mCommand `#{cmd}` #{how}ed: #{what}\x1b[m"
+                os.exit(1)
 
         log "\x1b[2mRunning QBE...\x1b[m"
         run "qbe #{qbe_file} > #{asm_file}"

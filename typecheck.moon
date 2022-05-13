@@ -1,6 +1,6 @@
 -- Type checking/inference logic
 concat = table.concat
-import log, viz, print_err, assert_node from require 'util'
+import log, viz, print_err, node_assert, node_error from require 'util'
 
 local get_type, parse_type
 
@@ -46,9 +46,9 @@ Nil = NamedType("Nil")
 
 class OptionalType extends Type
     new: (@nonnil)=>
-        assert @nonnil != Nil, "Optional nil?!?"
+        assert @nonnil and @nonnil != Nil
         if @nonnil.__class == OptionalType
-            @nonnil = @nonnil.nonnil
+            @nonnil = assert(@nonnil.nonnil)
     contains: (other)=> other == @ or other == Nil or (@nonnil and other\is_a(@nonnil))
     __tostring: => @nonnil\is_a(FnType) and "(#{@nonnil})?" or "#{@nonnil}?"
     __eq: Type.__eq
@@ -115,7 +115,7 @@ find_declared_type = (scope, name, arg_signature=nil)->
                 iter_type = get_type(scope.iterable[1])
                 log "ITER TYPE: #{name} #{iter_type}"
                 return Int if iter_type\is_a(Range)
-                assert_node iter_type\is_a(ListType) or iter_type\is_a(Range), scope.iterable[1], "Not an iterable"
+                node_assert iter_type\is_a(ListType) or iter_type\is_a(Range), scope.iterable[1], "Not an iterable"
                 log "Var TYPE: #{name} #{iter_type.item_type}"
                 return iter_type.item_type
     
@@ -145,7 +145,7 @@ parse_type = memoize (type_node)->
             if primitive_types[type_node[0]]
                 return primitive_types[type_node[0]]
             alias = find_type_alias type_node, type_node[0]
-            assert_node alias, type_node, "Undefined type"
+            node_assert alias, type_node, "Undefined type"
             return alias
         when "DerivedType"
             unless derived_types[type_node.name[0]]
@@ -160,7 +160,7 @@ parse_type = memoize (type_node)->
             return StructType(type_node.name[0], [{name:m.name[0], type: parse_type(m.type[1])} for m in *type_node])
         when "OptionalType"
             t = parse_type(type_node[1])
-            assert_node not t\is_a(Num), type_node, "Optional numbers are not currently supported"
+            node_assert not t\is_a(Num), type_node, "Optional numbers are not currently supported"
             return OptionalType(t)
         else
             error "Not a type node: #{viz type_node}"
@@ -195,14 +195,15 @@ get_type = memoize (node)->
         when "Nil" then return Nil
         when "String" then return String
         when "Range" then return Range
+        when "Fail" then return Void
         when "Cast" then return parse_type(node.type[1])
         when "List"
             decl_type = node.type and parse_type(node.type[1])
             return decl_type if #node == 0
             t = get_type node[1]
-            assert_node t == decl_type, node[1], "Not expected type: #{t}" if decl_type
+            node_assert t == decl_type, node[1], "Not expected type: #{t}" if decl_type
             for i=2,#node
-                assert_node get_type(node[i]) == t, node[i], "Not expected type: #{t}"
+                node_assert get_type(node[i]) == t, node[i], "Not expected type: #{t}"
             return ListType(t)
         when "IndexedTerm"
             t = get_type node[1]
@@ -213,18 +214,18 @@ get_type = memoize (node)->
                 elseif index_type == Range
                     return t
                 else
-                    assert_node false, node[2], "Index has type #{index_type}, but expected Int or Range"
+                    node_error node[2], "Index has type #{index_type}, but expected Int or Range"
             elseif t\is_a(StructType)
                 if node[2].__tag == "FieldName"
                     member_name = node[2][0]
-                    assert_node t.members_by_name[member_name], node[2], "Not a valid struct member of #{t}"
+                    node_assert t.members_by_name[member_name], node[2], "Not a valid struct member of #{t}"
                     return t.members_by_name[member_name].type
                 elseif node[2].__tag == "Int"
                     i = tonumber(node[2][0])
-                    assert_node 1 <= i and i <= #t.members, node[2], "#{t} only has members between 1 and #{#t.members}"
+                    node_assert 1 <= i and i <= #t.members, node[2], "#{t} only has members between 1 and #{#t.members}"
                     return t.members[i].type
                 else
-                    assert_node false, node[2], "Structs can only be indexed by a field name or Int literal"
+                    node_error node[2], "Structs can only be indexed by a field name or Int literal"
             elseif t == String
                 index_type = get_type(node[2], vars)
                 if index_type == Int
@@ -232,7 +233,7 @@ get_type = memoize (node)->
                 elseif index_type == Range
                     return String
                 else
-                    assert_node false, node[2], "Strings can only be indexed by Ints or Ranges"
+                    node_error node[2], "Strings can only be indexed by Ints or Ranges"
             else
                 print_err node, "Indexing is only valid on structs and lists"
         when "And","Or","Xor"
@@ -241,117 +242,124 @@ get_type = memoize (node)->
             types = ["#{get_type val}" for val in *node]
             for val in *node
                 t = get_type val
-                all_bools and= t == Bool
-                maybe_nil or= t\is_a(OptionalType)
+                maybe_nil or= t\is_a(OptionalType) or t == Void
+                all_bools and= t == Bool or t == Void
             return Bool if all_bools
-            assert_node maybe_nil, node, "Expected either Bool values or something that is possibly nil. Types here are: #{concat types, ", "}"
+            node_assert maybe_nil, node, "Expected either Bool values or something that is possibly nil. Types here are: #{concat types, ", "}"
             optional = nil
             for i,val in ipairs node
                 t = get_type val
                 continue if t == Nil
+                if t == Void
+                    if node.__tag == "Or"
+                        return optional.nonnil
+                    elseif node.__tag == "And"
+                        return optional
+                    else
+                        node_error val, "Failure will always trigger"
 
                 if node.__tag == "Or" and not t\is_a(OptionalType)
-                    assert_node i == #node, node[i], "This value is never nil, so subsequent values are ignored"
-                    assert_node t == optional.nonnil, val, "Different type: #{t} is not '#{optional}'"
+                    node_assert i == #node, node[i], "This value is never nil, so subsequent values are ignored"
+                    node_assert t == optional.nonnil, val, "Mismatched type: #{t} doesn't match earlier type: '#{optional}'"
                     return t
 
                 if optional
-                    assert_node OptionalType(t) == optional, val, "Different type: #{t} is not '#{optional}'"
+                    node_assert OptionalType(t) == optional, val, "Mismatched type: #{t} doesn't match earlier type: '#{optional}'"
                 else
-                    assert_node not t\is_a(Num), val, "Optional numbers are not yet supported"
+                    node_assert not t\is_a(Num), val, "Optional numbers are not yet supported"
                     optional = OptionalType(t)
             return optional
         when "Equal","NotEqual","Less","LessEq","Greater","GreaterEq"
             return Bool
         when "TernaryOp"
             cond_type = get_type node.condition[1]
-            assert_node cond_type == Bool, node.condition, "Expected a Bool here"
+            node_assert cond_type == Bool, node.condition, "Expected a Bool here"
             true_type = get_type node.ifTrue[1]
             false_type = get_type node.ifFalse[1]
             if true_type == false_type
                 return true_type
             elseif true_type == Nil
-                assert_node not false_type\is_a(Num), node.ifFalse[1], "Optional numbers are not currently supported"
+                node_assert not false_type\is_a(Num), node.ifFalse[1], "Optional numbers are not currently supported"
                 return OptionalType(false_type)
             elseif false_type == Nil
-                assert_node not true_type\is_a(Num), node.ifTrue[1], "Optional numbers are not currently supported"
+                node_assert not true_type\is_a(Num), node.ifTrue[1], "Optional numbers are not currently supported"
                 return OptionalType(true_type)
             else
-                assert_node false, node, "Values for true/false branches are different: #{true_type} vs #{false_type}"
+                node_error node, "Values for true/false branches are different: #{true_type} vs #{false_type}"
         when "Add","Sub","Mul","Div","Mod"
             lhs_type = get_type node[1]
             rhs_type = get_type node[2]
             ret_type = get_op_type(node, lhs_type, node.__tag, rhs_type)
-            assert_node ret_type, node, "Invalid #{node.__tag} types: #{lhs_type} and #{rhs_type}"
+            node_assert ret_type, node, "Invalid #{node.__tag} types: #{lhs_type} and #{rhs_type}"
             return ret_type
         when "Append"
             lhs_type = get_type node[1]
-            assert_node lhs_type, node[1], "This element does not have a definite type"
+            node_assert lhs_type, node[1], "This element does not have a definite type"
             if lhs_type == String
                 return String
             rhs_type = get_type node[2]
             if lhs_type\is_a(ListType) and rhs_type\is_a(lhs_type.item_type)
                 return lhs_type
             ret_type = get_op_type(node, lhs_type, node.__tag, rhs_type)
-            assert_node ret_type, node, "Invalid #{node.__tag} types: #{lhs_type} and #{rhs_type}"
+            node_assert ret_type, node, "Invalid #{node.__tag} types: #{lhs_type} and #{rhs_type}"
             return ret_type
         when "ButWith"
             base_type = get_type node.base[1]
             if base_type\is_a(ListType)
                 for i in *node
-                    assert_node i.index, i, "Field names are not allowed for Lists"
+                    node_assert i.index, i, "Field names are not allowed for Lists"
                     i_type = get_type(i.index[1])
                     value_type = get_type(i.value[1])
                     if i_type\is_a(Int)
-                        assert_node value_type == base_type.item_type, i.value[1], "Value is #{value_type} not #{base_type.item_type}"
+                        node_assert value_type == base_type.item_type, i.value[1], "Value is #{value_type} not #{base_type.item_type}"
                     elseif i_type\is_a(Range)
-                        assert_node value_type == base_type, i.value[1], "Value is #{value_type} not #{base_type}"
+                        node_assert value_type == base_type, i.value[1], "Value is #{value_type} not #{base_type}"
                     else
-                        assert_node false, i.index[1], "Value is #{value_type} not Int or Range"
+                        node_error i.index[1], "Value is #{value_type} not Int or Range"
                 return base_type
             elseif base_type\is_a(String)
                 for i in *node
-                    assert_node i.index, i, "Field names are not allowed for Strings"
+                    node_assert i.index, i, "Field names are not allowed for Strings"
                     if get_type(i.index[1])\is_a(Range)
                         value_type = get_type(i.value[1])
-                        assert_node value_type == base_type, i.value[1], "Value is #{value_type} not #{base_type}"
+                        node_assert value_type == base_type, i.value[1], "Value is #{value_type} not #{base_type}"
                     else
-                        assert_node false, i.index[1], "Value is #{value_type} not Range"
+                        node_error i.index[1], "Value is #{value_type} not Range"
                 return base_type
             elseif base_type\is_a(StructType)
                 for i in *node
                     if i.field
-                        assert_node base_type.members_by_name[i.field[0]], i.field, "Not a valid struct member of #{base_type}"
+                        node_assert base_type.members_by_name[i.field[0]], i.field, "Not a valid struct member of #{base_type}"
                     elseif i.index
-                        assert_node i.index[1].__tag == "Int", i.index[1], "Only field names and integer literals are supported for using |[..]=.. on Structs"
+                        node_assert i.index[1].__tag == "Int", i.index[1], "Only field names and integer literals are supported for using |[..]=.. on Structs"
                         n = tonumber(i.index[0])
-                        assert_node 1 <= n and n <= #base_type.members, i.index[i], "#{base_type} only has members between 1 and #{#base_type.members}"
+                        node_assert 1 <= n and n <= #base_type.members, i.index[i], "#{base_type} only has members between 1 and #{#base_type.members}"
                 return base_type
             else
-                assert_node false, node, "| operator is only supported for List and Struct types"
+                node_error node, "| operator is only supported for List and Struct types"
 
             return base_type
         when "Negative"
             t = get_type node[1]
-            assert_node t\is_a(Int) or t\is_a(Num) or t\is_a(Range), node, "Invalid negation type: #{t}"
+            node_assert t\is_a(Int) or t\is_a(Num) or t\is_a(Range), node, "Invalid negation type: #{t}"
             return t
         when "Len"
             t = get_type node[1]
-            assert_node t\is_a(ListType) or t\is_a(Range) or t\is_a(String), node, "Attempt to get length of non-iterable: #{t}"
+            node_assert t\is_a(ListType) or t\is_a(Range) or t\is_a(String), node, "Attempt to get length of non-iterable: #{t}"
             return Int
         when "Not"
             t = get_type node[1]
-            assert_node t == Bool, node, "Invalid type for 'not': #{t}"
+            node_assert t == Bool, node, "Invalid type for 'not': #{t}"
             return Bool
         when "Pow"
             base_type = get_type node.base[1]
-            assert_node base_type\is_a(Num) or base_type\is_a(Int), node.base[1], "Expected Num or Int, not #{base_type}"
+            node_assert base_type\is_a(Num) or base_type\is_a(Int), node.base[1], "Expected Num or Int, not #{base_type}"
             exponent_type = get_type node.exponent[1]
-            assert_node exponent_type\is_a(Num) or base_type\is_a(Int), node.exponent[1], "Expected Num or Int, not #{exponent_type}"
+            node_assert exponent_type\is_a(Num) or base_type\is_a(Int), node.exponent[1], "Expected Num or Int, not #{exponent_type}"
             return base_type
         when "Lambda","FnDecl"
             decl_ret_type = node.return and parse_type(node.return[1])
-            assert_node node.body[1].__tag == "Block", node.body, "Uh oh"
+            node_assert node.body[1].__tag == "Block", node.body, "Uh oh"
             ret_type = nil
             for ret in coroutine.wrap ->find_returns(node.body)
                 if ret_type == nil
@@ -364,10 +372,10 @@ get_type = memoize (node)->
                     elseif ret_type == Nil
                         ret_type = OptionalType(t2)
                     else
-                        assert_node false, ret, "Return type #{t2} doesn't match earlier return type #{ret_type}"
+                        node_error ret, "Return type #{t2} doesn't match earlier return type #{ret_type}"
             ret_type = ret_type or Void
             if decl_ret_type
-                assert_node decl_ret_type == ret_type, node, "Conflicting return types"
+                node_assert decl_ret_type == ret_type, node, "Conflicting return types"
             return FnType([parse_type a.type[1] for a in *node.args], ret_type)
         when "Var"
             if node.__decl
@@ -376,7 +384,7 @@ get_type = memoize (node)->
             if not var_type
                 return Int if node[0] == "argc"
                 return ListType(String) if node[0] == "argv"
-            assert_node var_type, node, "Cannot determine type for undefined variable"
+            node_assert var_type, node, "Cannot determine type for undefined variable"
             return var_type
         when "Global"
             return nil
@@ -385,7 +393,7 @@ get_type = memoize (node)->
             self_type = get_type node[1]
             target_sig = "(#{concat [tostring(get_type(a)) for a in *node], ","})"
             fn_type = find_declared_type node, node.fn[0], target_sig
-            assert_node fn_type and fn_type\is_a(FnType), node.fn[1], "This is not a method, it's a #{fn_type}"
+            node_assert fn_type and fn_type\is_a(FnType), node.fn[1], "This is not a method, it's a #{fn_type}"
             return fn_type.return_type
         when "FnCall"
             return parse_type(node.type[1]) if node.type
@@ -394,8 +402,8 @@ get_type = memoize (node)->
                 find_declared_type node, node.fn[0], target_sig
             else
                 get_type node.fn[1]
-            assert_node fn_type, node.fn[1], "This function's return type cannot be inferred. It must be specified manually using a type annotation"
-            assert_node fn_type\is_a(FnType), node.fn[1], "This is not a function, it's a #{fn_type or "???"}"
+            node_assert fn_type, node.fn[1], "This function's return type cannot be inferred. It must be specified manually using a type annotation"
+            node_assert fn_type\is_a(FnType), node.fn[1], "This is not a function, it's a #{fn_type or "???"}"
             return fn_type.return_type
         when "Block"
             error "Blocks have no type"
@@ -403,7 +411,7 @@ get_type = memoize (node)->
         when "Struct"
             if node.name
                 alias = find_type_alias node, node.name[0]
-                -- assert_node alias, node, "Undefined struct"
+                -- node_assert alias, node, "Undefined struct"
                 return alias if alias
 
             key = "{#{concat ["#{m.name and "#{m.name[0]}=" or ""}#{get_type m.value[1]}" for m in *node], ","}}"
@@ -416,7 +424,7 @@ get_type = memoize (node)->
         when "Stop","Skip"
             return Void
         else
-            assert_node not node.__tag, node, "Cannot infer type for: #{node.__tag}"
+            node_assert not node.__tag, node, "Cannot infer type for: #{node.__tag}"
     if #node > 0
         error "Getting a node without a tag: #{viz node}"
         return get_type(node[#node])

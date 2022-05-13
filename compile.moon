@@ -1,7 +1,7 @@
 Types = require 'typecheck'
 bp = require 'bp'
 import add_parenting, get_type, parse_type from Types
-import log, viz, assert_node, print_err from require 'util'
+import log, viz, node_assert, node_error, get_node_pos, print_err from require 'util'
 concat = table.concat
 
 has_jump = bp.compile('^_("jmp"/"jnz"/"ret")\\b ..$ $$')
@@ -25,7 +25,7 @@ get_function_reg = (scope, name, arg_signature)->
             for i=#scope,1,-1
                 stmt = scope[i]
                 if stmt.__tag == "FnDecl" and stmt.name[0] == name and get_type(stmt)\arg_signature! == arg_signature
-                    return assert_node(stmt.__register, stmt, "Function without a name"), get_type(stmt)
+                    return node_assert(stmt.__register, stmt, "Function without a name"), get_type(stmt)
                 elseif stmt.__tag == "Declaration" and stmt.var[0] == name
                     t = if stmt.type
                         parse_type(stmt.type[1])
@@ -60,7 +60,7 @@ infixop = (env, op)=>
     for i=2,#@
         rhs = @[i]
         rhs_type = get_type rhs
-        assert_node rhs_type == t, rhs, "Expected type: #{t} but got type #{rhs_type}"
+        node_assert rhs_type == t, rhs, "Expected type: #{t} but got type #{rhs_type}"
         rhs_reg, rhs_code = env\to_reg rhs
         code ..= rhs_code
         if type(op) == 'string'
@@ -74,7 +74,7 @@ overload_infix = (env, overload_name, regname="result")=>
     t = get_type @
     lhs_type, rhs_type = get_type(@[1]), get_type(@[2])
     fn_reg, t2 = get_function_reg @__parent, overload_name, "(#{lhs_type},#{rhs_type})"
-    assert_node fn_reg, @, "#{overload_name} is not supported for #{lhs_type} and #{rhs_type}"
+    node_assert fn_reg, @, "#{overload_name} is not supported for #{lhs_type} and #{rhs_type}"
     lhs_reg,code = env\to_reg @[1]
     rhs_reg,rhs_code = env\to_reg @[2]
     code ..= rhs_code
@@ -85,7 +85,7 @@ overload_infix = (env, overload_name, regname="result")=>
 comparison = (env, cmp)=>
     t = get_type @[1]
     for val in *@
-        assert_node get_type(val) == t, val, "Expected #{t} but got #{get_type(val)}"
+        node_assert get_type(val) == t, val, "Expected #{t} but got #{get_type(val)}"
 
     prev_val = nil
     lhs_reg,code = env\to_reg @[1]
@@ -149,7 +149,7 @@ class Environment
         body_code = body_code\gsub("[^\n]+", =>(@\match("^%@") and @ or "  "..@))
         fn_type = get_type fndec
         ret_type = fn_type.return_type
-        assert_node fndec.__register, fndec, "Function has no name"
+        node_assert fndec.__register, fndec, "Function has no name"
         fn_name = fndec.__register
         @fn_code ..= "function #{ret_type\is_a(Types.Void) and "" or ret_type.abi_type.." "}"
         @fn_code ..= "#{fn_name}(#{concat args, ", "}) {\n@start\n#{body_code}"
@@ -258,7 +258,7 @@ class Environment
                 code ..= "#{end_label}\n"
             else
                 error "Unsupported concat type: #{t}"
-                assert_node false, val, "Unsupported concat type"
+                node_error val, "Unsupported concat type"
 
         append_reg "%obj", t
         code ..= "ret #{str}\n"
@@ -271,13 +271,13 @@ class Environment
     to_reg: (node, ...)=>
         if not node.__tag
             return @to_reg node[1], ...
-        assert_node expr_compilers[node.__tag], node, "Expression compiler not implemented for #{node.__tag}"
+        node_assert expr_compilers[node.__tag], node, "Expression compiler not implemented for #{node.__tag}"
         return expr_compilers[node.__tag](node, @, ...)
 
     compile_stmt: (node)=>
         if not node.__tag
             return @compile_stmt node[1]
-        assert_node stmt_compilers[node.__tag], node, "Not implemented: #{node.__tag}"
+        node_assert stmt_compilers[node.__tag], node, "Not implemented: #{node.__tag}"
         return stmt_compilers[node.__tag](node, @)
 
     compile_program: (ast, filename)=>
@@ -290,7 +290,7 @@ class Environment
             else get_type(s)
 
             if declared_structs[t.name]
-                assert_node declared_structs[t.name] == t, s, "Struct declaration shadows"
+                node_assert declared_structs[t.name] == t, s, "Struct declaration shadows"
                 continue
             declared_structs[t.name] = t
             @type_code ..= "type :#{t.name} = {#{concat [m.type.abi_type for m in *t.members], ","}}\n"
@@ -315,7 +315,7 @@ class Environment
                 switch node.__tag
                     when "Var"
                         if node[0] == var[0]
-                            assert_node not node.__register, var, "Variable shadows earlier declaration #{node.__decl}"
+                            node_assert not node.__register, var, "Variable shadows earlier declaration #{node.__decl}"
                             node.__register = var.__register
                             node.__decl = var
                     when "FnDecl"
@@ -380,7 +380,7 @@ class Environment
 
 expr_compilers =
     Var: (env)=>
-        assert_node @__register, @, "This variable is not defined"
+        node_assert @__register, @, "This variable is not defined"
         return @__register, ""
     Global: (env)=>
         return "#{@[0]}", ""
@@ -453,7 +453,7 @@ expr_compilers =
             code ..= "#{range} =l call $range_backwards(l #{orig})\n"
             return range, code
         else
-            assert_node false, @, "Invalid type to negate: #{t}"
+            node_error @, "Invalid type to negate: #{t}"
     Len: (env)=>
         t = get_type @[1]
         if t\is_a(Types.Range)
@@ -470,9 +470,9 @@ expr_compilers =
             len = env\fresh_local "str.len"
             return len, "#{code}#{len} =l call $strlen(l #{str})\n"
         else
-            assert_node false, @, "Expected List or Range type, not #{t}"
+            node_error @, "Expected List or Range type, not #{t}"
     Not: (env)=>
-        assert_node get_type(@[1])\is_a(Types.Bool), @[1], "Expected a Bool"
+        node_assert get_type(@[1])\is_a(Types.Bool), @[1], "Expected a Bool"
         b,code = env\to_reg @[1]
         ret = env\fresh_local "not"
         code ..= "#{ret} =l ceql #{b}, 0\n"
@@ -498,18 +498,18 @@ expr_compilers =
                 code ..= "#{slice} =l call $bl_list_slice_range(l #{list_reg}, l #{index_reg})\n"
                 return slice,code
             else
-                assert_node false, @[2], "Index is #{index_type} instead of Int or Range"
+                node_error @[2], "Index is #{index_type} instead of Int or Range"
         elseif t\is_a(Types.StructType)
             i,member_type = if @[2].__tag == "FieldName"
                 member_name = @[2][0]
-                assert_node t.members_by_name[member_name], @[2], "Not a valid struct member of #{t}"
+                node_assert t.members_by_name[member_name], @[2], "Not a valid struct member of #{t}"
                 t.members_by_name[member_name].index, t.members_by_name[member_name].type
             elseif @[2].__tag == "Int"
                 i = tonumber(@[2][0])
-                assert_node 1 <= i and i <= #t.members, @[2], "#{t} only has members between 1 and #{#t.members}"
+                node_assert 1 <= i and i <= #t.members, @[2], "#{t} only has members between 1 and #{#t.members}"
                 i, t.members[i].type
             else
-                assert_node false, @[2], "Structs can only be indexed by a field name or Int literal"
+                node_error @[2], "Structs can only be indexed by a field name or Int literal"
             struct_reg,code = env\to_reg @[1]
             loc = env\fresh_local "member.loc"
             code ..= "#{loc} =l add #{struct_reg}, #{8*(i-1)}\n"
@@ -519,7 +519,7 @@ expr_compilers =
         elseif t\is_a(Types.Range)
             index_type = get_type(@[2])
             -- TODO: Slice ranges
-            assert_node index_type\is_a(Types.Int), @[2], "Index is #{index_type} instead of Int"
+            node_assert index_type\is_a(Types.Int), @[2], "Index is #{index_type} instead of Int"
             range_reg,code = env\to_reg @[1]
             index_reg,index_code = env\to_reg @[1]
             code ..= index_code
@@ -543,9 +543,9 @@ expr_compilers =
                 code ..= "#{slice} =l call $bl_string_slice(l #{str}, l #{index_reg})\n"
                 return slice, code
             else
-                assert_node false, @[2], "Index is #{index_type} instead of Int or Range"
+                node_error @[2], "Index is #{index_type} instead of Int or Range"
         else
-            assert_node false, @[1], "Indexing is only valid on lists and structs, not #{t}"
+            node_error @[1], "Indexing is only valid on lists and structs, not #{t}"
     List: (env)=>
         if #@ == 0
             list = env\fresh_local "list.empty"
@@ -597,12 +597,13 @@ expr_compilers =
         elseif not @first and not @next and not @last
             code = "#{range} =l call $range_new_first_last(l -999999999999999999, l 999999999999999999)\n"
         else
-            assert_node false, @, "WTF"
+            node_error @, "WTF"
         return range, code
     Or: (env)=>
         done_label = env\fresh_label "or.end"
         code = ""
         t = get_type(@)
+        node_assert t != Types.Nil, @, "Expression always evaluates to `nil`"
         t = t.nonnil if t\is_a(Types.OptionalType)
         ret_reg = env\fresh_local "any.true"
         for i,val in ipairs @
@@ -621,6 +622,7 @@ expr_compilers =
         done_label = env\fresh_label "and.end"
         code = ""
         t = get_type(@)
+        node_assert t != Types.Nil, @, "Expression always evaluates to `nil`"
         t = t.nonnil if t\is_a(Types.OptionalType)
         ret_reg = env\fresh_local "all.true"
         for i,val in ipairs @
@@ -637,7 +639,7 @@ expr_compilers =
         return ret_reg, code
     Xor: (env)=>
         for val in *@
-            assert_node get_type(val)\is_a(Types.Bool), val, "Expected Bool here, but got #{get_type val}"
+            node_assert get_type(val)\is_a(Types.Bool), val, "Expected Bool here, but got #{get_type val}"
         return infixop @, env, "xor"
     Add: (env)=>
         t_lhs,t_rhs = get_type(@[1]),get_type(@[2])
@@ -735,13 +737,13 @@ expr_compilers =
                 elseif override.field
                     t.members_by_name[override.field[0]].index
                 else
-                    assert_node false, override, "I don't know what this is"
+                    node_error override, "I don't know what this is"
 
-                assert_node not used[i], override, "Redundant value, this field is already being overwritten"
+                node_assert not used[i], override, "Redundant value, this field is already being overwritten"
                 used[i] = true
 
-                assert_node 1 <= i and i <= #t.members, override, "Not a valid member of #{t}"
-                assert_node get_type(override.value[1])\is_a(t.members[i].type), override.value[1], "Not a #{t.members[i].type}"
+                node_assert 1 <= i and i <= #t.members, override, "Not a valid member of #{t}"
+                node_assert get_type(override.value[1])\is_a(t.members[i].type), override.value[1], "Not a #{t.members[i].type}"
                 val_reg,val_code = env\to_reg override.value[1]
                 code ..= val_code
                 code ..= "#{p} =l add #{ret}, #{8*(i-1)}\n"
@@ -750,35 +752,35 @@ expr_compilers =
             code ..= "#{ret} =l call $intern_bytes(l #{ret}, l #{struct_size})\n"
             return ret, code
         else
-            assert_node false, @, "| operator is only supported for List and Struct types"
+            node_error @, "| operator is only supported for List and Struct types"
     Less: (env)=>
         t = get_type(@[1])
         if t\is_a(Types.Int) or t\is_a(Types.String)
             return comparison @, env, "csltl"
         elseif t\is_a(Types.Num)
             return comparison @, env, "cltd"
-        else assert_node false, @, "Comparison is not supported for #{t}"
+        else node_error @, "Comparison is not supported for #{t}"
     LessEq: (env)=>
         t = get_type(@[1])
         if t\is_a(Types.Int) or t\is_a(Types.String)
             return comparison @, env, "cslel"
         elseif t\is_a(Types.Num)
             return comparison @, env, "cled"
-        else assert_node false, @, "Comparison is not supported for #{t}"
+        else node_error @, "Comparison is not supported for #{t}"
     Greater: (env)=>
         t = get_type(@[1])
         if t\is_a(Types.Int) or t\is_a(Types.String)
             return comparison @, env, "csgtl"
         elseif t\is_a(Types.Num)
             return comparison @, env, "cgtd"
-        else assert_node false, @, "Comparison is not supported for #{t}"
+        else node_error @, "Comparison is not supported for #{t}"
     GreaterEq: (env)=>
         t = get_type(@[1])
         if t\is_a(Types.Int) or t\is_a(Types.String)
             return comparison @, env, "csgel"
         elseif t\is_a(Types.Num)
             return comparison @, env, "cged"
-        else assert_node false, @, "Comparison is not supported for #{t}"
+        else node_error @, "Comparison is not supported for #{t}"
     Equal: (env)=> comparison @, env, "ceql"
     NotEqual: (env)=> comparison @, env, "cnel"
     TernaryOp: (env)=>
@@ -806,9 +808,9 @@ expr_compilers =
                 if decl.name[0] == @fn[0]
                     table.insert candidates, "#{@fn[0]}#{get_type(decl)}"
 
-            assert_node #candidates > 0, @, "There is no function with this name"
-            assert_node #candidates > 1, @, "This function is being called with: #{@fn[0]}#{call_sig} which doesn't match the definition: #{candidates[1]}"
-            assert_node false, @, "This function is being called with: #{@fn[0]}#{call_sig} which doesn't match any of the definitions:\n  - #{concat candidates, "\n  - "}"
+            node_assert #candidates > 0, @, "There is no function with this name"
+            node_assert #candidates > 1, @, "This function is being called with: #{@fn[0]}#{call_sig} which doesn't match the definition: #{candidates[1]}"
+            node_error @, "This function is being called with: #{@fn[0]}#{call_sig} which doesn't match any of the definitions:\n  - #{concat candidates, "\n  - "}"
         
         code = ""
         local fn_type, fn_reg
@@ -817,8 +819,8 @@ expr_compilers =
         code ..= fn_code
 
         if fn_type
-            assert_node fn_type\is_a(Types.FnType), @fn[1], "This is not a function, it's a #{fn_type or "???"}"
-            assert_node fn_type\arg_signature! == call_sig, @, "This function is being called with #{@fn[0]}#{call_sig} but is defined as #{fn_type}"
+            node_assert fn_type\is_a(Types.FnType), @fn[1], "This is not a function, it's a #{fn_type or "???"}"
+            node_assert fn_type\arg_signature! == call_sig, @, "This function is being called with #{@fn[0]}#{call_sig} but is defined as #{fn_type}"
 
         args = {}
         for arg in *@
@@ -837,7 +839,7 @@ expr_compilers =
     MethodCall: (env, skip_ret=false)=> expr_compilers.FnCall(@, env, skip_ret)
 
     Lambda: (env)=>
-        assert_node @__register, @, "Unreferenceable lambda"
+        node_assert @__register, @, "Unreferenceable lambda"
         return @__register,""
 
     Struct: (env)=>
@@ -866,32 +868,43 @@ expr_compilers =
         code ..= "#{ret} =l call $intern_bytes(l #{ret}, l #{struct_size})\n"
         return ret, code
 
+    Fail: (env)=>
+        if @[1]
+            node_assert get_type(@[1]) == Types.String, @[1], "Failure messages must be a String, not a #{get_type @[1]}"
+            msg,code = env\to_reg @[1]
+            full_msg = env\fresh_local "failure.message"
+            code ..= "#{full_msg} =l call $bl_string_append_string(l #{env\get_string_reg(get_node_pos(@)..': ', "failure.location")}, l #{msg})\n"
+            code ..= "call $errx(l 1, l #{full_msg})\n"
+            return "0",code
+        else
+            return "0","call $errx(l 1, l #{env\get_string_reg(get_node_pos(@)..': Unexpected failure!', "failure.message")})\n"
+
 stmt_compilers =
     Block: (env)=>
         concat([env\compile_stmt(stmt) for stmt in *@], "")
     Declaration: (env)=>
         varname = "%#{@var[0]}"
-        assert_node not env.used_names[varname], @var, "Variable being shadowed: #{varname}"
+        node_assert not env.used_names[varname], @var, "Variable being shadowed: #{varname}"
         env.used_names[varname] = true
         value_type = get_type @value[1]
         decl_type = value_type
         if @type
             decl_type = Types.parse_type @type[1]
-            assert_node value_type, @value[1], "Can't infer the type of this value"
-            assert_node value_type\is_a(decl_type) or decl_type\is_a(value_type), @value[1], "Value is type #{value_type}, not declared type #{decl_type}"
+            node_assert value_type, @value[1], "Can't infer the type of this value"
+            node_assert value_type\is_a(decl_type) or decl_type\is_a(value_type), @value[1], "Value is type #{value_type}, not declared type #{decl_type}"
         val_reg,code = env\to_reg @value[1]
-        assert_node @var[1].__register, @var[1], "Undefined variable"
+        node_assert @var[1].__register, @var[1], "Undefined variable"
         code ..= "#{@var[1].__register} =#{decl_type.base_type} copy #{val_reg}\n"
         return code
     Assignment: (env)=>
         var_type = get_type @[1]
         value_type = get_type @[2]
-        assert_node value_type\is_a(var_type), @[2], "Value is type #{value_type}, but it's being assigned to something with type #{var_type}"
-        assert_node @[1].__register, @[1], "Undefined variable"
+        node_assert value_type\is_a(var_type), @[2], "Value is type #{value_type}, but it's being assigned to something with type #{var_type}"
+        node_assert @[1].__register, @[1], "Undefined variable"
         val_reg,code = env\to_reg @[2]
         return "#{code}#{@[1].__register} =#{var_type.base_type} copy #{val_reg}\n"
     AddUpdate: (env)=>
-        assert_node @[1].__register, @[1], "Undefined variable"
+        node_assert @[1].__register, @[1], "Undefined variable"
         lhs_type,rhs_type = get_type(@[1]),get_type(@[2])
         rhs_reg,code = env\to_reg @[2]
         if lhs_type == rhs_type and (lhs_type\is_a(Types.Int) or lhs_type\is_a(Types.Num))
@@ -900,46 +913,46 @@ stmt_compilers =
             return code.."#{@[1].__register} =l call $bl_list_concat(l #{@[1].__register}, l #{rhs_reg})\n"
         else
             fn_reg, t2 = get_function_reg @__parent, "add", "(#{lhs_type},#{rhs_type})"
-            assert_node fn_reg, @, "addition is not supported for #{lhs_type} and #{rhs_type}"
-            assert_node t2 == lhs_type, @, "Return type for add(#{lhs_type},#{rhs_type}) is #{t2} instead of #{lhs_type}"
+            node_assert fn_reg, @, "addition is not supported for #{lhs_type} and #{rhs_type}"
+            node_assert t2 == lhs_type, @, "Return type for add(#{lhs_type},#{rhs_type}) is #{t2} instead of #{lhs_type}"
             return code.."#{@[1].__register} =#{lhs_type.abi_type} call #{fn_reg}(#{lhs_type.abi_type} #{@[1].__register}, #{rhs_type.abi_type} #{rhs_reg})\n"
     SubUpdate: (env)=>
-        assert_node @[1].__register, @[1], "Undefined variable"
+        node_assert @[1].__register, @[1], "Undefined variable"
         lhs_type,rhs_type = get_type(@[1]),get_type(@[2])
         rhs_reg,code = env\to_reg @[2]
         if lhs_type == rhs_type and (lhs_type\is_a(Types.Int) or lhs_type\is_a(Types.Num))
             return code.."#{@[1].__register} =#{lhs_type.abi_type} sub #{@[1].__register}, #{rhs_reg}\n"
         else
             fn_reg, t2 = get_function_reg @__parent, "subtract", "(#{lhs_type},#{rhs_type})"
-            assert_node fn_reg, @, "subtraction is not supported for #{lhs_type} and #{rhs_type}"
-            assert_node t2 == lhs_type, @, "Return type for subtract(#{lhs_type},#{rhs_type}) is #{t2} instead of #{lhs_type}"
+            node_assert fn_reg, @, "subtraction is not supported for #{lhs_type} and #{rhs_type}"
+            node_assert t2 == lhs_type, @, "Return type for subtract(#{lhs_type},#{rhs_type}) is #{t2} instead of #{lhs_type}"
             return code.."#{@[1].__register} =#{lhs_type.abi_type} call #{fn_reg}(#{lhs_type.abi_type} #{@[1].__register}, #{rhs_type.abi_type} #{rhs_reg})\n"
     MulUpdate: (env)=>
-        assert_node @[1].__register, @[1], "Undefined variable"
+        node_assert @[1].__register, @[1], "Undefined variable"
         lhs_type,rhs_type = get_type(@[1]),get_type(@[2])
         rhs_reg,code = env\to_reg @[2]
         if lhs_type == rhs_type and (lhs_type\is_a(Types.Int) or lhs_type\is_a(Types.Num))
             return code.."#{@[1].__register} =#{lhs_type.abi_type} mul #{@[1].__register}, #{rhs_reg}\n"
         else
             fn_reg, t2 = get_function_reg @__parent, "multiply", "(#{lhs_type},#{rhs_type})"
-            assert_node fn_reg, @, "multiplication is not supported for #{lhs_type} and #{rhs_type}"
-            assert_node t2 == lhs_type, @, "Return type for multiply(#{lhs_type},#{rhs_type}) is #{t2} instead of #{lhs_type}"
+            node_assert fn_reg, @, "multiplication is not supported for #{lhs_type} and #{rhs_type}"
+            node_assert t2 == lhs_type, @, "Return type for multiply(#{lhs_type},#{rhs_type}) is #{t2} instead of #{lhs_type}"
             return code.."#{@[1].__register} =#{lhs_type.abi_type} call #{fn_reg}(#{lhs_type.abi_type} #{@[1].__register}, #{rhs_type.abi_type} #{rhs_reg})\n"
     DivUpdate: (env)=>
-        assert_node @[1].__register, @[1], "Undefined variable"
+        node_assert @[1].__register, @[1], "Undefined variable"
         lhs_type,rhs_type = get_type(@[1]),get_type(@[2])
         rhs_reg,code = env\to_reg @[2]
         if lhs_type == rhs_type and (lhs_type\is_a(Types.Int) or lhs_type\is_a(Types.Num))
             return code.."#{@[1].__register} =#{lhs_type.abi_type} div #{@[1].__register}, #{rhs_reg}\n"
         else
             fn_reg, t2 = get_function_reg @__parent, "divide", "(#{lhs_type},#{rhs_type})"
-            assert_node fn_reg, @, "division is not supported for #{lhs_type} and #{rhs_type}"
-            assert_node t2 == lhs_type, @, "Return type for divide(#{lhs_type},#{rhs_type}) is #{t2} instead of #{lhs_type}"
+            node_assert fn_reg, @, "division is not supported for #{lhs_type} and #{rhs_type}"
+            node_assert t2 == lhs_type, @, "Return type for divide(#{lhs_type},#{rhs_type}) is #{t2} instead of #{lhs_type}"
             return code.."#{@[1].__register} =#{lhs_type.abi_type} call #{fn_reg}(#{lhs_type.abi_type} #{@[1].__register}, #{rhs_type.abi_type} #{rhs_reg})\n"
     OrUpdate: (env)=>
         for val in *@
-            assert_node get_type(val)\is_a(Types.Bool), val, "Expected Bool here, but got #{get_type val}"
-        assert_node @[1].__register, @[1], "Undefined variable"
+            node_assert get_type(val)\is_a(Types.Bool), val, "Expected Bool here, but got #{get_type val}"
+        node_assert @[1].__register, @[1], "Undefined variable"
         true_label = env\fresh_label "or.equal.true"
         false_label = env\fresh_label "or.equal.false"
         code = "jnz #{@[1].__register}, #{true_label}, #{false_label}\n"
@@ -951,8 +964,8 @@ stmt_compilers =
         return code
     AndUpdate: (env)=>
         for val in *@
-            assert_node get_type(val)\is_a(Types.Bool), val, "Expected Bool here, but got #{get_type val}"
-        assert_node @[1].__register, @[1], "Undefined variable"
+            node_assert get_type(val)\is_a(Types.Bool), val, "Expected Bool here, but got #{get_type val}"
+        node_assert @[1].__register, @[1], "Undefined variable"
         true_label = env\fresh_label "and.equal.true"
         false_label = env\fresh_label "and.equal.false"
         code = "jnz #{@[1].__register}, #{true_label}, #{false_label}\n"
@@ -964,22 +977,22 @@ stmt_compilers =
         return code
     XorUpdate: (env)=>
         for val in *@
-            assert_node get_type(val)\is_a(Types.Bool), val, "Expected Bool here, but got #{get_type val}"
-        assert_node @[1].__register, @[1], "Undefined variable"
+            node_assert get_type(val)\is_a(Types.Bool), val, "Expected Bool here, but got #{get_type val}"
+        node_assert @[1].__register, @[1], "Undefined variable"
         rhs_reg,code = env\to_reg @[2]
         return code.."#{@[1].__register} =#{lhs_type.abi_type} xor #{@[1].__register}, #{rhs_reg}\n"
     AppendUpdate: (env)=>
         lhs_type = get_type @[1]
         rhs_type = get_type @[2]
         if lhs_type\is_a(Types.String)
-            assert_node @[1].__register, @[1], "Undefined variable"
+            node_assert @[1].__register, @[1], "Undefined variable"
             fn_name = env\get_concat_fn rhs_type
             rhs_reg,code = env\to_reg @[2]
             code ..= "#{@[1].__register} =l call #{fn_name}(l #{@[1].__register}, #{rhs_type.base_type} #{rhs_reg})\n"
             return code
         elseif lhs_type\is_a(Types.ListType)
-            assert_node rhs_type == lhs_type.item_type, @[2], "You can't append a #{rhs_type} to a list of #{lhs_type.item_type}s"
-            assert_node @[1].__register, @[1], "Undefined variable"
+            node_assert rhs_type == lhs_type.item_type, @[2], "You can't append a #{rhs_type} to a list of #{lhs_type.item_type}s"
+            node_assert @[1].__register, @[1], "Undefined variable"
             fn_name = env\get_concat_fn rhs_type
             rhs_reg,code = env\to_reg @[2]
             if rhs_type.base_type == "d"
@@ -989,7 +1002,7 @@ stmt_compilers =
             code ..= "#{@[1].__register} =l call $bl_list_append(l #{@[1].__register}, l #{rhs_reg})\n"
             return code
         else
-            assert_node false, @[1], "Only Lists and Strings can be appended to, not #{lhs_type}"
+            node_error @[1], "Only Lists and Strings can be appended to, not #{lhs_type}"
     ButWithUpdate: (env)=>
         t = get_type @base[1]
         if t\is_a(Types.ListType)
@@ -997,7 +1010,7 @@ stmt_compilers =
         elseif t\is_a(Types.String)
             error "Not impl"
         elseif t\is_a(Types.StructType)
-            assert_node @base[1].__register, @[1], "Undefined variable"
+            node_assert @base[1].__register, @[1], "Undefined variable"
             struct_size = 8*#t.members
             ret = env\fresh_local "#{t.name\lower!}.butwith"
             code = "#{ret} =l alloc8 #{struct_size}\n"
@@ -1010,13 +1023,13 @@ stmt_compilers =
                 elseif override.field
                     t.members_by_name[override.field[0]].index
                 else
-                    assert_node false, override, "I don't know what this is"
+                    node_error override, "I don't know what this is"
 
-                assert_node not used[i], override, "Redundant value, this field is already being overwritten"
+                node_assert not used[i], override, "Redundant value, this field is already being overwritten"
                 used[i] = true
 
-                assert_node 1 <= i and i <= #t.members, override, "Not a valid member of #{t}"
-                assert_node get_type(override.value[1])\is_a(t.members[i].type), override.value[1], "Not a #{t.members[i].type}"
+                node_assert 1 <= i and i <= #t.members, override, "Not a valid member of #{t}"
+                node_assert get_type(override.value[1])\is_a(t.members[i].type), override.value[1], "Not a #{t.members[i].type}"
                 val_reg,val_code = env\to_reg override.value[1]
                 code ..= val_code
                 code ..= "#{p} =l add #{ret}, #{8*(i-1)}\n"
@@ -1025,9 +1038,19 @@ stmt_compilers =
             code ..= "#{@base[1].__register} =l call $intern_bytes(l #{ret}, l #{struct_size})\n"
             return code
         else
-            assert_node false, @, "| operator is only supported for List and Struct types"
+            node_error @, "| operator is only supported for List and Struct types"
     FnDecl: (env)=> ""
     Pass: (env)=> ""
+    Fail: (env)=>
+        if @[1]
+            node_assert get_type(@[1]) == Types.String, @[1], "Failure messages must be a String, not a #{get_type @[1]}"
+            msg,code = env\to_reg @[1]
+            full_msg = env\fresh_local "failure.message"
+            code ..= "#{full_msg} =l call $bl_string_append_string(l #{env\get_string_reg(get_node_pos(@)..': ', "failure.location")}, l #{msg})\n"
+            code ..= "call $errx(l 1, l #{full_msg})\n"
+            return code
+        else
+            return "call $errx(l 1, l #{env\get_string_reg(get_node_pos(@)..': Unexpected failure!', "failure.message")})\n"
     TypeDeclaration: (env)=> ""
     FnCall: (env)=>
         _, code = env\to_reg @, true
@@ -1081,7 +1104,7 @@ stmt_compilers =
         code ..= "jmp #{next_case}\n"
         for branch in *@branches
             for case in *branch.cases
-                assert_node get_type(case)\is_a(t), case, "'when' value is not a #{t}"
+                node_assert get_type(case)\is_a(t), case, "'when' value is not a #{t}"
                 code ..= "#{next_case}\n"
                 next_case = env\fresh_label "when.case"
                 case_reg,case_code = env\to_reg case
@@ -1188,7 +1211,7 @@ stmt_compilers =
         -- jnz (i <= len), @for.end, @for.body
         -- @for.end
         list_type = get_type @iterable[1]
-        assert_node list_type\is_a(Types.ListType) or list_type\is_a(Types.Range), @iterable[1], "Expected a List or Range, not #{list_type}"
+        node_assert list_type\is_a(Types.ListType) or list_type\is_a(Types.Range), @iterable[1], "Expected a List or Range, not #{list_type}"
 
         body_label = env\fresh_label "for.body"
         between_label = env\fresh_label "for.between"

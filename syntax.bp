@@ -1,7 +1,7 @@
 prog: ^^__Block__ [ParseError:: +(./\n) @message=(""=>"Invalid code")]$$
 
 term: (
-    Bool / Nil / String / Float / Int / unaryOp / Global !(_`(,{) / Var !(_`(,{) / Struct / FnCall / Lambda / List / Cast / `(__extended-expr__`)
+    Bool / Nil / String / Float / Int / Fail / unaryOp / Global !(_`(,{) / Var !(_`(,{) / Struct / FnCall / Lambda / List / Cast / `(__extended-expr__`)
 )
 IndexedTerm:: !`0-9 (MethodCall / IndexedTerm / term) (`. FieldName / `[ __ required-extended-expr __ `] / (ParseError:: `[ @message=(=> "Unclosed bracket")))
 maybe-index-term: MethodCall / IndexedTerm / term
@@ -64,9 +64,10 @@ statement: (
 Skip:: \b"skip"\b [_ @target=(\b"for"\b / \b"while"\b / \b"repeat"\b / Var)]
 Stop:: \b"stop"\b [_ @target=(\b"for"\b / \b"while"\b / \b"repeat"\b / Var)]
 line-statement: (
-    (Pass:: "pass" _ [comment])
+    (Pass:: \b"pass"\b _ [comment]) / Fail
   / Assignment / AddUpdate / SubUpdate / MulUpdate / DivUpdate / AndUpdate / OrUpdate / XorUpdate / AppendUpdate / ButWithUpdate
   / FnCall / MethodCall) _ [comment]
+Fail:: \b"fail"\b _ [extended-expr]
 Declaration:: @var=Var _`: _[@type=type_] `= _ @value=required-extended-expr
 TypeDeclaration:: @(NamedType::id) _ ":::" _ (type / (ParseError:: ..$ @message=(=>"Not a valid type")))
 FnDecl:: @curdent:\C "def"\b _ (@name=Var _
@@ -137,7 +138,7 @@ Range:: (
   / ".." [@last=maybe-index-term]) # ..5 ..
 comment: "//" *.
 
-keyword: "nil"/"yes"/"no"/"for"/"while"/"between"/"if"/"elseif"/"else"/"with"/"and"/"or"/"xor"/"pass"/"not"/"skip"/"stop"/"unless"/"repeat"/"as"
+keyword: "nil"/"yes"/"no"/"for"/"while"/"between"/"if"/"elseif"/"else"/"with"/"and"/"or"/"xor"/"pass"/"not"/"skip"/"stop"/"unless"/"repeat"/"as"/"fail"
 hex: `0-9,a-f,A-F
 nl: +\n % (*(` /\t) [comment])
 __: *(` /\t/\n/\r/comment)

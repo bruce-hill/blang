@@ -25,6 +25,14 @@ get_line_num = (source, pos)->
         n += 1
     return n
 
+get_node_pos = (ast)->
+    line = get_line_num cur_source, ast.start
+    last = get_line_num cur_source, ast.after-1
+    if last == line
+        return "#{cur_filename}:#{line}"
+    else
+        return "#{cur_filename}:#{line}-#{last}"
+
 print_err = (ast, msg, context=1)->
     startline = get_line_num cur_source, ast.start
     lastline = get_line_num cur_source, ast.after-1
@@ -50,10 +58,14 @@ print_err = (ast, msg, context=1)->
         if n > lastline + context
             break
 
-assert_node = (assertion, node, msg)->
+node_assert = (assertion, node, msg)->
     if not assertion
         print_err node, msg
         error()
     return assertion
 
-return (:log, :viz, :print_err, :set_file, :assert_node)
+node_error = (node, msg)->
+    print_err node, msg
+    error()
+
+return (:log, :viz, :print_err, :set_file, :node_assert, :node_error, :get_node_pos)
