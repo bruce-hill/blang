@@ -18,26 +18,28 @@ each_tag = (...)=>
     for k,v in pairs(@)
         each_tag(v, ...) if type(v) == 'table' and not (type(k) == 'string' and k\match("^__"))
 
-get_function_reg = (scope, name, arg_signature)->
+get_function_reg = (scope, name, signature)->
     return nil unless scope
     switch scope.__tag
         when "Block"
             for i=#scope,1,-1
                 stmt = scope[i]
-                if stmt.__tag == "FnDecl" and stmt.name[0] == name and get_type(stmt)\arg_signature! == arg_signature
-                    return node_assert(stmt.__register, stmt, "Function without a name"), get_type(stmt)
+                if stmt.__tag == "FnDecl" and stmt.name[0] == name
+                    t = get_type(stmt)
+                    if "#{t}" == signature or t\arg_signature! == signature
+                        return node_assert(stmt.__register, stmt, "Function without a name"), get_type(stmt)
                 elseif stmt.__tag == "Declaration" and stmt.var[0] == name
                     t = if stmt.type
                         parse_type(stmt.type[1])
                     else
                         get_type stmt.value[1]
-                    if t\is_a(Types.FnType) and t\arg_signature! == arg_signature
+                    if t\is_a(Types.FnType) and ("#{t}" == signature or t\arg_signature! == signature)
                         return "%#{stmt.var[0]}", t
         when "FnDecl","Lambda"
             for a in *scope.args
                 if a.arg[0] == name
                     t = parse_type(a.type[1])
-                    if t\is_a(Types.FnType) and t\arg_signature! == arg_signature
+                    if t\is_a(Types.FnType) and ("#{t}" == signature or t\arg_signature! == signature)
                         return "%"..a.arg[0], t
         when "For","ListComprehension"
             iter_type = get_type(scope.iterable[1])
@@ -47,10 +49,10 @@ get_function_reg = (scope, name, arg_signature)->
     if scope.__parent and (scope.__parent.__tag == "For" or scope.__parent.__tag == "While" or scope.__parent.__tag == "Repeat")
         loop = scope.__parent
         if scope == loop.between[1]
-            r,t = get_function_reg(loop.body[1], name, arg_signature)
+            r,t = get_function_reg(loop.body[1], name, signature)
             return r,t if r
     
-    return get_function_reg(scope.__parent, name, arg_signature)
+    return get_function_reg(scope.__parent, name, signature)
 
 infixop = (env, op)=>
     t = get_type @[1]
@@ -134,7 +136,7 @@ class Environment
         unless @strings[str]
             name = @fresh_global suggestion
             @strings[str] = name
-            chunks = str\gsub('[^ !#-[^-~]]', (c)->"\",b #{c\byte(1)},b\"")\gsub("\n", "\\n")
+            chunks = str\gsub('[^ !#-[%]-~]', (c)->"\",b #{c\byte(1)},b\"")\gsub("\n", "\\n")
             @string_code ..= "data #{name} = {b\"#{chunks}\",b 0}\n"
         return @strings[str]
 
@@ -445,6 +447,54 @@ expr_compilers =
 
         if @content.after > i
             chunk = @content[0]\sub(1+(i-@content.start), @content.after-@content.start)
+            code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{env\get_string_reg chunk})\n"
+
+        return str,code
+
+    DSL: (env)=>
+        content = @string[1].content
+        return env\get_string_reg(content[0]),"" if #content == 0
+        str = env\fresh_local "str"
+        code = "#{str} =l call $bl_string(l #{env\get_string_reg("", "emptystr")})\n"
+        dsl_type = get_type(@)
+
+        stringify = (val)->
+            if val.__tag == "Escape"
+               --Escape:: `\ (`x 2 hex / `a,b,t,n,r,v / 3 `0-8 / .)
+                esc = {a:'\a',b:'\b',t:'\t',n:'\n',r:'\r',v:'\v'}
+                text = val[0]\sub(2)
+                c = if esc[text]
+                    esc[text]\byte(1)
+                elseif text\match('[0-8][0-8][0-8]')
+                    tonumber(text, 8)
+                elseif text\match('x[0-9a-fA-F][0-9a-fA-F]')
+                    tonumber(text\sub(2), 16)
+                else
+                    text\byte(1)
+                code ..= "#{str} =l call $bl_string_append_char(l #{str}, l #{c})\n"
+            elseif val.__tag == "Newline"
+                code ..= "#{str} =l call $bl_string_append_char(l #{str}, l #{10})\n"
+            else
+                t = get_type(val)
+                fn_reg = get_function_reg @__parent, "escape", "(#{t})=>#{dsl_type}"
+                node_assert fn_reg, val, "No escape(#{t})=>#{dsl_type} function is implemented, so this value cannot be safely inserted"
+                val_reg,val_code = env\to_reg val
+                code ..= val_code
+                escaped = env\fresh_local "escaped"
+                code ..= "#{escaped} =l call #{fn_reg}(#{t.base_type} #{val_reg})\n"
+                code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{escaped})\n"
+
+        i = content.start
+        for interp in *content
+            if interp.start > i
+                chunk = content[0]\sub(1+(i-content.start), interp.start-content.start)
+                code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{env\get_string_reg chunk})\n"
+
+            stringify(interp[1] or interp)
+            i = interp.after
+
+        if content.after > i
+            chunk = content[0]\sub(1+(i-content.start), content.after-content.start)
             code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{env\get_string_reg chunk})\n"
 
         return str,code

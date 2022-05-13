@@ -111,7 +111,7 @@ char *bl_string_replace(char *text, char *pat_text, char *rep_text) {
         fprint_match(out, text, m, NULL);
         prev = m->end;
     }
-    fwrite(prev, sizeof(char), (size_t)(&text[textlen] - prev), out);
+    fwrite(prev, sizeof(char), (size_t)(&text[textlen] - prev) + 1, out);
     fflush(out);
     char *replaced = intern_bytes(buf, size);
     fclose(out);

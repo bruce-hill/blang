@@ -1,7 +1,7 @@
 prog: ^^__Block__ [ParseError:: +(./\n) @message=(""=>"Invalid code")]$$
 
 term: (
-    Bool / Nil / String / Float / Int / Fail / Return / Skip / Stop / unaryOp
+    Bool / Nil / String / DSL / Float / Int / Fail / Return / Skip / Stop / unaryOp
     / Global !(_`(,{) / Var !(_`(,{) / Struct / FnCall / Lambda / ListComprehension / List
     / Cast / `(__extended-expr__`)
 )
@@ -42,8 +42,17 @@ Nil:: \b"nil"\b
 String:: (
   '"""' @curdent:\C $ \n @strdent:\C strdent @content=..%(@(Newline::\n strdent) / \n$ / @(Escape/Interp)) (\n curdent '"""')
   / (ParseError:: '"""' .. % \n $$ @message=(=> "Failed to find closing triple quote with the right indentation"))
+  / "'''" @curdent:\C $ \n @strdent:\C strdent @content=..%(@(Newline::\n strdent) / \n$) (\n curdent '"""')
+  / (ParseError:: "'''" .. % \n $$ @message=(=> "Failed to find closing triple quote with the right indentation"))
   / `" @content=..%(@(Escape/Interp)) `"
-  / (ParseError:: `"..$ @message=(=> "Missing closing quote")))
+  / `' @content=.. `'
+  / (ParseError:: `",'..$ @message=(=> "Missing closing quote"))
+  )
+DSL:: `% @name=id @string=(
+  String
+  / @(String:: `[ @content=..%(@(Escape/Interp)) `]) / (ParseError:: `[..$ @message=(=>"Missing closing ]"))
+  / @(String:: `{ @content=.. `}) / (ParseError:: `{..$ @message=(=>"Missing closing }"))
+  / @(String:: @delm:`|,/,;,, @content=..%(@(Escape/Interp)) delim) / (ParseError:: `|,/,;,,..$ @message=(=>"This string has no closing delimiter")))
 List:: `[__*extended-expr %(__`,__) __ [`,__] `] [_`:_@type=type] / `[__`:__@type=@(ListType::type)__`]
 ListComprehension:: (`[ __
   @expression=extended-expr __ \b"for"\b __
@@ -52,7 +61,7 @@ ListComprehension:: (`[ __
    / PostfixConditional] __`])
 PostfixConditional: \b"if"\b _ @condition=required-extended-expr / \b"unless"\b_ @condition=(Not::required-extended-expr)
 Cast:: `(__extended-expr__`)_`:_@type=type
-Interp: `$ (Var / @(String:: @content=`$) / `(__ required-extended-expr __`) / (ParseError:: parens @message=(=>"Could not parse this interpolation")))
+Interp: `$ (Var / `(__ required-extended-expr __`) / (ParseError:: parens @message=(=>"Could not parse this interpolation")))
 Escape:: `\ (`x 2 hex / `a,b,t,n,r,v / 3 `0-8 / .)
 Float:: [`-,+] (`0-9 *`0-9,_ `. !`. *`0-9 / `. +`0-9)
 Int:: [`-,+] `0-9 *`0-9,_

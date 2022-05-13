@@ -192,6 +192,11 @@ get_type = memoize (node)->
         when "Bool" then return Bool
         when "Nil" then return Nil
         when "String" then return String
+        when "DSL"
+            name = node.name[0]
+            unless derived_types[name]
+                derived_types[name] = DerivedType name, String
+            return derived_types[name]
         when "Range" then return Range
         when "Stop","Skip","Return","Fail"
             return Void
@@ -228,12 +233,12 @@ get_type = memoize (node)->
                     return t.members[i].type
                 else
                     node_error node[2], "Structs can only be indexed by a field name or Int literal"
-            elseif t == String
+            elseif t\is_a(String)
                 index_type = get_type(node[2], vars)
                 if index_type == Int
                     return Int
                 elseif index_type == Range
-                    return String
+                    return t
                 else
                     node_error node[2], "Strings can only be indexed by Ints or Ranges"
             else
@@ -297,8 +302,8 @@ get_type = memoize (node)->
         when "Append"
             lhs_type = get_type node[1]
             node_assert lhs_type, node[1], "This element does not have a definite type"
-            if lhs_type == String
-                return String
+            if lhs_type\is_a(String)
+                return lhs_type
             rhs_type = get_type node[2]
             if lhs_type\is_a(ListType) and rhs_type\is_a(lhs_type.item_type)
                 return lhs_type
