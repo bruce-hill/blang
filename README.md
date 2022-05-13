@@ -8,12 +8,16 @@ there to assembly code and then to a binary.
 
 ```
 def sing_bottles_song(n:Int):
-    for i in -(1..n)
-        "$i bottle$(i > 1? "s"; "") of beer on the wall" | $puts
+    for i in n..0
+        when i is 0
+            "No more bottles of beer on the wall! :(" | $puts
+        is 1
+            "One last bottle of beer on the wall" | $puts
+        else
+            "$i bottles of beer on the wall" | $puts
     between
-        "Take one down, pass it around... " | $printf
+        "Take one down, pass it around... " | $puts
 
-    "No more bottles of beer on the wall :(" | $puts
 
 sing_bottles_song(99)
 ```
