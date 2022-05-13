@@ -195,7 +195,8 @@ get_type = memoize (node)->
         when "Nil" then return Nil
         when "String" then return String
         when "Range" then return Range
-        when "Fail" then return Void
+        when "Stop","Skip","Return","Fail"
+            return Void
         when "Cast" then return parse_type(node.type[1])
         when "List"
             decl_type = node.type and parse_type(node.type[1])
@@ -421,8 +422,6 @@ get_type = memoize (node)->
                 tuple_index += 1
                 tuples[key] = StructType(name, members)
             return tuples[key]
-        when "Stop","Skip"
-            return Void
         else
             node_assert not node.__tag, node, "Cannot infer type for: #{node.__tag}"
     if #node > 0

@@ -1,7 +1,7 @@
 prog: ^^__Block__ [ParseError:: +(./\n) @message=(""=>"Invalid code")]$$
 
 term: (
-    Bool / Nil / String / Float / Int / Fail / unaryOp / Global !(_`(,{) / Var !(_`(,{) / Struct / FnCall / Lambda / List / Cast / `(__extended-expr__`)
+    Bool / Nil / String / Float / Int / Fail / Return / Skip / Stop / unaryOp / Global !(_`(,{) / Var !(_`(,{) / Struct / FnCall / Lambda / List / Cast / `(__extended-expr__`)
 )
 IndexedTerm:: !`0-9 (MethodCall / IndexedTerm / term) (`. FieldName / `[ __ required-extended-expr __ `] / (ParseError:: `[ @message=(=> "Unclosed bracket")))
 maybe-index-term: MethodCall / IndexedTerm / term

@@ -21,3 +21,18 @@ tmp and= no
 tmp and= fail_test("and= failed to short circuit")
 $puts("and= pass")
 fail_test("and= gave wrong result") if tmp
+
+def doop():String
+    maybe_str := yes ? nil; "ok"
+    x:String = maybe_str or return "Successfully short circuited with return"
+    fail "Failed to short circuit"
+    return "x"
+
+$puts(doop())
+
+for i in 1..5
+    maybe_str := yes ? nil; "ok"
+    x:String = maybe_str or stop
+    fail "Failed to short circuit"
+
+$puts("Successfully short circuited with stop")

@@ -868,16 +868,10 @@ expr_compilers =
         code ..= "#{ret} =l call $intern_bytes(l #{ret}, l #{struct_size})\n"
         return ret, code
 
-    Fail: (env)=>
-        if @[1]
-            node_assert get_type(@[1]) == Types.String, @[1], "Failure messages must be a String, not a #{get_type @[1]}"
-            msg,code = env\to_reg @[1]
-            full_msg = env\fresh_local "failure.message"
-            code ..= "#{full_msg} =l call $bl_string_append_string(l #{env\get_string_reg(get_node_pos(@)..': ', "failure.location")}, l #{msg})\n"
-            code ..= "call $errx(l 1, l #{full_msg})\n"
-            return "0",code
-        else
-            return "0","call $errx(l 1, l #{env\get_string_reg(get_node_pos(@)..': Unexpected failure!', "failure.message")})\n"
+    Fail: (env)=> "0",env\compile_stmt(@).."\n#{env\fresh_label "unreachable"}\n"
+    Return: (env)=> "0",env\compile_stmt(@).."\n#{env\fresh_label "unreachable"}\n"
+    Skip: (env)=> "0",env\compile_stmt(@).."\n#{env\fresh_label "unreachable"}\n"
+    Stop: (env)=> "0",env\compile_stmt(@).."\n#{env\fresh_label "unreachable"}\n"
 
 stmt_compilers =
     Block: (env)=>
