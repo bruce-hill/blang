@@ -108,15 +108,13 @@ find_declared_type = (scope, name, arg_signature=nil)->
             for a in *scope.args
                 if a.arg[0] == name
                     return parse_type(a.type[1])
-        when "For"
+        when "For","ListComprehension"
             if scope.index and scope.index[0] == name
                 return Int
             if scope.var and scope.var[0] == name
                 iter_type = get_type(scope.iterable[1])
-                log "ITER TYPE: #{name} #{iter_type}"
                 return Int if iter_type\is_a(Range)
                 node_assert iter_type\is_a(ListType) or iter_type\is_a(Range), scope.iterable[1], "Not an iterable"
-                log "Var TYPE: #{name} #{iter_type.item_type}"
                 return iter_type.item_type
     
     if scope.__parent and (scope.__parent.__tag == "For" or scope.__parent.__tag == "While" or scope.__parent.__tag == "Repeat")
@@ -205,6 +203,9 @@ get_type = memoize (node)->
             node_assert t == decl_type, node[1], "Not expected type: #{t}" if decl_type
             for i=2,#node
                 node_assert get_type(node[i]) == t, node[i], "Not expected type: #{t}"
+            return ListType(t)
+        when "ListComprehension"
+            t = get_type(node.expression[1])
             return ListType(t)
         when "IndexedTerm"
             t = get_type node[1]

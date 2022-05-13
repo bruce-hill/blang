@@ -39,7 +39,7 @@ get_function_reg = (scope, name, arg_signature)->
                     t = parse_type(a.type[1])
                     if t\is_a(Types.FnType) and t\arg_signature! == arg_signature
                         return "%"..a.arg[0], t
-        when "For"
+        when "For","ListComprehension"
             iter_type = get_type(scope.iterable[1])
             if scope.var and scope.var[0] == name and iter_type\is_a(Types.ListType) and iter_type.item_type\is_a(Types.FnType)
                 return "%"..scope.var[0], iter_type.item_type
@@ -365,6 +365,14 @@ class Environment
                 hook_up_refs for_block.index[1], for_block.body
                 hook_up_refs for_block.index[1], for_block.between if for_block.between
 
+        for comp in coroutine.wrap(-> each_tag(ast, "ListComprehension"))
+            if comp.index
+                hook_up_refs comp.index[1], comp.expression
+                hook_up_refs comp.index[1], comp.condition if comp.condition
+            if comp.var
+                hook_up_refs comp.var[1], comp.expression
+                hook_up_refs comp.var[1], comp.condition if comp.condition
+
         -- Compile functions:
         for fndec in coroutine.wrap(-> each_tag(ast, "FnDecl", "Lambda"))
             @declare_function fndec
@@ -568,6 +576,95 @@ expr_compilers =
         list = env\fresh_local "list"
         code ..= "#{list} =l call $bl_list_new(l 0, l 0, l #{#@}, l #{buf})\n"
         return list, code
+    ListComprehension: (env)=>
+        -- Rough breakdown:
+        -- comp = empty_list()
+        -- len = #iter
+        -- i = 0
+        -- jmp @comprehension.next
+        -- @comprehension.body
+        -- item = list[i]
+        -- // conditional
+        -- jnz cond, @comprehension.include, @comprehension.next
+        -- @comprehension.include
+        -- expr = ...item...
+        -- comp = list_append(comp, expr)
+        -- jmp @comprehension.next
+        -- @comprehension.next
+        -- i += 1
+        -- jnz (i <= len), @comprehension.end, @comprehension.body
+        -- @comprehension.end
+        -- TODO: optimize allocation spam
+        comprehension = env\fresh_local "comprehension"
+        code = "#{comprehension} =l call $bl_empty_list()\n"
+
+        iter_type = get_type @iterable[1]
+        node_assert iter_type\is_a(Types.ListType) or iter_type\is_a(Types.Range), @iterable[1], "Expected a List or Range, not #{iter_type}"
+
+        body_label = env\fresh_label "comprehension.body"
+        include_label = env\fresh_label "comprehension.include"
+        next_label = env\fresh_label "comprehension.next"
+        end_label = env\fresh_label "comprehension.end"
+
+        i = env\fresh_local "i"
+        len = env\fresh_local "len"
+
+        iter_reg,iter_code = env\to_reg @iterable[1]
+        code ..= iter_code
+        code ..= "#{i} =l copy 0\n"
+        if iter_type\is_a(Types.Range)
+            code ..= "#{len} =l call $range_len(l #{iter_reg})\n"
+        else
+            code ..= "#{len} =l loadl #{iter_reg}\n"
+        code ..= "jmp #{next_label}\n"
+        code ..= "#{body_label}\n"
+        if @index
+            index_reg = @index[1].__register
+            env.used_names[index_reg] = true
+            code ..= "#{index_reg} =l copy #{i}\n"
+        if @var
+            var_reg = @var[1].__register
+            env.used_names[var_reg] = true
+            if iter_type\is_a(Types.Range)
+                code ..= "#{var_reg} =l call $range_nth(l #{iter_reg}, l #{i})\n"
+            else
+                if iter_type.item_type.base_type == "d"
+                    tmp = env\fresh_local "item.int"
+                    code ..= "#{tmp} =l call $bl_list_nth(l #{iter_reg}, l #{i})\n"
+                    code ..= "#{var_reg} =#{iter_type.item_type.abi_type} cast #{tmp}\n"
+                else
+                    code ..= "#{var_reg} =#{iter_type.item_type.abi_type} call $bl_list_nth(l #{iter_reg}, l #{i})\n"
+
+        if @condition
+            log "#{viz @}"
+            cond_reg,cond_code = env\to_reg @condition[1]
+            code ..= cond_code
+            if @control and @control[1].__tag == "Skip"
+                code ..= "jnz #{cond_reg}, #{next_label}, #{include_label}\n"
+            elseif @control and @control[1].__tag == "Stop"
+                code ..= "jnz #{cond_reg}, #{end_label}, #{include_label}\n"
+            else
+                code ..= "jnz #{cond_reg}, #{include_label}, #{next_label}\n"
+        else
+            code ..= "jmp #{include_label}\n"
+
+        code ..= "#{include_label}\n"
+        expr_reg,expr_code = env\to_reg @expression[1]
+        code ..= expr_code
+        expr_i = env\fresh_local "comprehension.expr.int"
+        if get_type(@expression[1]).base_type != "l"
+            code ..= "#{expr_i} =l cast #{expr_reg}\n"
+        else
+            expr_i = expr_reg
+        code ..= "#{comprehension} =l call $bl_list_append(l #{comprehension}, l #{expr_i})\n"
+        code ..= "jmp #{next_label}\n"
+        code ..= "#{next_label}\n"
+        code ..= "#{i} =l add #{i}, 1\n"
+        is_finished = env\fresh_local "comprehension.is_finished"
+        code ..= "#{is_finished} =l csgtl #{i}, #{len}\n"
+        code ..= "jnz #{is_finished}, #{end_label}, #{body_label}\n"
+        code ..= "#{end_label}\n"
+        return comprehension, code
     Range: (env)=>
         range = env\fresh_local "range"
         local code
@@ -1204,8 +1301,8 @@ stmt_compilers =
         -- i += 1
         -- jnz (i <= len), @for.end, @for.body
         -- @for.end
-        list_type = get_type @iterable[1]
-        node_assert list_type\is_a(Types.ListType) or list_type\is_a(Types.Range), @iterable[1], "Expected a List or Range, not #{list_type}"
+        iter_type = get_type @iterable[1]
+        node_assert iter_type\is_a(Types.ListType) or iter_type\is_a(Types.Range), @iterable[1], "Expected a List or Range, not #{iter_type}"
 
         body_label = env\fresh_label "for.body"
         between_label = env\fresh_label "for.between"
@@ -1224,12 +1321,12 @@ stmt_compilers =
         i = env\fresh_local "i"
         len = env\fresh_local "len"
 
-        list_reg,code = env\to_reg @iterable[1]
+        iter_reg,code = env\to_reg @iterable[1]
         code ..= "#{i} =l copy 1\n"
-        if list_type\is_a(Types.Range)
-            code ..= "#{len} =l call $range_len(l #{list_reg})\n"
+        if iter_type\is_a(Types.Range)
+            code ..= "#{len} =l call $range_len(l #{iter_reg})\n"
         else
-            code ..= "#{len} =l loadl #{list_reg}\n"
+            code ..= "#{len} =l loadl #{iter_reg}\n"
         finished = env\fresh_local "for.finished"
         code ..= "#{finished} =l csgtl #{i}, #{len}\n"
         code ..= "jnz #{finished}, #{end_label}, #{body_label}\n"
@@ -1241,15 +1338,15 @@ stmt_compilers =
         if @var
             var_reg = @var[1].__register
             env.used_names[var_reg] = true
-            if list_type\is_a(Types.Range)
-                code ..= "#{var_reg} =l call $range_nth(l #{list_reg}, l #{i})\n"
+            if iter_type\is_a(Types.Range)
+                code ..= "#{var_reg} =l call $range_nth(l #{iter_reg}, l #{i})\n"
             else
-                if list_type.item_type.base_type == "d"
+                if iter_type.item_type.base_type == "d"
                     tmp = env\fresh_local "item.int"
-                    code ..= "#{tmp} =l call $bl_list_nth(l #{list_reg}, l #{i})\n"
-                    code ..= "#{var_reg} =#{list_type.item_type.abi_type} cast #{tmp}\n"
+                    code ..= "#{tmp} =l call $bl_list_nth(l #{iter_reg}, l #{i})\n"
+                    code ..= "#{var_reg} =#{iter_type.item_type.abi_type} cast #{tmp}\n"
                 else
-                    code ..= "#{var_reg} =#{list_type.item_type.abi_type} call $bl_list_nth(l #{list_reg}, l #{i})\n"
+                    code ..= "#{var_reg} =#{iter_type.item_type.abi_type} call $bl_list_nth(l #{iter_reg}, l #{i})\n"
         code ..= "#{env\compile_stmt @body[1]}"
         unless has_jump\match(code)
             code ..= "jmp #{noskip_label}\n"
