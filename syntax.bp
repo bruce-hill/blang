@@ -57,7 +57,7 @@ Block:: @curdent:\C +(
   / !$ (ParseError:: @dent:\C ..$ *(\n dent (` /\t)..$) @message=(=>"Invalid statement"))) % (nl curdent !(` /\t))
 statement: (
     Declaration / FnDecl / If / When / For / While / Repeat / TypeDeclaration
-  / (If::PostfixIf) / (For::PostfixFor) / (While::PostfixWhile)
+  / PostfixIf / PostfixFor / PostfixWhile
   / Return / Skip / Stop
   / line-statement
   ) _ [comment]
@@ -107,16 +107,16 @@ If:: \b"if"\b @curdent:\C _ (
     *@(nl curdent \b"elseif"\b _ @condition=required-extended-expr [comment] nl curdent +(` /\t) @body=Block)
     [nl curdent \b"else"\b [comment] @elseBody=maybeInlineBlock]
 )
-PostfixIf: (@(@body=(Block:: @(Return / Skip / Stop / line-statement)) _
+PostfixIf: @(If:: (@(@body=(Block:: @(Return / Skip / Stop / line-statement)) _
   (\b"if"\b _ @condition=required-extended-expr
-  / \b"unless"\b_ @condition=(Not::required-extended-expr)) _ [comment]))
-PostfixFor: (@body=(Block:: @line-statement) _
-  \b"for"\b _ [@index=Var_`,_] @var=Var _ "in" _ @iterable=required-extended-expr _ [comment])
-PostfixWhile: (@body=(Block:: @line-statement) _
-  \b"while"\b _ @condition=extended-expr _ [comment])
+  / \b"unless"\b_ @condition=(Not::required-extended-expr)) _ [comment])))
+PostfixFor: @(For::(@body=(Block:: @line-statement) _
+  \b"for"\b _ [@index=Var_`,_] @var=Var _ "in" _ @iterable=required-extended-expr _ [comment]))
+PostfixWhile: @(While:: (@body=(Block:: @line-statement) _
+  \b"while"\b _ @condition=extended-expr _ [comment]))
 When:: ( \b"when"\b @curdent:\C _
   @what=required-extended-expr _ [[comment] nl curdent]
-  @branches=+@("is"\b _ @cases=+required-extended-expr%(_`,_) _ [comment] nl curdent +(` /\t) @body=Block)%(nl curdent)
+  +@("is"\b _ @cases=+required-extended-expr%(_`,_) _ [comment] nl curdent +(` /\t) @body=Block)%(nl curdent)
   [nl curdent "else" _ [comment] @elseBody=maybeInlineBlock]
 )
 For:: (

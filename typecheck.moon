@@ -374,7 +374,29 @@ get_type = memoize (node)->
                         ret_type = OptionalType(t2)
                     else
                         node_error ret, "Return type #{t2} doesn't match earlier return type #{ret_type}"
-            ret_type = ret_type or Void
+            -- Check for fallthrough case:
+            has_fallthrough = (node)->
+                last = node
+                while last
+                    switch last.__tag
+                        when "Return" then return false
+                        when "Block" then last = last[#last]
+                        when "If","When"
+                            for clause in *last
+                                return true if has_fallthrough(clause.body)
+                            return true if not last.elseBody or has_fallthrough(last.elseBody)
+                            return false
+                        when "While","For","Repeat"
+                            return true
+                        when nil then last = last[#last]
+                        else return true
+                    break if last.__tag == "Return"
+
+            if ret_type
+                node_assert ret_type == Void or not has_fallthrough(node.body), node, "Function is not guaranteed to return a value"
+            else
+                ret_type = Void
+            -- ret_type = ret_type or Void
             if decl_ret_type
                 node_assert decl_ret_type == ret_type, node, "Conflicting return types"
             return FnType([parse_type a.type[1] for a in *node.args], ret_type)

@@ -1096,7 +1096,7 @@ stmt_compilers =
         next_body = env\fresh_label "when.body"
         match_reg = env\fresh_local "when.matches"
         code ..= "jmp #{next_case}\n"
-        for branch in *@branches
+        for branch in *@
             for case in *branch.cases
                 node_assert get_type(case)\is_a(t), case, "'when' value is not a #{t}"
                 code ..= "#{next_case}\n"
