@@ -22,6 +22,8 @@ def sing_bottles_song(n:Int):
 sing_bottles_song(99)
 ```
 
+See [test/\*.bl](test/) for more examples.
+
 ## License
 
 Blang is released under the MIT license with the Commons Clause, see
