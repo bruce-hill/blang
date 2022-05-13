@@ -1,0 +1,14 @@
+x := [i*100 for i in 1..10]
+"$x" | $puts
+
+y := [i*100 for i in 1..999 stop if i > 5]
+"$y" | $puts
+
+z := [i*100 for i in 1..10 skip if i mod 2 == 0]
+"$z" | $puts
+
+w := [i*100 for i in 1..10 if i mod 2 == 0]
+"$w" | $puts
+
+p := [s for i,s in ["a","b","c","d"] if i mod 2 == 0]
+"$p" | $puts
