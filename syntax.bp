@@ -29,7 +29,7 @@ GreaterEq:: expr _ ">=" _ expr
 Equal:: expr _ "==" _ expr
 NotEqual:: expr _ "!=" _ expr
 comparison: Equal / NotEqual / LessEq / Less / GreaterEq / Greater
-TernaryOp:: @condition=(And/Or/Xor/comparison/expr) _ `? _ @ifTrue=required-extended-expr _ `; _ @ifFalse=required-extended-expr
+TernaryOp:: @condition=(And/Or/Xor/comparison/expr) _ `? _ @ifTrue=required-extended-expr _ (`; / `: (ParseError:: "Ternary operator uses semicolon (;) not colon (:)")) _ @ifFalse=required-extended-expr
 Bool:: \b("yes"/"no")\b
 Nil:: \b"nil"\b
 String:: (
@@ -71,15 +71,16 @@ Fail:: \b"fail"\b _ [extended-expr]
 Declaration:: @var=Var _`: _[@type=type_] `= _ @value=required-extended-expr
 TypeDeclaration:: @(NamedType::id) _ ":::" _ (type / (ParseError:: ..$ @message=(=>"Not a valid type")))
 FnDecl:: @curdent:\C "def"\b _ (@name=Var _
-  `( __ @args=*@((@arg=Var_`:_@type=type) / (ParseError:: Var @message=(=>"This argument doesn't have a type")))%(__`,__)__[`,__]`)_`:_[@return=type]_ [comment]
+  `( __ @args=*@((@arg=Var_`:_@type=type) / (ParseError:: Var @message=(=>"This argument doesn't have a type")))%(__`,__)__[`,__]`)_
+  (`: / (ParseError:: @message=(=>"Expected a colon here")))_[@return=type]_ [comment]
   @body=(`= _ (Block:: (Return:: required-extended-expr)) / nl curdent +(` /\t) Block))
 Lambda:: (@curdent:\C
   @args=[`(__*@(@arg=Var__`:__@type=type)%(__`,__)__[`,__]`)]
   [_`:_@return=type]_
   ( ("=>" _ [comment] __ @body=@(Block:: (Return:: required-extended-expr)))
    / "->"_ [comment] (@body=(
-       @(Block:: statement)
-     / nl curdent +(` /\t) Block)
+         @(Block:: statement)
+       / nl curdent +(` /\t) Block)
      / (ParseError:: @message=(..$ =>"Invalid lambda body"))))
 )
 Assignment:: Var _ `= _ required-extended-expr
