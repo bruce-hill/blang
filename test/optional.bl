@@ -8,6 +8,12 @@ say("$x")
 say(x or "Nah")
 
 fn := should_nil ? nil; say
-maybe_log := fn or (s:String)->
-    say("...")
+maybe_log := fn or (s:String)-> say("...")
 maybe_log("Hello")
+
+def maybe_str(s:String,nil_it:Bool):
+    return nil if nil_it
+    return s
+
+say(maybe_str("hi", no) or "XXX")
+foo:String? = maybe_str("hi", no)

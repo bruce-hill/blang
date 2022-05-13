@@ -29,7 +29,7 @@ class ListType extends Type
 
 class FnType extends Type
     new: (@arg_types, @return_type)=>
-    __tostring: => "#{@arg_signature!}->#{@return_type}"
+    __tostring: => "#{@arg_signature!}=>#{@return_type}"
     __eq: Type.__eq
     arg_signature: => "(#{concat ["#{a}" for a in *@arg_types], ","})"
 
@@ -351,18 +351,21 @@ get_type = memoize (node)->
             return base_type
         when "Lambda","FnDecl"
             decl_ret_type = node.return and parse_type(node.return[1])
-            ret_type = if node.body[1].__tag != "Block"
-                get_type node.body[1]
-            else
-                t = nil
-                for ret in coroutine.wrap ->find_returns(node.body)
-                    if t == nil
-                        t = ret[1] and get_type(ret[1]) or Void
+            assert_node node.body[1].__tag == "Block", node.body, "Uh oh"
+            ret_type = nil
+            for ret in coroutine.wrap ->find_returns(node.body)
+                if ret_type == nil
+                    ret_type = ret[1] and get_type(ret[1]) or Void
+                else
+                    t2 = ret[1] and get_type(ret[1]) or Void
+                    continue if t2\is_a(ret_type)
+                    if t2 == Nil
+                        ret_type = OptionalType(ret_type)
+                    elseif ret_type == Nil
+                        ret_type = OptionalType(t2)
                     else
-                        t2 = ret[1] and get_type(ret[1]) or Void
-                        unless t2\is_a(t)
-                            t = Types.VariantType({t, t2})
-                t or Void
+                        assert_node false, ret, "Return type #{t2} doesn't match earlier return type #{ret_type}"
+            ret_type = ret_type or Void
             if decl_ret_type
                 assert_node decl_ret_type == ret_type, node, "Conflicting return types"
             return FnType([parse_type a.type[1] for a in *node.args], ret_type)

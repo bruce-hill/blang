@@ -1,5 +1,5 @@
-addOne := (x:Int):Int-> x + 1
-addTwo := (x:Int)-> x + 2
+addOne := (x:Int):Int=> x + 1
+addTwo := (x:Int)=> x + 2
 addThree := (x:Int)->
     return x + 3
 

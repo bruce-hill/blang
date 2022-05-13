@@ -71,13 +71,16 @@ Declaration:: @var=Var _`: _[@type=type_] `= _ @value=required-extended-expr
 TypeDeclaration:: @(NamedType::id) _ ":::" _ (type / (ParseError:: ..$ @message=(=>"Not a valid type")))
 FnDecl:: @curdent:\C "def"\b _ (@name=Var _
   `( __ @args=*@((@arg=Var_`:_@type=type) / (ParseError:: Var @message=(=>"This argument doesn't have a type")))%(__`,__)__[`,__]`)_`:_[@return=type]_ [comment]
-  @body=(`= _ extended-expr / nl curdent +(` /\t) Block))
+  @body=(`= _ (Block:: (Return:: required-extended-expr)) / nl curdent +(` /\t) Block))
 Lambda:: (@curdent:\C
   `(__@args=*@(@arg=Var__`:__@type=type)%(__`,__)__[`,__]`)
-  [_`:_@return=type]_"->"_ [comment]
-  (@body=funcBody / (ParseError:: @message=(..$ =>"Invalid lambda body")))
+  [_`:_@return=type]_
+  ( ("=>" _ [comment] __ @body=@(Block:: (Return:: required-extended-expr)))
+   / "->"_ [comment] (@body=(
+       @(Block:: statement)
+     / nl curdent +(` /\t) Block)
+     / (ParseError:: @message=(..$ =>"Invalid lambda body"))))
 )
-funcBody: extended-expr / nl curdent +(` /\t) Block / (Block:: _`;)
 Assignment:: Var _ `= _ required-extended-expr
 AddUpdate:: Var _ "+=" _ required-extended-expr
 SubUpdate:: Var _ "-=" _ required-extended-expr
@@ -96,7 +99,7 @@ nonoptional-type: (
   / (NamedType::id)
   / TypeVar
   / (ListType::`[type`])
-  / (FnType:: `(__ @args=(*type % (__`,__)) __ `) _ "->" __ @return=type)
+  / (FnType:: `(__ @args=(*type % (__`,__)) __ `) _ "=>" __ @return=type)
 )
 If:: \b"if"\b @curdent:\C _ (
     @(@condition=required-extended-expr [comment] nl curdent +(` /\t) @body=Block)

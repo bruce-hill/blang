@@ -15,7 +15,7 @@ def multiply(i:Int,s:String):String = $bl_string_repeat(s, i):String
 
 $puts("Hello: i=$i f=$f s=$s v=$v l=$l l2=$l2 expr=$(i + 1)!")
 $puts("\n<-newline \x21<-bang \101<-A, backslash: \\ quote: \" done")
-$puts("Fn: $( (x:Int,y:Int)-> x + y )")
+$puts("Fn: $( (x:Int,y:Int)=> x + y )")
 
 $puts("String append: $("hello" @ 5)")
 
