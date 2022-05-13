@@ -49,8 +49,8 @@ class OptionalType extends Type
         assert @nonnil != Nil, "Optional nil?!?"
         if @nonnil.__class == OptionalType
             @nonnil = @nonnil.nonnil
-    contains: (other)=> other == @ or other == @nonnil or other == Nil
-    __tostring: => "#{@nonnil}?"
+    contains: (other)=> other == @ or other == Nil or (@nonnil and other\is_a(@nonnil))
+    __tostring: => @nonnil\is_a(FnType) and "(#{@nonnil})?" or "#{@nonnil}?"
     __eq: Type.__eq
 
 -- Primitive Types:
@@ -159,7 +159,9 @@ parse_type = memoize (type_node)->
         when "StructType"
             return StructType(type_node.name[0], [{name:m.name[0], type: parse_type(m.type[1])} for m in *type_node])
         when "OptionalType"
-            return OptionalType(parse_type(type_node[1]))
+            t = parse_type(type_node[1])
+            assert_node not t\is_a(Num), type_node, "Optional numbers are not currently supported"
+            return OptionalType(t)
         else
             error "Not a type node: #{viz type_node}"
 
@@ -269,8 +271,10 @@ get_type = memoize (node)->
             if true_type == false_type
                 return true_type
             elseif true_type == Nil
+                assert_node not false_type\is_a(Num), node.ifFalse[1], "Optional numbers are not currently supported"
                 return OptionalType(false_type)
             elseif false_type == Nil
+                assert_node not true_type\is_a(Num), node.ifTrue[1], "Optional numbers are not currently supported"
                 return OptionalType(true_type)
             else
                 assert_node false, node, "Values for true/false branches are different: #{true_type} vs #{false_type}"

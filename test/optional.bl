@@ -1,0 +1,13 @@
+
+def say(str:String):
+    $puts(str)
+
+should_nil := yes
+x:String? = should_nil ? nil; "Not nil"
+say("$x")
+say(x or "Nah")
+
+fn := should_nil ? nil; say
+maybe_log := fn or (s:String)->
+    say("...")
+maybe_log("Hello")
