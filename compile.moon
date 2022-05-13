@@ -153,7 +153,7 @@ class Environment
         fn_name = fndec.__register
         @fn_code ..= "function #{ret_type\is_a(Types.Void) and "" or ret_type.abi_type.." "}"
         @fn_code ..= "#{fn_name}(#{concat args, ", "}) {\n@start\n#{body_code}"
-        if ret_type\is_a(Types.Void)
+        if ret_type\is_a(Types.Void) and not has_jump\match(@fn_code)
             @fn_code ..= "  ret\n"
         elseif not has_jump\match(@fn_code)
             @fn_code ..= "  ret 0\n"
@@ -244,7 +244,20 @@ class Environment
                 code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{@get_string_reg("}","closecurly")})\n"
             elseif t\is_a(Types.FnType)
                 code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{@get_string_reg("#{t}")})\n"
+            elseif t\is_a(Types.OptionalType)
+                nil_label = @fresh_label "optional.nil"
+                nonnil_label = @fresh_label "optional.nonnil"
+                end_label = @fresh_label "optional.end"
+                code ..= "jnz #{reg}, #{nonnil_label}, #{nil_label}\n"
+                code ..= "#{nil_label}\n"
+                code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{@get_string_reg("nil", "nil")})\n"
+                code ..= "jmp #{end_label}\n"
+                code ..= "#{nonnil_label}\n"
+                append_reg reg, t.nonnil
+                code ..= "jmp #{end_label}\n"
+                code ..= "#{end_label}\n"
             else
+                error "Unsupported concat type: #{t}"
                 assert_node false, val, "Unsupported concat type"
 
         append_reg "%obj", t
@@ -587,28 +600,40 @@ expr_compilers =
             assert_node false, @, "WTF"
         return range, code
     Or: (env)=>
-        true_label = env\fresh_label "or.true"
         done_label = env\fresh_label "or.end"
         code = ""
-        for val in *@
-            assert_node get_type(val)\is_a(Types.Bool), val, "Expected Bool here, but got #{get_type val}"
+        t = get_type(@)
+        t = t.nonnil if t\is_a(Types.OptionalType)
+        ret_reg = env\fresh_local "any.true"
+        for i,val in ipairs @
             val_reg, val_code = env\to_reg val
-            false_label = env\fresh_label "or.false"
-            code ..= "#{val_code}jnz #{val_reg}, #{true_label}, #{false_label}\n#{false_label}\n"
-        ret_reg = env\fresh_local "any"
-        code ..= "#{ret_reg} =#{Types.Bool.base_type} copy 0\njmp #{done_label}\n#{true_label}\n#{ret_reg} =#{Types.Bool.base_type} copy 1\n#{done_label}\n"
+            code ..= val_code
+            code ..= "#{ret_reg} =#{t.base_type} copy #{val_reg}\n"
+            if i < #@
+                false_label = env\fresh_label "or.false"
+                code ..= "jnz #{ret_reg}, #{done_label}, #{false_label}\n"
+                code ..= "#{false_label}\n"
+            else
+                code ..= "jmp #{done_label}\n"
+        code ..= "#{done_label}\n"
         return ret_reg, code
     And: (env)=>
-        false_label = env\fresh_label "and.false"
         done_label = env\fresh_label "and.end"
         code = ""
-        for val in *@
-            assert_node get_type(val)\is_a(Types.Bool), val, "Expected Bool here, but got #{get_type val}"
+        t = get_type(@)
+        t = t.nonnil if t\is_a(Types.OptionalType)
+        ret_reg = env\fresh_local "all.true"
+        for i,val in ipairs @
             val_reg, val_code = env\to_reg val
-            true_label = env\fresh_label "and.true"
-            code ..= "#{val_code}jnz #{val_reg}, #{true_label}, #{false_label}\n#{true_label}\n"
-        ret_reg = env\fresh_local "any"
-        code ..= "#{ret_reg} =#{Types.Bool.base_type} copy 1\njmp #{done_label}\n#{false_label}\n#{ret_reg} =#{Types.Bool.base_type} copy 0\n#{done_label}\n"
+            code ..= val_code
+            code ..= "#{ret_reg} =#{t.base_type} copy #{val_reg}\n"
+            if i < #@
+                true_label = env\fresh_label "and.true"
+                code ..= "jnz #{ret_reg}, #{true_label}, #{done_label}\n"
+                code ..= "#{true_label}\n"
+            else
+                code ..= "jmp #{done_label}\n"
+        code ..= "#{done_label}\n"
         return ret_reg, code
     Xor: (env)=>
         for val in *@
@@ -771,6 +796,20 @@ expr_compilers =
         return ret_reg, code
 
     FnCall: (env, skip_ret=false)=>
+        call_sig = "(#{concat [tostring(get_type(a)) for a in *@], ","})"
+        if @fn[1].__tag == "Var" and not @fn[1].__register
+            top = @.__parent
+            while top.__parent do top = top.__parent
+            candidates = {}
+            for decl in coroutine.wrap(-> each_tag(top, "FnDecl"))
+                log "Candidate candidate #{decl.name[0]} vs #{@fn[0]}"
+                if decl.name[0] == @fn[0]
+                    table.insert candidates, "#{@fn[0]}#{get_type(decl)}"
+
+            assert_node #candidates > 0, @, "There is no function with this name"
+            assert_node #candidates > 1, @, "This function is being called with: #{@fn[0]}#{call_sig} which doesn't match the definition: #{candidates[1]}"
+            assert_node false, @, "This function is being called with: #{@fn[0]}#{call_sig} which doesn't match any of the definitions:\n  - #{concat candidates, "\n  - "}"
+        
         code = ""
         local fn_type, fn_reg
         fn_type = get_type @fn[1]
@@ -779,6 +818,7 @@ expr_compilers =
 
         if fn_type
             assert_node fn_type\is_a(Types.FnType), @fn[1], "This is not a function, it's a #{fn_type or "???"}"
+            assert_node fn_type\arg_signature! == call_sig, @, "This function is being called with #{@fn[0]}#{call_sig} but is defined as #{fn_type}"
 
         args = {}
         for arg in *@
@@ -1000,6 +1040,8 @@ stmt_compilers =
     Return: (env)=>
         if @[1]
             reg, code = env\to_reg @[1]
+            if get_type(@[1])\is_a(Types.Void)
+                return "#{code}ret\n"
             return "#{code}ret #{reg}\n"
         else
             return "ret\n"

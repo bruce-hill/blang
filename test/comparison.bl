@@ -7,3 +7,6 @@ if "a" < "bcde" and "a" == "a"
     $puts("String comparison working")
 else
     $puts("String comparison broken")
+
+if yes xor no xor no
+    $puts("xor works!")

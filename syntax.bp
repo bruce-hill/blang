@@ -44,7 +44,7 @@ Escape:: `\ (`x 2 hex / `a,b,t,n,r,v / 3 `0-8 / .)
 Float:: [`-,+] (`0-9 *`0-9,_ `. !`. *`0-9 / `. +`0-9)
 Int:: [`-,+] `0-9 *`0-9,_
 Struct:: [@name=Var] _ `{ __ *@([@name=FieldName __`=__] @value=required-extended-expr) % (__`,__) [__`,] __ `}
-FnCall:: @fn=(FnCall / Global / Var / `(__required-extended-expr__`)) `( __ *expr % (__`,__) __ [`,__] `) [_`:_@type=type]
+FnCall:: @fn=(FnCall / Global / Var / `(__required-extended-expr__`)) `( __ *extended-expr % (__`,__) __ [`,__] `) [_`:_@type=type]
 MethodCall:: !`0-9 (MethodCall / IndexedTerm / term) _ `| _ (@fn=(Global / Var / `(__required-extended-expr__`)) _ [`( __ *expr % (__`,__) __ [`,__] `)] / (ParseError:: => "Not a valid method call")) [_`:_@type=type]
 Var:: id !~ (^^keyword$$)
 FieldName:: id !~ (^^keyword$$)
@@ -89,14 +89,13 @@ XorUpdate:: Var _ "xor=" _ required-extended-expr
 AppendUpdate:: Var _ "@=" _ required-extended-expr
 ButWithUpdate:: @base=Var _ "&=" _ *@((`. @field=FieldName / `[__@index=required-extended-expr__`]) _`=_ @value=required-extended-expr) % (_`,,|_) [_`,]
 required-extended-expr: extended-expr / (ParseError:: ..$ @message=(=>"Invalid expression"))
-type: (
-    # (VariantType:: 2+ type%`|)
+type: (OptionalType:: nonoptional-type `?) / nonoptional-type
+nonoptional-type: (
     (StructType:: @name=id `{__ *@(@name=FieldName_`:_@type=type) % (__`,__) [__`,] __`})
   / (DerivedType:: @name=id ":" @derivesFrom=(type / (ParseError:: ..$ @message=(=>"Not a valid type"))))
   / (NamedType::id)
   / TypeVar
   / (ListType::`[type`])
-  #/ (OptionalType:: `? type)
   / (FnType:: `(__ @args=(*type % (__`,__)) __ `) _ "->" __ @return=type)
 )
 If:: \b"if"\b @curdent:\C _ (
