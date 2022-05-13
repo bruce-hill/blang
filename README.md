@@ -10,7 +10,6 @@ there to assembly code and then to a binary.
 def sing_bottles_song(n:Int):
     for i in -(1..n)
         "$i bottle$(i > 1? "s"; "") of beer on the wall" | $puts
-        "$i bottle$(i > 1? "s"; "") of beer on the wall" | $puts
     between
         "Take one down, pass it around... " | $printf
 
