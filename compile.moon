@@ -792,6 +792,9 @@ expr_compilers =
         t_lhs,t_rhs = get_type(@[1]),get_type(@[2])
         if t_lhs == t_rhs and (t_lhs\is_a(Types.Int) or t_lhs\is_a(Types.Num))
             return infixop @, env, "add"
+        elseif t_lhs == t_rhs and t_lhs\is_a(Types.String)
+            return infixop @, env, (ret,lhs,rhs)->
+                "#{ret} =l call $bl_string_append_string(l #{lhs}, l #{rhs})\n"
         elseif t_lhs == t_rhs and t_lhs\is_a(Types.ListType)
             return infixop @, env, (ret,lhs,rhs)->
                 "#{ret} =l call $bl_list_concat(l #{lhs}, l #{rhs})\n"
@@ -1057,6 +1060,8 @@ stmt_compilers =
         rhs_reg,code = env\to_reg @[2]
         if lhs_type == rhs_type and (lhs_type\is_a(Types.Int) or lhs_type\is_a(Types.Num))
             return code.."#{@[1].__register} =#{lhs_type.abi_type} add #{@[1].__register}, #{rhs_reg}\n"
+        elseif lhs_type == rhs_type and lhs_type\is_a(Types.String)
+            return code.."#{@[1].__register} =l call $bl_string_append_string(l #{@[1].__register}, l #{rhs_reg})\n"
         elseif lhs_type == rhs_type and lhs_type\is_a(Types.ListType)
             return code.."#{@[1].__register} =l call $bl_list_concat(l #{@[1].__register}, l #{rhs_reg})\n"
         else
