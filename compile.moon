@@ -322,7 +322,7 @@ class Environment
                             node.__decl = var
                     when "FnDecl"
                         hook_up_refs var, node.body, arg_signature if var.__register\match("^%$")
-                    when "FnCall"
+                    when "FnCall","MethodCall"
                         call_sig = "(#{concat [tostring(get_type(a)) for a in *node], ","})"
                         if not arg_signature or call_sig == arg_signature
                             hook_up_refs var, node.fn, arg_signature
