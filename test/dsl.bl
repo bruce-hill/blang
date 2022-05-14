@@ -30,8 +30,8 @@ def escape(str:String):Shell
 def escape(strings:[String]):Shell
     ret := %Shell""
     for str in strings
-        ret @= %Shell[$str]
-    between ret @= %Shell' '
+        ret += %Shell[$str]
+    between ret += %Shell[ ]
     return ret
 
 files := ['one', 'file space', 'malicious `rm -f $HOME`', "don't screw up"]
@@ -51,6 +51,6 @@ html := %HTML"""
         $html_val
         </body>
 """
-html @= %HTML[\n</html>]
+html += %HTML[\n</html>]
 
 $puts("\x1b[1mHTML:\x1b[m\n$html")
