@@ -1,10 +1,16 @@
 L := [10, 20, 30, 40, 50]
+$puts("L: $L")
 x := L[3]
-$printf("%ld\n", x)
+$puts("L[3]: $x")
+L | $bl_list_set_nth(1, 999)
+$puts("L after setting index 1: $L")
 
 L2 := [1.5, 2.5, 3.5, 4.5]
+$puts("L2: $L2")
 x2 := L2[3]
-$printf("%f\n", x2)
+$puts("L2[3]: $x2")
+L2 | $bl_list_append((99.5):Int)
+$puts("After append: $L2")
 
 L3 := [[10],[20]]
 $printf("Inner: %ld\n", L3[2][1])
@@ -20,9 +26,3 @@ $puts("Full slice: a[..] = $(a[..])")
 $puts("$a == $b? $(a == b)")
 $puts("$a == ($a)[..]? $(a == a[..])")
 $puts("($a)[..] == ($b)[..]? $(a[..] == b[..])")
-
-
-f := [1.5, 2.5, 3.5]
-$puts("Float list: $f")
-f | $bl_list_append((99.5):Int)
-$puts("After append: $f")
