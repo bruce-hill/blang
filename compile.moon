@@ -1136,6 +1136,40 @@ stmt_compilers =
             return code
         else
             node_error @, "| operator is only supported for List and Struct types"
+
+    MethodCallUpdate: (env)=>
+        dest = @[1]
+        node_assert dest and dest.__tag == "Var", dest, "Method call updates expect a variable"
+        update_sig = "(#{concat [tostring(get_type(a)) for a in *@], ","})=>#{get_type(dest)}"
+        if @fn.__tag == "Var" and not @fn.__register
+            top = @.__parent
+            while top.__parent do top = top.__parent
+            candidates = {}
+            for decl in coroutine.wrap(-> each_tag(top, "FnDecl"))
+                if decl.name[0] == @fn[0]
+                    table.insert candidates, "#{@fn[0]}#{get_type(decl)}"
+
+            node_assert #candidates > 0, @, "There is no function with this name"
+            node_assert #candidates > 1, @, "For this to work, #{@fn[0]} should be #{update_sig}, not #{candidates[1]}"
+            node_error @, "For this to work, #{@fn[0]} should be #{update_sig} which doesn't match any of the definitions:\n  - #{concat candidates, "\n  - "}"
+        
+        fn_type = get_type @fn
+        fn_reg,code = env\to_reg @fn
+
+        if fn_type
+            node_assert fn_type\is_a(Types.FnType), @fn, "This is not a function, it's a #{fn_type or "???"}"
+            node_assert "#{fn_type}" == update_sig, @, "For this to work, #{@fn[0]} should be #{update_sig}, not #{fn_type}"
+
+        args = {}
+        for arg in *@
+            arg_reg, arg_code = env\to_reg arg
+            code ..= arg_code
+            table.insert args, "#{get_type(arg).abi_type} #{arg_reg}"
+
+        ret_type = fn_type and fn_type.return_type or get_type(dest)
+        code ..= "#{dest.__register} =#{ret_type.abi_type} call #{fn_reg}(#{concat args, ", "})\n"
+        return code
+
     FnDecl: (env)=> ""
     Pass: (env)=> ""
     Fail: (env)=>

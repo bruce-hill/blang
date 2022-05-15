@@ -6,6 +6,9 @@ x := 5.
 s := x|sqr
 $puts("$x|sqr = $s")
 
+s |= sqr
+$puts("$x|sqr|sqr = $s")
+
 Vec:::Vec{x:Num,y:Num}
 
 def len(v:Vec):Num
