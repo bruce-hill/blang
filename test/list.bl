@@ -11,6 +11,7 @@ $printf("Inner: %ld\n", L3[2][1])
 L4 := []:Int
 
 $puts("L: $L sliced[2..4]: $(L[2..4])")
+L | $bl_list_append(9999)
 $puts("After append: $L")
 
 a := [1,2,3,4]
@@ -19,3 +20,9 @@ $puts("Full slice: a[..] = $(a[..])")
 $puts("$a == $b? $(a == b)")
 $puts("$a == ($a)[..]? $(a == a[..])")
 $puts("($a)[..] == ($b)[..]? $(a[..] == b[..])")
+
+
+f := [1.5, 2.5, 3.5]
+$puts("Float list: $f")
+f | $bl_list_append((99.5):Int)
+$puts("After append: $f")

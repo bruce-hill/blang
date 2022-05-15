@@ -7,8 +7,7 @@ typedef struct {
     int64_t *items;
 } array_t;
 
-typedef struct list_s {
-    int64_t len, depth;
-    struct list_s *before, *after;
-    int64_t items[1];
+typedef struct {
+    int64_t len;
+    int64_t *items;
 } list_t;

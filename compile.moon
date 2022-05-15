@@ -392,7 +392,7 @@ class Environment
         code ..= "export function w $main(w %__argc, l %__argv) {\n"
         code ..= "@start\n"
         code ..= "  %argc =l extsw %__argc\n"
-        code ..= "  %argv =l call $bl_list_new(l 0, l 0, l %argc, l %__argv)\n"
+        code ..= "  %argv =l call $bl_list_new(l %argc, l %__argv)\n"
         code ..= body_code
         code ..= "  ret 0\n}\n"
         return code
@@ -605,7 +605,7 @@ expr_compilers =
     List: (env)=>
         if #@ == 0
             list = env\fresh_local "list.empty"
-            code = "#{list} =l call $bl_empty_list()\n"
+            code = "#{list} =l call $bl_list_new(l 0, l 0)\n"
             return list, code
 
         buf = env\fresh_local "list.buf"
@@ -622,7 +622,7 @@ expr_compilers =
             code ..= "#{ptr} =l add #{buf}, #{8*(i-1)}\n"
             code ..= "storel #{val_reg}, #{ptr}\n"
         list = env\fresh_local "list"
-        code ..= "#{list} =l call $bl_list_new(l 0, l 0, l #{#@}, l #{buf})\n"
+        code ..= "#{list} =l call $bl_list_new(l #{#@}, l #{buf})\n"
         return list, code
     ListComprehension: (env)=>
         -- Rough breakdown:
@@ -644,7 +644,7 @@ expr_compilers =
         -- @comprehension.end
         -- TODO: optimize allocation spam
         comprehension = env\fresh_local "comprehension"
-        code = "#{comprehension} =l call $bl_empty_list()\n"
+        code = "#{comprehension} =l call $bl_list_new(l 0, l 0)\n"
 
         iter_type = get_type @iterable
         node_assert iter_type\is_a(Types.ListType) or iter_type\is_a(Types.Range), @iterable, "Expected a List or Range, not #{iter_type}"
@@ -703,7 +703,7 @@ expr_compilers =
             code ..= "#{expr_i} =l cast #{expr_reg}\n"
         else
             expr_i = expr_reg
-        code ..= "#{comprehension} =l call $bl_list_append(l #{comprehension}, l #{expr_i})\n"
+        code ..= "call $bl_list_append(l #{comprehension}, l #{expr_i})\n"
         code ..= "jmp #{next_label}\n"
         code ..= "#{next_label}\n"
         code ..= "#{i} =l add #{i}, 1\n"

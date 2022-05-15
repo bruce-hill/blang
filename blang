@@ -2,7 +2,7 @@
 util = require 'util'
 import log, viz, set_file from util
 
-builtins = io.open("lib/builtins.bl")\read("*a").."\n"
+-- builtins = io.open("lib/builtins.bl")\read("*a").."\n"
 
 number_code = (code, color="1")->
     line = 0
