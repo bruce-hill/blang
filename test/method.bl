@@ -23,3 +23,6 @@ def add(v:Vec, other:Vec):Vec
     return Vec{v.x + other.x, v.y + other.y}
 
 $puts("$v|add(Vec{10.,10.}) = $(v | add(Vec{10., 10.}))")
+
+v |= add(Vec{100.,100.})
+$puts("$v|=... = $v")
