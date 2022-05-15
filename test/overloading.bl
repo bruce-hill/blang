@@ -18,10 +18,7 @@ say_max(99, 100)
 
 // "Generics" can be accomplished unsafely:
 def map(list:[Int], fn:(Int)=>Int):[Int]
-    ret := [:Int]
-    for x in list
-        ret @= x|fn
-    return ret
+    return [x|fn for x in list]
 
 to_map := ["hello","world"]
 def bye(s:String):= s == "hello" ? "bye" ; s

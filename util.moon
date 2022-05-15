@@ -36,7 +36,7 @@ get_node_pos = (ast)->
 print_err = (ast, msg, context=1)->
     startline = get_line_num cur_source, ast.start
     lastline = get_line_num cur_source, ast.after-1
-    text = msg or ast.message or "Error"
+    text = msg or ast[0]
     print "\x1b[31;1;7m#{cur_filename}:#{startline} #{text}\x1b[m"
 
     pos = 1

@@ -52,12 +52,12 @@ list_t *bl_list_coalesce(list_t *list) {
     return coalesced;
 }
 
-list_t *bl_list_new(list_t *before, list_t *after, int64_t len, int64_t *items) {
+list_t *bl_list_new(list_t *before, list_t *after, int64_t nitems, int64_t *items) {
     list_t *empty = bl_empty_list();
-    if (len <= 0) return empty;
     if (before == NULL) before = empty;
     if (after == NULL) after = empty;
-    int64_t nitems = len - (before->len + after->len);
+    int64_t len = before->len + nitems + after->len;
+    if (len <= 0) return empty;
     size_t size = LIST_SIZE(nitems);
     list_t *list = calloc2(1, size);
     list->before = before;
@@ -81,11 +81,11 @@ list_t *bl_list_concat(list_t *a, list_t *b) {
 }
 
 list_t *bl_list_append(list_t *list, int64_t item) {
-    return bl_list_new(list, NULL, list->len+1, &item);
+    return bl_list_new(list, NULL, 1, &item);
 }
 
 list_t *bl_list_prepend(list_t *list, int64_t item) {
-    return bl_list_new(NULL, list, list->len+1, &item);
+    return bl_list_new(NULL, list, 1, &item);
 }
 
 list_t *bl_list_insert(list_t *list, int64_t i, int64_t item) {
@@ -95,12 +95,12 @@ list_t *bl_list_insert(list_t *list, int64_t i, int64_t item) {
         return bl_list_new(
             bl_list_insert(list->before, i, item),
             list->after,
-            list->len + 1, NULL);
+            0, NULL);
     } else if (i > (list->len - list->after->len)) {
         return bl_list_new(
             list->before,
             bl_list_insert(list->after, i - (list->len - list->after->len), item),
-            list->len + 1, NULL);
+            0, NULL);
     } else {
         int64_t chunk1 = (i - list->before->len) - 1;
         int64_t chunk2 = list->len - list->after->len - chunk1;
@@ -126,12 +126,12 @@ list_t *bl_list_remove(list_t *list, int64_t i) {
         return bl_list_new(
             bl_list_remove(list->before, i),
             list->after,
-            list->len - 1, NULL);
+            0, NULL);
     } else if (i > (list->len - list->after->len)) {
         return bl_list_new(
             list->before,
             bl_list_remove(list->after, i - (list->len - list->after->len)),
-            list->len - 1, NULL);
+            0, NULL);
     } else {
         int64_t chunk1 = (i - list->before->len) - 1;
         int64_t chunk2 = (list->len - list->after->len - chunk1) - 1;
@@ -139,13 +139,11 @@ list_t *bl_list_remove(list_t *list, int64_t i) {
             chunk1 <= 0 ? list->before : bl_list_new(
                 list->before,
                 bl_list_new(NULL, NULL, chunk1, list->items),
-                list->before->len + chunk1,
-                NULL),
+                0, NULL),
             chunk2 <= 0 ? list->after : bl_list_new(
                 bl_list_new(NULL, NULL, chunk2, &list->items[chunk1 + 1]),
                 list->after,
-                list->after->len + chunk2,
-                NULL),
+                0, NULL),
             list->len - 1, NULL);
     }
 }

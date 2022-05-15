@@ -26,7 +26,15 @@ each_tag = (tag)=>
     for k,v in pairs(@)
         each_tag(v, tag) if type(v) == 'table'
 
+process = (ast)=>
+    for k,v in pairs(ast)
+        continue if type(k) == 'string' and k\match("^__")
+        if v[1]
+            ast[k] = v[1]
+
+
 parse = (text, filename)->
+    log "Parsing..."
     ast = blang\match text
     assert ast, "Completely failed to parse!"
     errors = 0

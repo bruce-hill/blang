@@ -15,6 +15,7 @@
 
 char *bl_string(char *s) { return intern_str(s); }
 char *bl_tostring_int(int64_t i) { RETURN_FMT("%ld", i); }
+char *bl_tostring_char(int64_t c) { RETURN_FMT("%c", (char)c); }
 char *bl_tostring_float(double f) { RETURN_FMT("%g", f); }
 char *bl_tostring_bool(int64_t b) { return intern_str(b ? "yes" : "no"); }
 char *bl_tostring_nil(void) { return intern_str("nil"); }

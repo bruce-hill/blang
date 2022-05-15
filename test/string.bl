@@ -17,8 +17,6 @@ $puts("Hello: i=$i f=$f s=$s v=$v l=$l l2=$l2 expr=$(i + 1)!")
 $puts("\n<-newline \x21<-bang \101<-A, backslash: \\ quote: \" done")
 $puts("Fn: $( (x:Int,y:Int)=> x + y )")
 
-$puts("String append: $("hello" @ 5)")
-
 toslice := "Hello world"
 char := toslice[1]
 slice := toslice[2..6]

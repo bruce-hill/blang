@@ -2,6 +2,8 @@
 util = require 'util'
 import log, viz, set_file from util
 
+builtins = io.open("lib/builtins.bl")\read("*a").."\n"
+
 number_code = (code, color="1")->
     line = 0
     (code\gsub("\n$","")\gsub "[^\n]*", =>
@@ -36,11 +38,13 @@ run_file = (filename, file, temporary=true)->
     log "\x1b[1;4mFile #{filename}\x1b[m"
     with file
         text = \read "*a"
+        -- text = builtins..text
         set_file filename, text
         log number_code(text, "34;1")
         ast = parse text, filename
         assert ast, "No match!"
-        -- log "#{viz ast}"
+        ast = ast[1]
+        log "#{viz ast}"
 
         code = compile_prog ast, filename
 

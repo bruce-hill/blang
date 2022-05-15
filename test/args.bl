@@ -1,4 +1,3 @@
-i := 0
-while i < argc
-    $printf("%s\n", argv[i])
-    i = i + 1
+$puts("$argc args in total:")
+for arg in argv
+    arg | $puts

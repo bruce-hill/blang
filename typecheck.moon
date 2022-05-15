@@ -102,25 +102,25 @@ find_declared_type = (scope, name, arg_signature=nil)->
                 if stmt.__tag == "FnDecl" and stmt.name[0] == name and (not arg_signature or arg_signature == get_type(stmt)\arg_signature!)
                     return get_type(stmt)
                 elseif stmt.__tag == "Declaration" and stmt.var[0] == name
-                    return parse_type(stmt.type[1]) if stmt.type
-                    return get_type stmt.value[1]
+                    return parse_type(stmt.type) if stmt.type
+                    return get_type stmt.value
         when "FnDecl","Lambda"
             for a in *scope.args
                 if a.arg[0] == name
-                    return parse_type(a.type[1])
+                    return parse_type(a.type)
         when "For","ListComprehension"
             if scope.index and scope.index[0] == name
                 return Int
             if scope.var and scope.var[0] == name
-                iter_type = get_type(scope.iterable[1])
+                iter_type = get_type(scope.iterable)
                 return Int if iter_type\is_a(Range)
-                node_assert iter_type\is_a(ListType) or iter_type\is_a(Range), scope.iterable[1], "Not an iterable"
+                node_assert iter_type\is_a(ListType) or iter_type\is_a(Range), scope.iterable, "Not an iterable"
                 return iter_type.item_type
     
     if scope.__parent and (scope.__parent.__tag == "For" or scope.__parent.__tag == "While" or scope.__parent.__tag == "Repeat")
         loop = scope.__parent
         if scope == loop.between
-            t = find_declared_type(loop.body[1], name, arg_signature)
+            t = find_declared_type(loop.body, name, arg_signature)
             return t if t
             
     return find_declared_type(scope.__parent, name, arg_signature)
@@ -131,8 +131,8 @@ find_type_alias = (scope, name)->
             when "Block"
                 for i=#scope,1,-1
                     stmt = scope[i]
-                    if stmt.__tag == "TypeDeclaration" and stmt[1][0] == name
-                        return parse_type stmt[2]
+                    if stmt.__tag == "TypeDeclaration" and stmt.name[0] == name
+                        return parse_type stmt.alias
         scope = scope.__parent
 
 derived_types = {}
@@ -147,17 +147,18 @@ parse_type = memoize (type_node)->
             return alias
         when "DerivedType"
             unless derived_types[type_node.name[0]]
-                derived_types[type_node.name[0]] = DerivedType type_node.name[0], parse_type(type_node.derivesFrom[1])
+                derived_types[type_node.name[0]] = DerivedType type_node.name[0], parse_type(type_node.derivesFrom)
             return derived_types[type_node.name[0]]
         when "ListType"
-            return ListType(parse_type(type_node[1]))
+            node_assert type_node.itemtype, type_node, "List without item type"
+            return ListType(parse_type(type_node.itemtype))
         when "FnType"
             arg_types = [parse_type(a) for a in *type_node.args]
-            return FnType(arg_types, parse_type(type_node.return[1]))
+            return FnType(arg_types, parse_type(type_node.return))
         when "StructType"
-            return StructType(type_node.name[0], [{name:m.name[0], type: parse_type(m.type[1])} for m in *type_node])
+            return StructType(type_node.name[0], [{name:m.name[0], type: parse_type(m.type)} for m in *type_node.members])
         when "OptionalType"
-            t = parse_type(type_node[1])
+            t = parse_type(type_node.nonnil)
             node_assert not t\is_a(Num), type_node, "Optional numbers are not currently supported"
             return OptionalType(t)
         else
@@ -180,7 +181,7 @@ get_op_type = (t1, op, t2)=>
             if t1 == t2 and (t1\is_a(Int) or t1\is_a(Num))
                 return t1
 
-    overload_names = Add:"add", Sub:"subtract", Mul:"multiply", Div:"divide", Mod:"modulus", Pow:"raise", Append:"append"
+    overload_names = Add:"add", Sub:"subtract", Mul:"multiply", Div:"divide", Mod:"modulus", Pow:"raise"
     return unless overload_names[op]
     overload = find_declared_type @, overload_names[op], "(#{t1},#{t2})"
     return overload.return_type if overload
@@ -191,7 +192,7 @@ get_type = memoize (node)->
         when "Float" then return Num
         when "Bool" then return Bool
         when "Nil" then return Nil
-        when "String" then return String
+        when "String","Escape","Newline" then return String
         when "DSL"
             name = node.name[0]
             unless derived_types[name]
@@ -200,9 +201,9 @@ get_type = memoize (node)->
         when "Range" then return Range
         when "Stop","Skip","Return","Fail"
             return Void
-        when "Cast" then return parse_type(node.type[1])
+        when "Cast" then return parse_type(node.type)
         when "List"
-            decl_type = node.type and parse_type(node.type[1])
+            decl_type = node.type and parse_type(node.type)
             return decl_type if #node == 0
             t = get_type node[1]
             node_assert t == decl_type, node[1], "Not expected type: #{t}" if decl_type
@@ -210,37 +211,37 @@ get_type = memoize (node)->
                 node_assert get_type(node[i]) == t, node[i], "Not expected type: #{t}"
             return ListType(t)
         when "ListComprehension"
-            t = get_type(node.expression[1])
+            t = get_type(node.expression)
             return ListType(t)
         when "IndexedTerm"
-            t = get_type node[1]
+            t = get_type node.value
             if t\is_a(ListType)
-                index_type = get_type(node[2], vars)
+                index_type = get_type(node.index, vars)
                 if index_type == Int
                     return t.item_type
                 elseif index_type == Range
                     return t
                 else
-                    node_error node[2], "Index has type #{index_type}, but expected Int or Range"
+                    node_error node.index, "Index has type #{index_type}, but expected Int or Range"
             elseif t\is_a(StructType)
-                if node[2].__tag == "FieldName"
-                    member_name = node[2][0]
-                    node_assert t.members_by_name[member_name], node[2], "Not a valid struct member of #{t}"
+                if node.index.__tag == "FieldName"
+                    member_name = node.index[0]
+                    node_assert t.members_by_name[member_name], node.index, "Not a valid struct member of #{t}"
                     return t.members_by_name[member_name].type
-                elseif node[2].__tag == "Int"
-                    i = tonumber(node[2][0])
-                    node_assert 1 <= i and i <= #t.members, node[2], "#{t} only has members between 1 and #{#t.members}"
+                elseif node.index.__tag == "Int"
+                    i = tonumber(node.index[0])
+                    node_assert 1 <= i and i <= #t.members, node.index, "#{t} only has members between 1 and #{#t.members}"
                     return t.members[i].type
                 else
-                    node_error node[2], "Structs can only be indexed by a field name or Int literal"
+                    node_error node.index, "Structs can only be indexed by a field name or Int literal"
             elseif t\is_a(String)
-                index_type = get_type(node[2], vars)
+                index_type = get_type(node.index, vars)
                 if index_type == Int
                     return Int
                 elseif index_type == Range
                     return t
                 else
-                    node_error node[2], "Strings can only be indexed by Ints or Ranges"
+                    node_error node.index, "Strings can only be indexed by Ints or Ranges"
             else
                 print_err node, "Indexing is only valid on structs and lists"
         when "And","Or","Xor"
@@ -279,100 +280,89 @@ get_type = memoize (node)->
         when "Equal","NotEqual","Less","LessEq","Greater","GreaterEq"
             return Bool
         when "TernaryOp"
-            cond_type = get_type node.condition[1]
+            cond_type = get_type node.condition
             node_assert cond_type == Bool, node.condition, "Expected a Bool here"
-            true_type = get_type node.ifTrue[1]
-            false_type = get_type node.ifFalse[1]
+            true_type = get_type node.ifTrue
+            false_type = get_type node.ifFalse
             if true_type == false_type
                 return true_type
             elseif true_type == Nil
-                node_assert not false_type\is_a(Num), node.ifFalse[1], "Optional numbers are not currently supported"
+                node_assert not false_type\is_a(Num), node.ifFalse, "Optional numbers are not currently supported"
                 return OptionalType(false_type)
             elseif false_type == Nil
-                node_assert not true_type\is_a(Num), node.ifTrue[1], "Optional numbers are not currently supported"
+                node_assert not true_type\is_a(Num), node.ifTrue, "Optional numbers are not currently supported"
                 return OptionalType(true_type)
             else
                 node_error node, "Values for true/false branches are different: #{true_type} vs #{false_type}"
         when "Add","Sub","Mul","Div","Mod"
-            lhs_type = get_type node[1]
-            rhs_type = get_type node[2]
-            ret_type = get_op_type(node, lhs_type, node.__tag, rhs_type)
-            node_assert ret_type, node, "Invalid #{node.__tag} types: #{lhs_type} and #{rhs_type}"
-            return ret_type
-        when "Append"
-            lhs_type = get_type node[1]
-            node_assert lhs_type, node[1], "This element does not have a definite type"
-            if lhs_type\is_a(String)
-                return lhs_type
-            rhs_type = get_type node[2]
-            if lhs_type\is_a(ListType) and rhs_type\is_a(lhs_type.item_type)
-                return lhs_type
+            lhs_type = get_type node.lhs
+            rhs_type = get_type node.rhs
             ret_type = get_op_type(node, lhs_type, node.__tag, rhs_type)
             node_assert ret_type, node, "Invalid #{node.__tag} types: #{lhs_type} and #{rhs_type}"
             return ret_type
         when "ButWith"
-            base_type = get_type node.base[1]
+            base_type = get_type node.base
             if base_type\is_a(ListType)
-                for i in *node
-                    node_assert i.index, i, "Field names are not allowed for Lists"
-                    i_type = get_type(i.index[1])
-                    value_type = get_type(i.value[1])
+                for index in *node
+                    node_assert index.index, index, "field names are not allowed for Lists"
+                    i_type = get_type(index.index)
+                    value_type = get_type(index.value)
                     if i_type\is_a(Int)
-                        node_assert value_type == base_type.item_type, i.value[1], "Value is #{value_type} not #{base_type.item_type}"
+                        node_assert value_type == base_type.item_type, index.value, "Value is #{value_type} not #{base_type.item_type}"
                     elseif i_type\is_a(Range)
-                        node_assert value_type == base_type, i.value[1], "Value is #{value_type} not #{base_type}"
+                        node_assert value_type == base_type, index.value, "Value is #{value_type} not #{base_type}"
                     else
-                        node_error i.index[1], "Value is #{value_type} not Int or Range"
+                        node_error index.index, "Value is #{value_type} not Int or Range"
                 return base_type
             elseif base_type\is_a(String)
-                for i in *node
-                    node_assert i.index, i, "Field names are not allowed for Strings"
-                    if get_type(i.index[1])\is_a(Range)
-                        value_type = get_type(i.value[1])
-                        node_assert value_type == base_type, i.value[1], "Value is #{value_type} not #{base_type}"
+                for range in *node
+                    node_assert range.index, range, "range names are not allowed for Strings"
+                    if get_type(range.index)\is_a(Range)
+                        value_type = get_type(range.value)
+                        node_assert value_type == base_type, range.value, "Value is #{value_type} not #{base_type}"
                     else
-                        node_error i.index[1], "Value is #{value_type} not Range"
+                        node_error range.index, "Value is #{value_type} not Range"
                 return base_type
             elseif base_type\is_a(StructType)
-                for i in *node
-                    if i.field
-                        node_assert base_type.members_by_name[i.field[0]], i.field, "Not a valid struct member of #{base_type}"
-                    elseif i.index
-                        node_assert i.index[1].__tag == "Int", i.index[1], "Only field names and integer literals are supported for using |[..]=.. on Structs"
-                        n = tonumber(i.index[0])
-                        node_assert 1 <= n and n <= #base_type.members, i.index[i], "#{base_type} only has members between 1 and #{#base_type.members}"
+                for field in *node
+                    if field.field
+                        node_assert base_type.members_by_name[field.field[0]], field.field, "Not a valid struct member of #{base_type}"
+                    elseif field.index
+                        node_assert field.index.__tag == "Int", field.index, "Only field names and integer literals are supported for using |[..]=.. on Structs"
+                        n = tonumber(field.index[0])
+                        node_assert 1 <= n and n <= #base_type.members, field.index, "#{base_type} only has members between 1 and #{#base_type.members}"
                 return base_type
             else
                 node_error node, "| operator is only supported for List and Struct types"
 
             return base_type
         when "Negative"
-            t = get_type node[1]
+            t = get_type node.value
             node_assert t\is_a(Int) or t\is_a(Num) or t\is_a(Range), node, "Invalid negation type: #{t}"
             return t
         when "Len"
-            t = get_type node[1]
+            t = get_type node.value
             node_assert t\is_a(ListType) or t\is_a(Range) or t\is_a(String), node, "Attempt to get length of non-iterable: #{t}"
             return Int
         when "Not"
-            t = get_type node[1]
+            t = get_type node.value
             node_assert t == Bool, node, "Invalid type for 'not': #{t}"
             return Bool
         when "Pow"
-            base_type = get_type node.base[1]
-            node_assert base_type\is_a(Num) or base_type\is_a(Int), node.base[1], "Expected Num or Int, not #{base_type}"
-            exponent_type = get_type node.exponent[1]
-            node_assert exponent_type\is_a(Num) or base_type\is_a(Int), node.exponent[1], "Expected Num or Int, not #{exponent_type}"
+            base_type = get_type node.base
+            node_assert base_type\is_a(Num) or base_type\is_a(Int), node.base, "Expected Num or Int, not #{base_type}"
+            exponent_type = get_type node.exponent
+            node_assert exponent_type\is_a(Num) or base_type\is_a(Int), node.exponent, "Expected Num or Int, not #{exponent_type}"
             return base_type
         when "Lambda","FnDecl"
-            decl_ret_type = node.return and parse_type(node.return[1])
-            node_assert node.body[1].__tag == "Block", node.body, "Uh oh"
+            decl_ret_type = node.return and parse_type(node.return)
+            node_assert node.body.__tag == "Block", node.body, "Expected function body to be a block, not #{node.body.__tag or '<untagged>'}"
             ret_type = nil
             for ret in coroutine.wrap ->find_returns(node.body)
                 if ret_type == nil
-                    ret_type = ret[1] and get_type(ret[1]) or Void
+                    ret_type = ret.value and get_type(ret.value) or Void
                 else
-                    t2 = ret[1] and get_type(ret[1]) or Void
+                    t2 = ret.value and get_type(ret.value) or Void
                     continue if t2\is_a(ret_type)
                     if t2 == Nil
                         ret_type = OptionalType(ret_type)
@@ -404,8 +394,8 @@ get_type = memoize (node)->
                 ret_type = Void
             -- ret_type = ret_type or Void
             if decl_ret_type
-                node_assert decl_ret_type == ret_type, node, "Conflicting return types"
-            return FnType([parse_type a.type[1] for a in *node.args], ret_type)
+                node_assert decl_ret_type == ret_type, node, "Conflicting return types: #{decl_ret_type} vs #{ret_type}"
+            return FnType([parse_type a.type for a in *node.args], ret_type)
         when "Var"
             if node.__decl
                 return get_type(node.__decl)
@@ -417,22 +407,15 @@ get_type = memoize (node)->
             return var_type
         when "Global"
             return nil
-        when "MethodCall"
-            return parse_type(node.type[1]) if node.type
-            self_type = get_type node[1]
-            target_sig = "(#{concat [tostring(get_type(a)) for a in *node], ","})"
-            fn_type = find_declared_type node, node.fn[0], target_sig
-            node_assert fn_type and fn_type\is_a(FnType), node.fn[1], "This is not a method, it's a #{fn_type}"
-            return fn_type.return_type
         when "FnCall"
-            return parse_type(node.type[1]) if node.type
-            fn_type = if node.fn[1].__tag == "Var"
+            return parse_type(node.type) if node.type
+            fn_type = if node.fn.__tag == "Var"
                 target_sig = "(#{concat [tostring(get_type(a)) for a in *node], ","})"
                 find_declared_type node, node.fn[0], target_sig
             else
-                get_type node.fn[1]
-            node_assert fn_type, node.fn[1], "This function's return type cannot be inferred. It must be specified manually using a type annotation"
-            node_assert fn_type\is_a(FnType), node.fn[1], "This is not a function, it's a #{fn_type or "???"}"
+                get_type node.fn
+            node_assert fn_type, node.fn, "This function's return type cannot be inferred. It must be specified manually using a type annotation"
+            node_assert fn_type\is_a(FnType), node.fn, "This is not a function, it's a #{fn_type or "???"}"
             return fn_type.return_type
         when "Block"
             error "Blocks have no type"
@@ -443,13 +426,15 @@ get_type = memoize (node)->
                 -- node_assert alias, node, "Undefined struct"
                 return alias if alias
 
-            key = "{#{concat ["#{m.name and "#{m.name[0]}=" or ""}#{get_type m.value[1]}" for m in *node], ","}}"
+            key = "{#{concat ["#{m.name and "#{m.name[0]}=" or ""}#{get_type m.value}" for m in *node], ","}}"
             unless tuples[key]
-                members = [{type: get_type(m.value[1]), name: m.name and m.name[0]} for m in *node]
+                members = [{type: get_type(m.value), name: m.name and m.name[0]} for m in *node]
                 name = node.name and node.name[0] or "Tuple.#{tuple_index}"
                 tuple_index += 1
                 tuples[key] = StructType(name, members)
             return tuples[key]
+        when "Interp"
+            return get_type(node.value)
         else
             node_assert not node.__tag, node, "Cannot infer type for: #{node.__tag}"
     if #node > 0
