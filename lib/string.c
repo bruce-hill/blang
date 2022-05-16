@@ -155,7 +155,7 @@ char *bl_string_replace(char *text, char *pat_text, char *rep_text) {
     }
     fwrite(prev, sizeof(char), (size_t)(&text[textlen] - prev) + 1, out);
     fflush(out);
-    char *replaced = intern_bytes(buf, size);
+    char *replaced = buf ? intern_bytes(buf, size) : intern_str("");
     fclose(out);
     return replaced;
 }
