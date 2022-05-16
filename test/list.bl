@@ -2,7 +2,7 @@ L := [10, 20, 30, 40, 50]
 $puts("L: $L")
 x := L[3]
 $puts("L[3]: $x")
-L | $bl_list_set_nth(1, 999)
+L[1] = 999
 $puts("L after setting index 1: $L")
 
 L2 := [1.5, 2.5, 3.5, 4.5]
@@ -13,8 +13,15 @@ L2 | $bl_list_append((99.5):Int)
 $puts("After append: $L2")
 
 L3 := [[10],[20]]
-$printf("Inner: %ld\n", L3[2][1])
+$puts("Nested: $L3")
+$puts("Inner [2][1]: $((L3[2] or fail)[1])")
+(L3[2] or fail)[1] = 999
+$puts("After setting [2][1]: $L3")
+// (L3[99] or fail)[1] = 999
+// $puts("Unreachable: $L3")
+
 L4 := []:Int
+$puts("Empty: $L4")
 
 $puts("L: $L sliced[2..4]: $(L[2..4])")
 L | $bl_list_append(9999)

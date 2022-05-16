@@ -49,6 +49,8 @@ class OptionalType extends Type
         assert @nonnil and @nonnil != Nil
         if @nonnil.__class == OptionalType
             @nonnil = assert(@nonnil.nonnil)
+        @base_type = @nonnil.base_type
+        @abi_type = @nonnil.abi_type
     contains: (other)=> other == @ or other == Nil or (@nonnil and other\is_a(@nonnil))
     __tostring: => @nonnil\is_a(FnType) and "(#{@nonnil})?" or "#{@nonnil}?"
     __eq: Type.__eq
@@ -159,7 +161,6 @@ parse_type = memoize (type_node)->
             return StructType(type_node.name[0], [{name:m.name[0], type: parse_type(m.type)} for m in *type_node.members])
         when "OptionalType"
             t = parse_type(type_node.nonnil)
-            node_assert not t\is_a(Num), type_node, "Optional numbers are not currently supported"
             return OptionalType(t)
         else
             error "Not a type node: #{viz type_node}"
@@ -215,23 +216,27 @@ get_type = memoize (node)->
             return ListType(t)
         when "IndexedTerm"
             t = get_type node.value
+            is_optional = t\is_a(OptionalType)
+            t = t.nonnil if is_optional
             if t\is_a(ListType)
                 index_type = get_type(node.index, vars)
                 if index_type == Int
-                    return t.item_type
+                    return OptionalType(t.item_type)
                 elseif index_type == Range
-                    return t
+                    return is_optional and OptionalType(t) or t
                 else
                     node_error node.index, "Index has type #{index_type}, but expected Int or Range"
             elseif t\is_a(StructType)
                 if node.index.__tag == "FieldName"
                     member_name = node.index[0]
                     node_assert t.members_by_name[member_name], node.index, "Not a valid struct member of #{t}"
-                    return t.members_by_name[member_name].type
+                    ret_type = t.members_by_name[member_name].type
+                    return is_optional and OptionalType(ret_type) or ret_type
                 elseif node.index.__tag == "Int"
                     i = tonumber(node.index[0])
                     node_assert 1 <= i and i <= #t.members, node.index, "#{t} only has members between 1 and #{#t.members}"
-                    return t.members[i].type
+                    ret_type = t.members[i].type
+                    return is_optional and OptionalType(ret_type) or ret_type
                 else
                     node_error node.index, "Structs can only be indexed by a field name or Int literal"
             elseif t\is_a(String)
@@ -243,7 +248,7 @@ get_type = memoize (node)->
                 else
                     node_error node.index, "Strings can only be indexed by Ints or Ranges"
             else
-                print_err node, "Indexing is only valid on structs and lists"
+                print_err node, "Indexing is only valid on structs and lists, not #{t}"
         when "And","Or","Xor"
             all_bools = true
             maybe_nil = false
@@ -274,23 +279,20 @@ get_type = memoize (node)->
                 if optional
                     node_assert OptionalType(t) == optional, val, "Mismatched type: #{t} doesn't match earlier type: '#{optional}'"
                 else
-                    node_assert not t\is_a(Num), val, "Optional numbers are not yet supported"
                     optional = OptionalType(t)
             return optional
         when "Equal","NotEqual","Less","LessEq","Greater","GreaterEq"
             return Bool
         when "TernaryOp"
             cond_type = get_type node.condition
-            node_assert cond_type == Bool, node.condition, "Expected a Bool here"
+            node_assert cond_type\is_a(Bool) or cond_type\is_a(OptionalType), node.condition, "Expected a Bool or optional value here"
             true_type = get_type node.ifTrue
             false_type = get_type node.ifFalse
             if true_type == false_type
                 return true_type
             elseif true_type == Nil
-                node_assert not false_type\is_a(Num), node.ifFalse, "Optional numbers are not currently supported"
                 return OptionalType(false_type)
             elseif false_type == Nil
-                node_assert not true_type\is_a(Num), node.ifTrue, "Optional numbers are not currently supported"
                 return OptionalType(true_type)
             else
                 node_error node, "Values for true/false branches are different: #{true_type} vs #{false_type}"
@@ -418,7 +420,8 @@ get_type = memoize (node)->
             node_assert fn_type\is_a(FnType), node.fn, "This is not a function, it's a #{fn_type or "???"}"
             return fn_type.return_type
         when "Block"
-            error "Blocks have no type"
+            -- error "Blocks have no type"
+            return Void
             -- return get_type(node[#node])
         when "Struct"
             if node.name
@@ -436,7 +439,8 @@ get_type = memoize (node)->
         when "Interp"
             return get_type(node.value)
         else
-            node_assert not node.__tag, node, "Cannot infer type for: #{node.__tag}"
+            return Void
+            -- node_assert not node.__tag, node, "Cannot infer type for: #{node.__tag}"
     if #node > 0
         error "Getting a node without a tag: #{viz node}"
         return get_type(node[#node])

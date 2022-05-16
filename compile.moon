@@ -4,6 +4,9 @@ import add_parenting, get_type, parse_type from Types
 import log, viz, node_assert, node_error, get_node_pos, print_err from require 'util'
 concat = table.concat
 
+INT_NIL = tostring(0x7FFFFFFFFFFFFFFF)
+FLOAT_NIL = INT_NIL
+
 has_jump = bp.compile('^_("jmp"/"jnz"/"ret")\\b ..$ $$')
 
 local stmt_compilers, expr_compilers
@@ -102,6 +105,23 @@ comparison = (env, cmp)=>
 
     return result, code
 
+check_truthiness = (t, env, reg, truthy_label, falsey_label)->
+    if t\is_a(Types.Bool)
+        return "jnz #{reg}, #{truthy_label}, #{falsey_label}\n"
+    elseif t\is_a(Types.Nil)
+        return "jmp #{falsey_label}\n"
+    elseif t\is_a(Types.OptionalType)
+        if t.nonnil\is_a(Types.Int)
+            tmp = env\fresh_local "is.nonnil"
+            return "#{tmp} =l cnel #{reg}, #{INT_NIL}\njnz #{tmp}, #{truthy_label}, #{falsey_label}\n"
+        elseif t.nonnil\is_a(Types.Num)
+            tmp = env\fresh_local "is.nonnil"
+            return "#{tmp} =l cod #{reg}, d_0.0 # Test for NaN\njnz #{tmp}, #{truthy_label}, #{falsey_label}\n"
+        else
+            return "jnz #{reg}, #{truthy_label}, #{falsey_label}\n"
+    else
+        return "jmp #{truthy_label}\n"
+
 class Environment
     new: =>
         @strings = {}
@@ -164,7 +184,7 @@ class Environment
         if @concat_funcs["#{t}"]
             return @concat_funcs["#{t}"]
 
-        fn_name = @fresh_global "concat.value"
+        fn_name = @fresh_global "concat.#{tostring(t)\gsub("[^%w%d]", "")}"
         @concat_funcs["#{t}"] = fn_name
 
         code = "function l #{fn_name}(l %initialstring, #{t.base_type} %obj) {\n@start\n"
@@ -249,7 +269,7 @@ class Environment
                 nil_label = @fresh_label "optional.nil"
                 nonnil_label = @fresh_label "optional.nonnil"
                 end_label = @fresh_label "optional.end"
-                code ..= "jnz #{reg}, #{nonnil_label}, #{nil_label}\n"
+                code ..= check_truthiness t, @, reg, nonnil_label, nil_label
                 code ..= "#{nil_label}\n"
                 code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{@get_string_reg("nil", "nil")})\n"
                 code ..= "jmp #{end_label}\n"
@@ -405,7 +425,27 @@ expr_compilers =
         return "#{@[0]}", ""
     Int: (env)=>
         return "#{@[0]}",""
-    Nil: (env)=> "0",""
+    Nil: (env)=>
+        parent = @__parent
+        while parent
+            if parent.__tag == "Return"
+                while parent and not (parent.__tag == "FnDecl" or parent.__tag == "Lambda")
+                    parent = parent.__parent
+                continue
+
+            if parent.__tag == "FnDecl" or parent.__tag == "Lambda" or parent.__tag == "Declaration"
+                break
+
+            t = get_type(parent)
+            if t\is_a(Types.OptionalType)
+                if t.nonnil\is_a(Types.Int)
+                    return "#{INT_NIL}",""
+                elseif t.nonnil\is_a(Types.Num) or t.nonnil.base_type == "d"
+                    return "#{FLOAT_NIL}",""
+                else
+                    return "0",""
+            parent = parent.__parent
+        return "0",""
     Bool: (env)=> (@[0] == "yes" and "1" or "0"),""
     Float: (env)=> "d_#{@[0]}",""
     Cast: (env)=>
@@ -535,6 +575,28 @@ expr_compilers =
         return ret, code
     IndexedTerm: (env)=>
         t = get_type @value
+        is_optional = t\is_a(Types.OptionalType)
+        t = t.nonnil if is_optional
+        nil_guard = (check_reg, output_reg, get_nonnil_code)->
+            unless is_optional
+                return get_nonnil_code!
+
+            ifnil,ifnonnil,done = env\fresh_label("if.nil"), env\fresh_label("if.nonnil"), env\fresh_label("if.nil.done")
+            code = check_truthiness get_type(@value), env, check_reg, ifnonnil, ifnil
+            code ..= "#{ifnonnil}\n"
+            code ..= get_nonnil_code!
+            code ..= "jmp #{done}\n"
+            code ..= "#{ifnil}\n"
+            if t.nonnil\is_a(Types.Int)
+                code ..= "#{output_reg} =l copy #{INT_NIL}\n"
+            elseif t.nonnil\is_a(Types.Num) or t.nonnil.base_type == "d"
+                code ..= "#{output_reg} =d copy #{FLOAT_NIL}\n"
+            else
+                code ..= "#{output_reg} =l copy 0\n"
+            code ..= "jmp #{done}\n"
+            code ..= "#{done}\n"
+            return code
+            
         if t\is_a(Types.ListType)
             item_type = t.item_type
             index_type = get_type(@index)
@@ -543,15 +605,18 @@ expr_compilers =
             code = list_code..index_code
             if index_type\is_a(Types.Int)
                 item = env\fresh_local "list.item"
-                code ..= "#{item} =l call $bl_list_nth(l #{list_reg}, l #{index_reg})\n"
-                if t.item_type.abi_type == "d"
-                    item2 = env\fresh_local "list.item.float"
-                    code ..= "#{item2} =d cast #{item}\n"
-                    item = item2
+                code ..= nil_guard list_reg, item, ->
+                    if t.item_type.base_type == "d"
+                        tmp = env\fresh_local "list.item.as_int"
+                        code = "#{tmp} =l call $bl_list_nth(l #{list_reg}, l #{index_reg})\n"
+                        return code.."#{item} =d cast #{tmp}\n"
+                    else
+                        return "#{item} =l call $bl_list_nth(l #{list_reg}, l #{index_reg})\n"
                 return item,code
             elseif index_type\is_a(Types.Range)
                 slice = env\fresh_local "slice"
-                code ..= "#{slice} =l call $bl_list_slice_range(l #{list_reg}, l #{index_reg})\n"
+                code ..= nil_guard list_reg, slice, ->
+                    "#{slice} =l call $bl_list_slice_range(l #{list_reg}, l #{index_reg})\n"
                 return slice,code
             else
                 node_error @index, "Index is #{index_type} instead of Int or Range"
@@ -567,10 +632,11 @@ expr_compilers =
             else
                 node_error @index, "Structs can only be indexed by a field name or Int literal"
             struct_reg,code = env\to_reg @value
-            loc = env\fresh_local "member.loc"
-            code ..= "#{loc} =l add #{struct_reg}, #{8*(i-1)}\n"
             ret = env\fresh_local "member"
-            code ..= "#{ret} =#{member_type.abi_type} load#{member_type.base_type} #{loc}\n"
+            code ..= nil_guard struct_reg, ret, ->
+                loc = env\fresh_local "member.loc"
+                code = "#{loc} =l add #{struct_reg}, #{8*(i-1)}\n"
+                return code.."#{ret} =#{member_type.abi_type} load#{member_type.base_type} #{loc}\n"
             return ret,code
         elseif t\is_a(Types.Range)
             index_type = get_type(@index)
@@ -580,7 +646,8 @@ expr_compilers =
             index_reg,index_code = env\to_reg @index
             code ..= index_code
             ret = env\fresh_local "range.nth"
-            code ..= "#{ret} =l call $range_nth(l #{range_reg}, l #{index_reg})\n"
+            code ..= nil_guard range_reg, ret, ->
+                "#{ret} =l call $range_nth(l #{range_reg}, l #{index_reg})\n"
             return ret, code
         elseif t\is_a(Types.String)
             index_type = get_type(@index)
@@ -589,19 +656,16 @@ expr_compilers =
             code ..= index_code
             if index_type\is_a(Types.Int) -- Get nth character as an Int
                 char = env\fresh_local "char"
-                code ..= "#{char} =l call $bl_string_nth_char(l #{str}, l #{index_reg})\n"
-                -- code ..= "#{char} =l add #{str}, #{index_reg}\n"
-                -- code ..= "#{char} =l sub #{char}, 1\n"
-                -- code ..= "#{char} =l loadub #{char}\n"
+                code ..= nil_guard str, char, -> "#{char} =l call $bl_string_nth_char(l #{str}, l #{index_reg})\n"
                 return char, code
             elseif index_type\is_a(Types.Range) -- Get a slice of the string
                 slice = env\fresh_local "slice"
-                code ..= "#{slice} =l call $bl_string_slice(l #{str}, l #{index_reg})\n"
+                code ..= nil_guard str, slice, -> "#{slice} =l call $bl_string_slice(l #{str}, l #{index_reg})\n"
                 return slice, code
             else
                 node_error @index, "Index is #{index_type} instead of Int or Range"
         else
-            node_error @value, "Indexing is only valid on lists and structs, not #{t}"
+            node_error @value, "Indexing is only valid on lists, strings, range and structs, not #{t}"
     List: (env)=>
         if #@ == 0
             list = env\fresh_local "list.empty"
@@ -747,38 +811,30 @@ expr_compilers =
         done_label = env\fresh_label "or.end"
         code = ""
         t = get_type(@)
-        node_assert t != Types.Nil, @, "Expression always evaluates to `nil`"
-        t = t.nonnil if t\is_a(Types.OptionalType)
         ret_reg = env\fresh_local "any.true"
         for i,val in ipairs @
             val_reg, val_code = env\to_reg val
             code ..= val_code
+            false_label = env\fresh_label "or.falsey"
             code ..= "#{ret_reg} =#{t.base_type} copy #{val_reg}\n"
             if i < #@
-                false_label = env\fresh_label "or.false"
-                code ..= "jnz #{ret_reg}, #{done_label}, #{false_label}\n"
+                code ..= check_truthiness get_type(val), env, val_reg, done_label, false_label
                 code ..= "#{false_label}\n"
-            else
-                code ..= "jmp #{done_label}\n"
         code ..= "#{done_label}\n"
         return ret_reg, code
     And: (env)=>
         done_label = env\fresh_label "and.end"
         code = ""
         t = get_type(@)
-        node_assert t != Types.Nil, @, "Expression always evaluates to `nil`"
-        t = t.nonnil if t\is_a(Types.OptionalType)
         ret_reg = env\fresh_local "all.true"
         for i,val in ipairs @
             val_reg, val_code = env\to_reg val
             code ..= val_code
+            true_label = env\fresh_label "and.truthy"
             code ..= "#{ret_reg} =#{t.base_type} copy #{val_reg}\n"
             if i < #@
-                true_label = env\fresh_label "and.true"
-                code ..= "jnz #{ret_reg}, #{true_label}, #{done_label}\n"
+                code ..= check_truthiness get_type(val), env, val_reg, true_label, done_label
                 code ..= "#{true_label}\n"
-            else
-                code ..= "jmp #{done_label}\n"
         code ..= "#{done_label}\n"
         return ret_reg, code
     Xor: (env)=>
@@ -909,6 +965,7 @@ expr_compilers =
     Equal: (env)=> comparison @, env, "ceql"
     NotEqual: (env)=> comparison @, env, "cnel"
     TernaryOp: (env)=>
+        overall_type = get_type @
         cond_reg,code = env\to_reg @condition
         true_reg,true_code = env\to_reg @ifTrue
         false_reg,false_code = env\to_reg @ifFalse
@@ -916,9 +973,9 @@ expr_compilers =
         false_label = env\fresh_label "ternary.false"
         end_label = env\fresh_label "ternary.end"
         ret_reg = env\fresh_local "ternary.result"
-        code ..= "jnz #{cond_reg}, #{true_label}, #{false_label}\n"
-        code ..= "#{true_label}\n#{true_code}#{ret_reg} =#{get_type(@ifTrue).base_type} copy #{true_reg}\njmp #{end_label}\n"
-        code ..= "#{false_label}\n#{false_code}#{ret_reg} =#{get_type(@ifFalse).base_type} copy #{false_reg}\njmp #{end_label}\n"
+        code ..= check_truthiness get_type(@condition), env, cond_reg, true_label, false_label
+        code ..= "#{true_label}\n#{true_code}#{ret_reg} =#{overall_type.base_type} copy #{true_reg}\njmp #{end_label}\n"
+        code ..= "#{false_label}\n#{false_code}#{ret_reg} =#{overall_type.base_type} copy #{false_reg}\njmp #{end_label}\n"
         code ..= "#{end_label}\n"
         return ret_reg, code
 
@@ -991,10 +1048,10 @@ expr_compilers =
         code ..= "#{ret} =l call $intern_bytes(l #{ret}, l #{struct_size})\n"
         return ret, code
 
-    Fail: (env)=> "0",env\compile_stmt(@).."\n#{env\fresh_label "unreachable"}\n"
-    Return: (env)=> "0",env\compile_stmt(@).."\n#{env\fresh_label "unreachable"}\n"
-    Skip: (env)=> "0",env\compile_stmt(@).."\n#{env\fresh_label "unreachable"}\n"
-    Stop: (env)=> "0",env\compile_stmt(@).."\n#{env\fresh_label "unreachable"}\n"
+    Fail: (env)=> "0",env\compile_stmt(@).."#{env\fresh_label "unreachable"}\n"
+    Return: (env)=> "0",env\compile_stmt(@).."#{env\fresh_label "unreachable"}\n"
+    Skip: (env)=> "0",env\compile_stmt(@).."#{env\fresh_label "unreachable"}\n"
+    Stop: (env)=> "0",env\compile_stmt(@).."#{env\fresh_label "unreachable"}\n"
 
 stmt_compilers =
     Block: (env)=>
@@ -1014,12 +1071,58 @@ stmt_compilers =
         code ..= "#{@var.__register} =#{decl_type.base_type} copy #{val_reg}\n"
         return code
     Assignment: (env)=>
-        var_type = get_type @lhs
-        value_type = get_type @rhs
-        node_assert value_type\is_a(var_type), @rhs, "Value is type #{value_type}, but it's being assigned to something with type #{var_type}"
-        node_assert @lhs.__register, @lhs, "Undefined variable"
-        val_reg,code = env\to_reg @rhs
-        return "#{code}#{@lhs.__register} =#{var_type.base_type} copy #{val_reg}\n"
+        lhs_type,rhs_type = get_type(@lhs), get_type(@rhs)
+        node_assert rhs_type\is_a(lhs_type), @rhs, "Value is type #{rhs_type}, but it's being assigned to something with type #{lhs_type}"
+        if @lhs.__tag == "Var"
+            node_assert @lhs.__register, @lhs, "Undefined variable"
+            rhs_reg,code = env\to_reg @rhs
+            return "#{code}#{@lhs.__register} =#{lhs_type.base_type} copy #{rhs_reg}\n"
+        
+        node_assert @lhs.__tag == "IndexedTerm", @lhs, "Expected a Var or an indexed value"
+        t = get_type(@lhs.value)
+        is_optional = t\is_a(Types.OptionalType)
+        t = t.nonnil if is_optional
+        checknil = (reg,code)->
+            ifnonnil = env\fresh_label "if.nonnil"
+            done = env\fresh_label "if.nonnil.done"
+            return "jnz #{reg}, #{ifnonnil}, #{done}\n#{ifnonnil}\n#{code}jmp #{done}\n#{done}\n"
+        if t\is_a(Types.ListType)
+            item_type = t.item_type
+            index_type = get_type(@lhs.index)
+            list_reg,list_code = env\to_reg @lhs.value
+            index_reg,index_code = env\to_reg @lhs.index
+            rhs_reg,rhs_code = env\to_reg @rhs
+            code = list_code..index_code..rhs_code
+            if index_type\is_a(Types.Int)
+                if rhs_type.abi_type == "d"
+                    rhs_casted = env\fresh_local "list.item.float"
+                    code ..= "#{rhs_casted} =d cast #{rhs_reg}\n"
+                    rhs_reg = rhs_casted
+                code ..= checknil list_reg, "call $bl_list_set_nth(l #{list_reg}, l #{index_reg}, l #{rhs_reg})\n"
+                return code
+            elseif index_type\is_a(Types.Range)
+                node_error @lhs.index, "Assigning to list slices is not supported."
+            else
+                node_error @lhs.index, "Index is #{index_type} instead of Int or Range"
+            return
+        elseif t\is_a(Types.StructType)
+            i,member_type = if @lhs.index.__tag == "FieldName"
+                member_name = @lhs.index[0]
+                node_assert t.members_by_name[member_name], @lhs.index, "Not a valid struct member of #{t}"
+                t.members_by_name[member_name].index, t.members_by_name[member_name].type
+            elseif @lhs.index.__tag == "Int"
+                i = tonumber(@lhs.index[0])
+                node_assert 1 <= i and i <= #t.members, @lhs.index, "#{t} only has members between 1 and #{#t.members}"
+                i, t.members[i].type
+            else
+                node_error @lhs.index, "Structs can only be indexed by a field name or Int literal"
+            struct_reg,code = env\to_reg @lhs.value
+            loc = env\fresh_local "member.loc"
+            code ..= checknil struct_reg, "#{loc} =l add #{struct_reg}, #{8*(i-1)}\nstore#{rhs_type.base_type} #{rhs_reg}, #{loc}\n"
+            return code
+        else
+            node_error @lhs.value, "Only Lists and Structs are mutable, not #{t}"
+            return
     AddUpdate: (env)=>
         node_assert @lhs.__register, @lhs, "Undefined variable"
         lhs_type,rhs_type = get_type(@lhs),get_type(@rhs)
