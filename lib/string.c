@@ -11,7 +11,7 @@
 #include "types.h"
 #include "util.h"
 
-#define RETURN_FMT(fmt, ...) do { char *ret; asprintf(&ret, fmt, __VA_ARGS__); return intern_str_transfer(ret); } while(0)
+#define RETURN_FMT(fmt, ...) do { char *ret = NULL; int status = asprintf(&ret, fmt, __VA_ARGS__); if (status < 0) err(1, "string formatting failed"); return intern_str_transfer(ret); } while(0)
 
 char *bl_string(char *s) { return intern_str(s); }
 char *bl_tostring_int(int64_t i) { RETURN_FMT("%ld", i); }
@@ -36,29 +36,34 @@ char *bl_tostring_range(range_t *r) {
 
 char *bl_string_join(int64_t count, char **strings, char *sep) {
     if (!strings) return NULL;
-    size_t capacity = 0, len = 0;
+    size_t maxlen = 0, len = 0;
     char *buf = NULL;
     size_t seplen = sep ? strlen(sep) : 0;
     for (int64_t i = 0; i < count; i++) {
         char *str = strings[i];
         if (!str) str = "(nil)";
         size_t chunklen = strlen(str);
-        if (len + chunklen + 1 > capacity) {
-            buf = realloc(buf, (capacity += MAX(chunklen, 10)));
+        if (len + chunklen > maxlen) {
+            buf = realloc(buf, 1+(maxlen += MAX(chunklen, 10)));
         }
-        memccpy(&buf[len], str, 0, chunklen);
+        memcpy(&buf[len], str, chunklen);
         len += chunklen;
         buf[len] = '\0';
         if (sep && i < count - 1) {
-            if (len + seplen + 1 > capacity) {
-                buf = realloc(buf, (capacity += MAX(seplen, 10)));
+            if (len + seplen > maxlen) {
+                buf = realloc(buf, 1+(maxlen += MAX(seplen, 10)));
             }
-            memccpy(&buf[len], sep, 0, seplen);
+            memcpy(&buf[len], sep, seplen);
             len += seplen;
         }
     }
-    if (buf) buf[len] = '\0';
-    return buf ? intern_str_transfer(buf) : intern_str("");
+    if (buf) {
+        buf[len++] = '\0';
+        return intern_bytes_transfer(buf, len);
+    } else {
+        return intern_bytes("", 1);
+
+    }
 }
 
 char *bl_string_append_int(char *s, int64_t i) { RETURN_FMT("%s%ld", s, i); }
