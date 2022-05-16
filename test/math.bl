@@ -12,9 +12,9 @@ $puts("Negative modulus: $(a mod -b) $(x mod -1.)")
 $puts("Exponentiation: $(a^b) $(x^y)")
 
 f := 23.5
-$puts("$f casts to int: $((f):Int)")
+$puts("$f casts to int: $(f:Int)")
 $puts("$f rounds to int: $($float_to_int(f):Int)")
 
 i := 123
-$puts("$i casts to float: $((i):Num)")
+$puts("$i casts to float: $(i:Num)")
 $puts("$f rounds to float: $($int_to_float(i):Num)")

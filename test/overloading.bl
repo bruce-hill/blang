@@ -22,5 +22,5 @@ def map(list:[Int], fn:(Int)=>Int):[Int]
 
 to_map := ["hello","world"]
 def bye(s:String):= s == "hello" ? "bye" ; s
-mapped := map((to_map):[Int], (bye):(Int)=>Int):[String]
+mapped := map(to_map:[Int], bye:(Int)=>Int):[String]
 $puts("map($to_map, bye) => $mapped")
