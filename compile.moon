@@ -469,6 +469,9 @@ expr_compilers =
             return "#{tonumber(s\sub(3), 16)}",""
         else
             return "#{tonumber(s)}",""
+    Float: (env)=>
+        s = @[0]\gsub("_","")
+        return "d_#{tonumber(s)}",""
     Nil: (env)=>
         -- Figure out what kind of nil this is, since different types have different binary
         -- representations of nil (Int -> INT_MAX, Float -> NaN, otherwise -> 0)
@@ -493,7 +496,6 @@ expr_compilers =
             parent = parent.__parent
         return "0",""
     Bool: (env)=> (@[0] == "yes" and "1" or "0"),""
-    Float: (env)=> "d_#{@[0]}",""
     Cast: (env)=>
         reg,code = env\to_reg @expr
         t = parse_type @type
