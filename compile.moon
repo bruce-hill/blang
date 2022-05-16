@@ -426,6 +426,8 @@ expr_compilers =
     Int: (env)=>
         return "#{@[0]}",""
     Nil: (env)=>
+        -- Figure out what kind of nil this is, since different types have different binary
+        -- representations of nil (Int -> INT_MAX, Float -> NaN, otherwise -> 0)
         parent = @__parent
         while parent
             if parent.__tag == "Return"
