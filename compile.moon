@@ -186,6 +186,17 @@ class Environment
             log "Getting tostring: #{t} -> #{fn}"
             return fn if fn
 
+        if t\is_a(Types.Int)
+            return "$bl_tostring_int"
+        elseif t\is_a(Types.Num)
+            return "$bl_tostring_float"
+        elseif t\is_a(Types.Bool)
+            return "$bl_tostring_bool"
+        elseif t\is_a(Types.String)
+            return "$bl_string"
+        elseif t\is_a(Types.Range)
+            return "$bl_tostring_range"
+
         if @tostring_funcs["#{t}"]
             return @tostring_funcs["#{t}"]
 
@@ -513,11 +524,15 @@ expr_compilers =
                 code ..= "storel #{env\get_string_reg chunk, "str"}, #{chunk_loc}\n"
             else
                 t = get_type(chunk)
-                fn_name = env\get_tostring_fn t, @
                 val_reg,val_code = env\to_reg chunk
                 code ..= val_code
-                interp_reg = env\fresh_local "string.interp"
-                code ..= "#{interp_reg} =l call #{fn_name}(#{t.base_type} #{val_reg})\n"
+                interp_reg = if t == Types.String
+                    val_reg
+                else
+                    fn_name = env\get_tostring_fn t, @
+                    interp_reg = env\fresh_local "string.interp"
+                    code ..= "#{interp_reg} =l call #{fn_name}(#{t.base_type} #{val_reg})\n"
+                    interp_reg
                 code ..= "storel #{interp_reg}, #{chunk_loc}\n"
                 
         str = env\fresh_local "str"
