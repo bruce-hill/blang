@@ -19,6 +19,8 @@ class NamedType extends Type
 
 class DerivedType extends Type
     new: (@name, @derived_from)=>
+        @base_type = @derived_from.base_type
+        @abi_type = @derived_from.abi_type
     __tostring: => @name
     __eq: Type.__eq
     is_a: (cls)=> @ == cls or @derived_from\is_a(cls) or @.__class == cls or cls\contains @
