@@ -464,7 +464,11 @@ expr_compilers =
     Global: (env)=>
         return "#{@[0]}", ""
     Int: (env)=>
-        return "#{@[0]}",""
+        s = @[0]\gsub("_","")
+        if s\match("^0x")
+            return "#{tonumber(s\sub(3), 16)}",""
+        else
+            return "#{tonumber(s)}",""
     Nil: (env)=>
         -- Figure out what kind of nil this is, since different types have different binary
         -- representations of nil (Int -> INT_MAX, Float -> NaN, otherwise -> 0)

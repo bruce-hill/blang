@@ -18,3 +18,18 @@ $puts("$f rounds to int: $($float_to_int(f):Int)")
 i := 123
 $puts("$i casts to float: $(i:Num)")
 $puts("$f rounds to float: $($int_to_float(i):Num)")
+
+def fast_inverse_sqrt(number:Num):Num
+    threehalfs := 1.5
+    x2 := number * 0.5
+    y := number
+    i := number:Int
+    i = 0x5FE6EB50C7B537A9 - (i / 2) // what the fuck? 
+    y = i:Num
+    y *= (threehalfs - (x2 * y * y)) // 1st iteration
+    y *= (threehalfs - (x2 * y * y)) // 2nd iteration, this can be removed
+    y *= (threehalfs - (x2 * y * y)) // 3rd iteration, this can be removed
+    return y
+
+test := 16.
+$puts("fast_inverse_sqrt($test) = $(fast_inverse_sqrt(test))")
