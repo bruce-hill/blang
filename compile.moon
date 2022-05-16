@@ -180,7 +180,12 @@ class Environment
             @fn_code ..= "  ret 0\n"
         @fn_code ..= "}\n"
 
-    get_tostring_fn: (t)=>
+    get_tostring_fn: (t, scope)=>
+        if t != Types.String
+            fn = get_function_reg scope, "tostring", "(#{t})=>String"
+            log "Getting tostring: #{t} -> #{fn}"
+            return fn if fn
+
         if @tostring_funcs["#{t}"]
             return @tostring_funcs["#{t}"]
 
@@ -508,7 +513,7 @@ expr_compilers =
                 code ..= "storel #{env\get_string_reg chunk, "str"}, #{chunk_loc}\n"
             else
                 t = get_type(chunk)
-                fn_name = env\get_tostring_fn t
+                fn_name = env\get_tostring_fn t, @
                 val_reg,val_code = env\to_reg chunk
                 code ..= val_code
                 interp_reg = env\fresh_local "string.interp"
