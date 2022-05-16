@@ -48,6 +48,10 @@ void bl_list_remove(list_t *list, int64_t i) {
     --list->len;
 }
 
+int64_t bl_list_len(list_t *list) {
+    return list->len;
+}
+
 int64_t bl_list_nth(list_t *list, int64_t i) {
     if (i < 1 || i > list->len) return 0;
     return list->items[i-1];

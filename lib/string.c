@@ -19,6 +19,47 @@ char *bl_tostring_char(int64_t c) { RETURN_FMT("%c", (char)c); }
 char *bl_tostring_float(double f) { RETURN_FMT("%g", f); }
 char *bl_tostring_bool(int64_t b) { return intern_str(b ? "yes" : "no"); }
 char *bl_tostring_nil(void) { return intern_str("nil"); }
+char *bl_tostring_range(range_t *r) {
+    if (r->first < 99999999 && r->last > 99999999)
+        return intern_str("..");
+    else if (r->first < 99999999)
+        RETURN_FMT("..%ld", r->last);
+    else if (r->last > 99999999 && r->next != r->first+1)
+        RETURN_FMT("%ld,%ld..", r->first, r->next);
+    else if (r->last > 99999999)
+        RETURN_FMT("%ld..", r->first);
+    else if (r->last > r->first ? (r->next == r->first+1) : (r->next == r->first-1))
+        RETURN_FMT("%ld..%ld", r->first, r->last);
+    else
+        RETURN_FMT("%ld,%ld..%ld", r->first, r->next, r->last);
+}
+
+char *bl_string_join(int64_t count, char **strings, char *sep) {
+    if (!strings) return NULL;
+    size_t capacity = 0, len = 0;
+    char *buf = NULL;
+    size_t seplen = sep ? strlen(sep) : 0;
+    for (int64_t i = 0; i < count; i++) {
+        char *str = strings[i];
+        if (!str) str = "(nil)";
+        size_t chunklen = strlen(str);
+        if (len + chunklen + 1 > capacity) {
+            buf = realloc(buf, (capacity += MAX(chunklen, 10)));
+        }
+        memccpy(&buf[len], str, 0, chunklen);
+        len += chunklen;
+        buf[len] = '\0';
+        if (sep && i < count - 1) {
+            if (len + seplen + 1 > capacity) {
+                buf = realloc(buf, (capacity += MAX(seplen, 10)));
+            }
+            memccpy(&buf[len], sep, 0, seplen);
+            len += seplen;
+        }
+    }
+    if (buf) buf[len] = '\0';
+    return buf ? intern_str_transfer(buf) : intern_str("");
+}
 
 char *bl_string_append_int(char *s, int64_t i) { RETURN_FMT("%s%ld", s, i); }
 char *bl_string_append_float(char *s, double f) { RETURN_FMT("%s%g", s, f); }

@@ -131,7 +131,7 @@ class Environment
         @string_code = ""
         @fn_code = ""
         @main_code = ""
-        @concat_funcs = {}
+        @tostring_funcs = {}
 
     inner_scope: (inner_vars=nil)=>
         return setmetatable({used_names:setmetatable(inner_vars or {}, __index:@used_vars)}, {
@@ -180,38 +180,42 @@ class Environment
             @fn_code ..= "  ret 0\n"
         @fn_code ..= "}\n"
 
-    get_concat_fn: (t)=>
-        if @concat_funcs["#{t}"]
-            return @concat_funcs["#{t}"]
+    get_tostring_fn: (t)=>
+        if @tostring_funcs["#{t}"]
+            return @tostring_funcs["#{t}"]
 
-        fn_name = @fresh_global "concat.#{tostring(t)\gsub("[^%w%d]", "")}"
-        @concat_funcs["#{t}"] = fn_name
+        typename = t\id_str!
+        fn_name = @fresh_global "tostring.#{typename}"
+        @tostring_funcs["#{t}"] = fn_name
 
-        code = "function l #{fn_name}(l %initialstring, #{t.base_type} %obj) {\n@start\n"
-        str = "%initialstring"
+        varname = "%#{typename\lower()}"
+        code = "function l #{fn_name}(#{t.base_type} #{varname}) {\n@start\n"
 
         append_reg = (reg, t)->
+            dest = @fresh_local "chunk"
             if t\is_a(Types.Int)
-                code ..= "#{str} =l call $bl_string_append_int(l #{str}, l #{reg})\n"
+                code ..= "#{dest} =l call $bl_tostring_int(l #{reg})\n"
             elseif t\is_a(Types.Num)
-                code ..= "#{str} =l call $bl_string_append_float(l #{str}, d #{reg})\n"
+                code ..= "#{dest} =l call $bl_tostring_float(d #{reg})\n"
             elseif t\is_a(Types.Bool)
-                code ..= "#{str} =l call $bl_string_append_bool(l #{str}, l #{reg})\n"
+                code ..= "#{dest} =l call $bl_tostring_bool(l #{reg})\n"
             elseif t\is_a(Types.Nil)
-                code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{@get_string_reg("nil", "nil")})\n"
+                code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("nil", "nil")})\n"
             elseif t\is_a(Types.Void)
-                code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{@get_string_reg("Void", "void")})\n"
+                code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("Void", "void")})\n"
             elseif t\is_a(Types.String)
-                code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{reg})\n"
+                code ..= "#{dest} =l call $bl_string(l #{reg})\n"
             elseif t\is_a(Types.Range)
-                code ..= "#{str} =l call $bl_string_append_range(l #{str}, :Range #{reg})\n"
+                code ..= "#{dest} =l call $bl_tostring_range(:Range #{reg})\n"
             elseif t\is_a(Types.ListType)
-                code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{@get_string_reg("[","sqbracket.open")})\n"
+                len = @fresh_local "len"
+                code ..= "#{len} =l call $bl_list_len(l #{reg})\n"
 
-                len = @fresh_local "list.len"
-                code ..= "#{len} =l loadl #{reg}\n"
-                i = @fresh_local "list.i"
-                code ..= "#{i} =l copy 1\n"
+                item_strs = @fresh_local "item.strings"
+                code ..= "#{item_strs} =l call $calloc(l #{len}, l 8)\n"
+
+                i = @fresh_local "i"
+                code ..= "#{i} =l copy 0\n"
 
                 loop_label = @fresh_label "list.loop"
                 body_label = @fresh_label "list.loop.body"
@@ -219,19 +223,13 @@ class Environment
 
                 code ..= "jmp #{loop_label}\n#{loop_label}\n"
                 finished = @fresh_local "list.finished"
-                code ..= "#{finished} =l csgtl #{i}, #{len}\n"
+                code ..= "#{finished} =l csgel #{i}, #{len}\n"
                 code ..= "jnz #{finished}, #{end_label}, #{body_label}\n"
                 code ..= "#{body_label}\n"
-
-                comma_label = @fresh_label "list.loop.needscomma"
-                skip_comma_label = @fresh_label "list.loop.skipcomma"
-                comma = @fresh_local "list.needscomma"
-                code ..= "#{comma} =l csgtl #{i}, 1\n"
-                code ..= "jnz #{comma}, #{comma_label}, #{skip_comma_label}\n"
-                code ..= "#{comma_label}\n"
-                code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{@get_string_reg(", ","comma.space")})\n"
-                code ..= "jmp #{skip_comma_label}\n"
-                code ..= "#{skip_comma_label}\n"
+                item_strloc = @fresh_local "item.str.loc"
+                code ..= "#{item_strloc} =l mul 8, #{i}\n"
+                code ..= "#{item_strloc} =l add #{item_strs}, #{item_strloc}\n"
+                code ..= "#{i} =l add #{i}, 1\n"
                 
                 item = @fresh_local "list.item"
                 code ..= "#{item} =l call $bl_list_nth(l #{reg}, l #{i})\n"
@@ -240,49 +238,75 @@ class Environment
                     code ..= "#{item2} =d cast #{item}\n"
                     item = item2
 
-                append_reg item, t.item_type
-
-                code ..= "#{i} =l add #{i}, 1\n"
-
+                item_str = append_reg item, t.item_type
+                code ..= "storel #{item_str}, #{item_strloc}\n"
                 code ..= "jmp #{loop_label}\n#{end_label}\n"
 
-                code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{@get_string_reg("]","sqbracket.close")})\n"
+                chunks = @fresh_local "chunks"
+                chunk = @fresh_local "chunk"
+                code ..= "#{chunks} =l alloc8 #{8*3}\n"
+                code ..= "#{chunk} =l add #{chunks}, #{0*8}\n"
+                code ..= "storel #{@get_string_reg("[","sqbracket.open")}, #{chunk}\n"
+                content_str = @fresh_local "list.content.str"
+                code ..= "#{content_str} =l call $bl_string_join(l #{len}, l #{item_strs}, l #{@get_string_reg(", ", "comma.space")})\n"
+                code ..= "call $free(l #{item_strs})\n"
+                code ..= "#{chunk} =l add #{chunks}, #{1*8}\n"
+                code ..= "storel #{content_str}, #{chunk}\n"
+                code ..= "#{chunk} =l add #{chunks}, #{2*8}\n"
+                code ..= "storel #{@get_string_reg("]","sqbracket.close")}, #{chunk}\n"
+                code ..= "#{dest} =l call $bl_string_join(l 3, l #{chunks}, l 0)\n"
             elseif t\is_a(Types.StructType)
-                if t.name\match "^Tuple%.[0-9]+$"
-                    code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{@get_string_reg("{", "curly")})\n"
-                else
-                    code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{@get_string_reg("#{t.name}{")})\n"
-                ptr_reg = @fresh_local "member.loc"
-                for i,mem in ipairs t.members
-                    if i > 1
-                        code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{@get_string_reg(", ", "comma.space")})\n"
-                    code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{@get_string_reg("#{mem.name}=")})\n" if mem.name
-                    code ..= "#{ptr_reg} =l add #{reg}, #{8*(i-1)}\n"
-                    member_reg = @fresh_local "member.#{mem.name}"
-                    code ..= "#{member_reg} =#{mem.type.abi_type} load#{mem.type.base_type} #{ptr_reg}\n"
-                    append_reg member_reg, mem.type
+                chunks = @fresh_local "chunks"
+                code ..= "#{chunks} =l alloc8 #{8*#t.members}\n"
 
-                code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{@get_string_reg("}","closecurly")})\n"
+                for i,mem in ipairs t.members
+                    member_reg = @fresh_local "#{t\id_str!\lower!}.#{mem.name}"
+                    member_loc = @fresh_local "#{t\id_str!\lower!}.#{mem.name}.loc"
+                    code ..= "#{member_loc} =l add #{reg}, #{8*(i-1)}\n"
+                    code ..= "#{member_reg} =#{mem.type.abi_type} load#{mem.type.base_type} #{member_loc}\n"
+                    member_str = append_reg member_reg, mem.type
+                    if mem.name
+                        code ..= "#{member_str} =l call $bl_string_append_string(l #{@get_string_reg("#{mem.name}=")}, l #{member_str})\n"
+                    chunk_loc = @fresh_local "string.chunk.loc"
+                    code ..= "#{chunk_loc} =l add #{chunks}, #{8*(i-1)}\n"
+                    code ..= "storel #{member_str}, #{chunk_loc}\n"
+
+                final_chunks = @fresh_local "surrounding.chunks"
+                code ..= "#{final_chunks} =l alloc8 #{8*3}\n"
+                chunk_loc = @fresh_local "chunk.loc"
+                code ..= "#{chunk_loc} =l add #{final_chunks}, #{8*0}\n"
+                if t.name\match "^Tuple%.[0-9]+$"
+                    code ..= "storel #{@get_string_reg("{", "curly")}, #{chunk_loc}\n"
+                else
+                    code ..= "storel #{@get_string_reg("#{t.name}{", "#{t\id_str!}.name")}, #{chunk_loc}\n"
+                content = @fresh_local "struct.content"
+                code ..= "#{content} =l call $bl_string_join(l #{#t.members}, l #{chunks}, l #{@get_string_reg(", ", "comma.space")})\n"
+                code ..= "#{chunk_loc} =l add #{final_chunks}, #{8*1}\n"
+                code ..= "storel #{content}, #{chunk_loc}\n"
+                code ..= "#{chunk_loc} =l add #{final_chunks}, #{8*2}\n"
+                code ..= "storel #{@get_string_reg("}","closecurly")}, #{chunk_loc}\n"
+                code ..= "#{dest} =l call $bl_string_join(l 3, l #{final_chunks}, l 0)\n"
             elseif t\is_a(Types.FnType)
-                code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{@get_string_reg("#{t}")})\n"
+                code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("#{t}")})\n"
             elseif t\is_a(Types.OptionalType)
                 nil_label = @fresh_label "optional.nil"
                 nonnil_label = @fresh_label "optional.nonnil"
                 end_label = @fresh_label "optional.end"
                 code ..= check_truthiness t, @, reg, nonnil_label, nil_label
                 code ..= "#{nil_label}\n"
-                code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{@get_string_reg("nil", "nil")})\n"
+                code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("nil", "nil")})\n"
                 code ..= "jmp #{end_label}\n"
                 code ..= "#{nonnil_label}\n"
-                append_reg reg, t.nonnil
+                val = append_reg reg, t.nonnil
+                code ..= "#{dest} =l copy #{val}\n"
                 code ..= "jmp #{end_label}\n"
                 code ..= "#{end_label}\n"
             else
                 error "Unsupported concat type: #{t}"
-                node_error val, "Unsupported concat type"
+            return dest
 
-        append_reg "%obj", t
-        code ..= "ret #{str}\n"
+        dest = append_reg varname, t
+        code ..= "ret #{dest}\n"
         code ..= "}\n"
         code = code\gsub("[^\n]+", =>((@\match("^[@}]") or @\match("^function")) and @ or "  "..@))
         @fn_code ..= code
@@ -461,29 +485,38 @@ expr_compilers =
         return c,code
     String: (env)=>
         return env\get_string_reg(@content[0]),"" if #@content == 0
-        str = env\fresh_local "str"
-        code = "#{str} =l call $bl_string(l #{env\get_string_reg("", "emptystr")})\n"
 
-        stringify = (val)->
-            t = get_type(val)
-            fn_name = env\get_concat_fn t
-            val_reg,val_code = env\to_reg val
-            code ..= val_code
-            code ..= "#{str} =l call #{fn_name}(l #{str}, #{t.base_type} #{val_reg})\n"
-
+        chunks = {}
         i = @content.start
         for interp in *@content
             if interp.start > i
                 chunk = @content[0]\sub(1+(i-@content.start), interp.start-@content.start)
-                code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{env\get_string_reg chunk})\n"
-
-            stringify(interp)
+                table.insert chunks, chunk unless chunk == ""
+            table.insert chunks, interp
             i = interp.after
 
         if @content.after > i
             chunk = @content[0]\sub(1+(i-@content.start), @content.after-@content.start)
-            code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{env\get_string_reg chunk})\n"
+            table.insert chunks, chunk unless chunk == ""
 
+        chunks_reg = env\fresh_local "string.chunks"
+        code = "#{chunks_reg} =l alloc8 #{8*#chunks}\n"
+        chunk_loc = env\fresh_local "string.chunk.loc"
+        for i,chunk in ipairs chunks
+            code ..= "#{chunk_loc} =l add #{chunks_reg}, #{(i-1)*8}\n"
+            if type(chunk) == 'string'
+                code ..= "storel #{env\get_string_reg chunk, "str"}, #{chunk_loc}\n"
+            else
+                t = get_type(chunk)
+                fn_name = env\get_tostring_fn t
+                val_reg,val_code = env\to_reg chunk
+                code ..= val_code
+                interp_reg = env\fresh_local "string.interp"
+                code ..= "#{interp_reg} =l call #{fn_name}(#{t.base_type} #{val_reg})\n"
+                code ..= "storel #{interp_reg}, #{chunk_loc}\n"
+                
+        str = env\fresh_local "str"
+        code ..= "#{str} =l call $bl_string_join(l #{#chunks}, l #{chunks_reg}, l 0)\n"
         return str,code
 
     DSL: (env)=>
@@ -562,7 +595,7 @@ expr_compilers =
         elseif t\is_a(Types.ListType)
             list,code = env\to_reg @value
             len = env\fresh_local "list.len"
-            return len, "#{code}#{len} =l loadl #{list}\n"
+            return len, "#{code}#{len} =l call $bl_list_len(l #{list})\n"
         elseif t\is_a(Types.String)
             str,code = env\to_reg @value
             len = env\fresh_local "str.len"
@@ -713,7 +746,6 @@ expr_compilers =
         code = "#{comprehension} =l call $bl_list_new(l 0, l 0)\n"
 
         iter_type = get_type @iterable
-        node_assert iter_type\is_a(Types.ListType) or iter_type\is_a(Types.Range), @iterable, "Expected a List or Range, not #{iter_type}"
 
         body_label = env\fresh_label "comprehension.body"
         include_label = env\fresh_label "comprehension.include"
@@ -728,8 +760,10 @@ expr_compilers =
         code ..= "#{i} =l copy 0\n"
         if iter_type\is_a(Types.Range)
             code ..= "#{len} =l call $range_len(l #{iter_reg})\n"
+        elseif iter_type\is_a(Types.ListType)
+            code ..= "#{len} =l call $bl_list_len(l #{iter_reg})\n"
         else
-            code ..= "#{len} =l loadl #{iter_reg}\n"
+            node_error @iteralbe, "Expected a list or a range, not #{iter_type}"
         code ..= "jmp #{next_label}\n"
         code ..= "#{body_label}\n"
         if @index
@@ -1447,7 +1481,6 @@ stmt_compilers =
         -- jnz (i <= len), @for.end, @for.body
         -- @for.end
         iter_type = get_type @iterable
-        node_assert iter_type\is_a(Types.ListType) or iter_type\is_a(Types.Range), @iterable, "Expected a List or Range, not #{iter_type}"
 
         body_label = env\fresh_label "for.body"
         between_label = env\fresh_label "for.between"
@@ -1470,8 +1503,10 @@ stmt_compilers =
         code ..= "#{i} =l copy 1\n"
         if iter_type\is_a(Types.Range)
             code ..= "#{len} =l call $range_len(l #{iter_reg})\n"
+        elseif iter_type\is_a(Types.ListType)
+            code ..= "#{len} =l call $bl_list_len(l #{iter_reg})\n"
         else
-            code ..= "#{len} =l loadl #{iter_reg}\n"
+            node_error @iteralbe, "Expected a list or a range, not #{iter_type}"
         finished = env\fresh_local "for.finished"
         code ..= "#{finished} =l csgtl #{i}, #{len}\n"
         code ..= "jnz #{finished}, #{end_label}, #{body_label}\n"

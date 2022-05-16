@@ -9,6 +9,7 @@ class Type
     contains: (other)=> @ == other
     base_type: 'l'
     abi_type: 'l'
+    id_str: => tostring(@)\gsub('[^%w%d.]','')
     __eq: (other)=> type(other) == type(@) and other.__class == @__class and tostring(other) == tostring(@)
 
 class NamedType extends Type
@@ -25,12 +26,14 @@ class DerivedType extends Type
 class ListType extends Type
     new: (@item_type)=>
     __tostring: => "[#{@item_type}]"
+    id_str: => "#{@item_type\id_str!}.List"
     __eq: Type.__eq
 
 class FnType extends Type
     new: (@arg_types, @return_type)=>
     __tostring: => "#{@arg_signature!}=>#{@return_type}"
     __eq: Type.__eq
+    id_str: => "Fn"
     arg_signature: => "(#{concat ["#{a}" for a in *@arg_types], ","})"
 
 class StructType extends Type
@@ -40,6 +43,7 @@ class StructType extends Type
             @members_by_name[m.name] = {index: i, type: m.type} if m.name
         @abi_type = ":#{@name}"
     __tostring: => "#{@name}{#{concat ["#{m.name and m.name..':' or ''}#{m.type}" for m in *@members], ","}}"
+    id_str: => "#{@name}"
     __eq: Type.__eq
 
 Nil = NamedType("Nil")
@@ -53,6 +57,7 @@ class OptionalType extends Type
         @abi_type = @nonnil.abi_type
     contains: (other)=> other == @ or other == Nil or (@nonnil and other\is_a(@nonnil))
     __tostring: => @nonnil\is_a(FnType) and "(#{@nonnil})?" or "#{@nonnil}?"
+    id_str: => "Optional.#{@nonnil\id_str!}"
     __eq: Type.__eq
 
 -- Primitive Types:
