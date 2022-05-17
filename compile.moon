@@ -783,15 +783,17 @@ expr_compilers =
             value_reg = env\fresh_local "value"
             code ..= nil_guard tab_reg, value_reg, ->
                 code = ""
-                raw_key = if t.key_type.base_type == "d"
-                    tmp = env\fresh_local "key.bits"
-                    code ..= "#{tmp} =l cast #{index_reg}\n"
-                    tmp
+                key_getter = env\fresh_local "key.getter"
+                if t.key_type\is_a(Types.Int)
+                    code ..= "#{key_getter} =l xor #{index_reg}, #{INT_NIL}\n"
+                elseif t.key_type\is_a(Types.Num)
+                    code ..= "#{key_getter} =l cast #{index_reg}\n"
+                    code ..= "#{key_getter} =l xor #{key_getter}, #{INT_NIL}\n"
                 else
-                    index_reg
+                    code ..= "#{key_getter} =l copy #{index_reg}\n"
 
                 raw_value = env\fresh_local "value.raw"
-                code ..= "#{raw_value} =l call $hashmap_get(l #{tab_reg}, l #{raw_key})\n"
+                code ..= "#{raw_value} =l call $hashmap_get(l #{tab_reg}, l #{key_getter})\n"
 
                 if t.value_type\is_a(Types.Int)
                     code ..= "#{value_reg} =l xor #{raw_value}, #{INT_NIL}\n"
@@ -962,13 +964,15 @@ expr_compilers =
         code ..= "#{end_label}\n"
         return comprehension, code
     Table: (env)=>
+        t = get_type @
+        node_assert not t.key_type\is_a(Types.OptionalType) and not t.value_type\is_a(Types.OptionalType), @,
+            "Nil cannot be stored in a table, but this table is #{t}"
+
         tab = env\fresh_local "table.empty"
         code = "#{tab} =l call $hashmap_new(l 0)\n"
 
         if #@ == 0
             return tab, code
-
-        t = get_type @
 
         convert_nils = (t2, src_reg, dest_reg)->
             if t2\is_a(Types.Int)
