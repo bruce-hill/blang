@@ -1557,7 +1557,8 @@ stmt_compilers =
             r,cond_code = env\to_reg cond.condition
             code ..= cond_code
             true_label = env\fresh_label "if.true"
-            code ..= "jnz #{r}, #{true_label}, #{false_label}\n#{true_label}\n"
+            code ..= check_truthiness get_type(cond.condition), env, r, true_label, false_label
+            code ..= "#{true_label}\n"
             code ..= env\compile_stmt cond.body
             unless has_jump\match(code)
                 code ..= "jmp #{end_label}\n"
