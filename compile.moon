@@ -1306,7 +1306,6 @@ stmt_compilers =
             done = env\fresh_label "if.nonnil.done"
             return "jnz #{reg}, #{ifnonnil}, #{done}\n#{ifnonnil}\n#{code}jmp #{done}\n#{done}\n"
         if t\is_a(Types.ListType)
-            item_type = t.item_type
             index_type = get_type(@lhs.index)
             list_reg,list_code = env\to_reg @lhs.value
             index_reg,index_code = env\to_reg @lhs.index
@@ -1324,6 +1323,29 @@ stmt_compilers =
             else
                 node_error @lhs.index, "Index is #{index_type} instead of Int or Range"
             return
+        elseif t\is_a(Types.TableType)
+            key_type = get_type(@lhs.index)
+            tab_reg,code = env\to_reg @lhs.value
+            key_reg,key_code = env\to_reg @lhs.index
+            code ..= key_code
+            val_reg,val_code = env\to_reg @rhs
+            code ..= val_code
+
+            convert_nils = (t2, src_reg, dest_reg)->
+                if t2\is_a(Types.Int)
+                    code ..= "#{dest_reg} =l xor #{src_reg}, #{INT_NIL}\n"
+                elseif t2\is_a(Types.Num)
+                    code ..= "#{dest_reg} =d cast #{src_reg}\n"
+                    code ..= "#{dest_reg} =l xor #{dest_reg}, #{FLOAT_NIL}\n"
+                else
+                    code ..= "#{dest_reg} =l copy #{src_reg}\n"
+
+            key_setter = env\fresh_local "key.setter"
+            convert_nils t.key_type, key_reg, key_setter
+            value_setter = env\fresh_local "value.setter"
+            convert_nils t.value_type, val_reg, value_setter
+            code ..= checknil tab_reg, "call $hashmap_set(l #{tab_reg}, l #{key_setter}, l #{value_setter})\n"
+            return code
         elseif t\is_a(Types.StructType)
             i,member_type = if @lhs.index.__tag == "FieldName"
                 member_name = @lhs.index[0]
