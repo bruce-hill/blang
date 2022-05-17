@@ -472,7 +472,8 @@ get_type = memoize (node)->
                 find_declared_type node, node.fn[0], target_sig
             else
                 get_type node.fn
-            node_assert fn_type, node.fn, "This function's return type cannot be inferred. It must be specified manually using a type annotation"
+            return Void unless fn_type
+            -- node_assert fn_type, node.fn, "This function's return type cannot be inferred. It must be specified manually using a type annotation"
             node_assert fn_type\is_a(FnType), node.fn, "This is not a function, it's a #{fn_type or "???"}"
             return fn_type.return_type
         when "Block"

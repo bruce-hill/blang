@@ -117,7 +117,10 @@ check_truthiness = (t, env, reg, truthy_label, falsey_label)->
     elseif t\is_a(Types.Nil)
         return "jmp #{falsey_label}\n"
     elseif t\is_a(Types.OptionalType)
-        if t.nonnil\is_a(Types.Int)
+        if t.nonnil\is_a(Types.Int) or t.nonnil\is_a(Types.Bool)
+            tmp = env\fresh_local "is.true"
+            return "#{tmp} =l ceql #{reg}, 1\njnz #{tmp}, #{truthy_label}, #{falsey_label}\n"
+        elseif t.nonnil\is_a(Types.Int) or t.nonnil\is_a(Types.Bool)
             tmp = env\fresh_local "is.nonnil"
             return "#{tmp} =l cnel #{reg}, #{INT_NIL}\njnz #{tmp}, #{truthy_label}, #{falsey_label}\n"
         elseif t.nonnil\is_a(Types.Num)
@@ -304,7 +307,7 @@ class Environment
                 p = @fresh_local "p"
                 code ..= "#{p} =l copy #{entry_chunks}\n"
 
-                key_reg = if t.key_type\is_a(Types.Int)
+                key_reg = if t.key_type\is_a(Types.Int) or t.key_type\is_a(Types.Bool)
                     tmp = @fresh_local "key.int"
                     code ..= "#{tmp} =l xor #{key}, #{INT_NIL}\n"
                     tmp
@@ -326,7 +329,7 @@ class Environment
 
                 value_raw = @fresh_local "value.raw"
                 code ..= "#{value_raw} =l call $hashmap_get(l #{reg}, l #{key})\n"
-                value_reg = if t.value_type\is_a(Types.Int)
+                value_reg = if t.value_type\is_a(Types.Int) or t.value_type\is_a(Types.Bool)
                     tmp = @fresh_local "value.int"
                     code ..= "#{tmp} =l xor #{value_raw}, #{INT_NIL}\n"
                     tmp
@@ -566,25 +569,40 @@ expr_compilers =
     Nil: (env)=>
         -- Figure out what kind of nil this is, since different types have different binary
         -- representations of nil (Int -> INT_MAX, Float -> NaN, otherwise -> 0)
+        values_for = (nonnil)->
+            if nonnil\is_a(Types.Int) or nonnil\is_a(Types.Bool)
+                return "#{INT_NIL}",""
+            elseif nonnil\is_a(Types.Num) or nonnil.base_type == "d"
+                return "#{FLOAT_NIL}",""
+            else
+                return "0",""
+
+        child = @
         parent = @__parent
         while parent
             if parent.__tag == "Return"
                 while parent and not (parent.__tag == "FnDecl" or parent.__tag == "Lambda")
-                    parent = parent.__parent
+                    parent,child = parent.__parent,parent
                 continue
 
-            if parent.__tag == "FnDecl" or parent.__tag == "Lambda" or parent.__tag == "Declaration"
-                break
+            if parent.__tag == "Equal" or parent.__tag == "NotEqual"
+                other = (child == parent.lhs) and parent.rhs or parent.lhs
+                t = get_type(other)
+                if t\is_a(Types.OptionalType) and t != Types.Nil
+                    t = t.nonnil
+                return values_for(t)
 
-            t = get_type(parent)
-            if t\is_a(Types.OptionalType)
-                if t.nonnil\is_a(Types.Int)
-                    return "#{INT_NIL}",""
-                elseif t.nonnil\is_a(Types.Num) or t.nonnil.base_type == "d"
-                    return "#{FLOAT_NIL}",""
-                else
-                    return "0",""
-            parent = parent.__parent
+            t = if parent.__tag == "Declaration" and parent.type
+                parse_type parent.type
+            elseif parent.__tag == "FnDecl" or parent.__tag == "Lambda" or parent.__tag == "Declaration"
+                break
+            else
+                get_type(parent)
+
+            if t != Types.Nil and t\is_a(Types.OptionalType)
+                return values_for(t.nonnil)
+
+            parent,child = parent.__parent,parent
         return "0",""
     Bool: (env)=> (@[0] == "yes" and "1" or "0"),""
     Cast: (env)=>
@@ -743,7 +761,7 @@ expr_compilers =
             code ..= get_nonnil_code!
             code ..= "jmp #{done}\n"
             code ..= "#{ifnil}\n"
-            if t.nonnil\is_a(Types.Int)
+            if t.nonnil\is_a(Types.Int) or t.nonnil\is_a(Types.Bool)
                 code ..= "#{output_reg} =l copy #{INT_NIL}\n"
             elseif t.nonnil\is_a(Types.Num) or t.nonnil.base_type == "d"
                 code ..= "#{output_reg} =d copy #{FLOAT_NIL}\n"
@@ -784,7 +802,7 @@ expr_compilers =
             code ..= nil_guard tab_reg, value_reg, ->
                 code = ""
                 key_getter = env\fresh_local "key.getter"
-                if t.key_type\is_a(Types.Int)
+                if t.key_type\is_a(Types.Int) or t.key_type\is_a(Types.Bool)
                     code ..= "#{key_getter} =l xor #{index_reg}, #{INT_NIL}\n"
                 elseif t.key_type\is_a(Types.Num)
                     code ..= "#{key_getter} =l cast #{index_reg}\n"
@@ -795,7 +813,7 @@ expr_compilers =
                 raw_value = env\fresh_local "value.raw"
                 code ..= "#{raw_value} =l call $hashmap_get(l #{tab_reg}, l #{key_getter})\n"
 
-                if t.value_type\is_a(Types.Int)
+                if t.value_type\is_a(Types.Int) or t.value_type\is_a(Types.Bool)
                     code ..= "#{value_reg} =l xor #{raw_value}, #{INT_NIL}\n"
                 elseif t.value_type\is_a(Types.Num)
                     bits = @fresh_local "value.bits"
@@ -975,7 +993,7 @@ expr_compilers =
             return tab, code
 
         convert_nils = (t2, src_reg, dest_reg)->
-            if t2\is_a(Types.Int)
+            if t2\is_a(Types.Int) or t2\is_a(Types.Bool)
                 code ..= "#{dest_reg} =l xor #{src_reg}, #{INT_NIL}\n"
             elseif t2\is_a(Types.Num)
                 code ..= "#{dest_reg} =d cast #{src_reg}\n"
@@ -1181,8 +1199,24 @@ expr_compilers =
         elseif t\is_a(Types.Num)
             return comparison @, env, "cged"
         else node_error @, "Comparison is not supported for #{t}"
-    Equal: (env)=> comparison @, env, "ceql"
-    NotEqual: (env)=> comparison @, env, "cnel"
+    Equal: (env)=>
+        lhs_type, rhs_type = get_type(@lhs), get_type(@rhs)
+        if lhs_type\is_a(rhs_type) or rhs_type\is_a(lhs_type)
+            lhs_reg,lhs_code = env\to_reg @lhs
+            rhs_reg,rhs_code = env\to_reg @rhs
+            result = env\fresh_local "comparison"
+            code = lhs_code..rhs_code.."#{result} =l ceql #{lhs_reg}, #{rhs_reg}\n"
+            return result,code
+        return comparison @, env, "ceql"
+    NotEqual: (env)=>
+        lhs_type, rhs_type = get_type(@lhs), get_type(@rhs)
+        if lhs_type\is_a(rhs_type) or rhs_type\is_a(lhs_type)
+            lhs_reg,lhs_code = env\to_reg @lhs
+            rhs_reg,rhs_code = env\to_reg @rhs
+            result = env\fresh_local "comparison"
+            code = lhs_code..rhs_code.."#{result} =l cnel #{lhs_reg}, #{rhs_reg}\n"
+            return result,code
+        return comparison @, env, "cnel"
     TernaryOp: (env)=>
         overall_type = get_type @
         cond_reg,code = env\to_reg @condition
@@ -1332,7 +1366,7 @@ stmt_compilers =
             code ..= val_code
 
             convert_nils = (t2, src_reg, dest_reg)->
-                if t2\is_a(Types.Int)
+                if t2\is_a(Types.Int) or t2\is_a(Types.Bool)
                     code ..= "#{dest_reg} =l xor #{src_reg}, #{INT_NIL}\n"
                 elseif t2\is_a(Types.Num)
                     code ..= "#{dest_reg} =d cast #{src_reg}\n"
@@ -1733,7 +1767,7 @@ stmt_compilers =
         if @index
             index_reg = @index.__register
             env.used_names[index_reg] = true
-            if iter_type\is_a(Types.TableType) and iter_type.key_type\is_a(Types.Int)
+            if iter_type\is_a(Types.TableType) and (iter_type.key_type\is_a(Types.Int) or iter_type.key_type\is_a(Types.Bool))
                 code ..= "#{index_reg} =l xor #{i}, #{INT_NIL}\n"
             elseif iter_type\is_a(Types.TableType) and iter_type.key_type\is_a(Types.Num)
                 bits = @fresh_local "key.bits"
@@ -1747,7 +1781,7 @@ stmt_compilers =
             env.used_names[var_reg] = true
             if iter_type\is_a(Types.TableType)
                 if @index
-                    if iter_type.value_type\is_a(Types.Int)
+                    if iter_type.value_type\is_a(Types.Int) or iter_type.value_type\is_a(Types.Bool)
                         value_raw = env\fresh_local "value.raw"
                         code ..= "#{value_raw} =l call $hashmap_get(l #{iter_reg}, l #{i})\n"
                         code ..= "#{var_reg} =l xor #{value_raw}, #{INT_NIL}\n"
@@ -1759,7 +1793,7 @@ stmt_compilers =
                     else
                         code ..= "#{var_reg} =l call $hashmap_get(l #{iter_reg}, l #{i})\n"
                 else
-                    if iter_type.key_type\is_a(Types.Int)
+                    if iter_type.key_type\is_a(Types.Int) or iter_type.key_type\is_a(Types.Bool)
                         code ..= "#{var_reg} =l xor #{i}, #{INT_NIL}\n"
                     elseif iter_type.key_type\is_a(Types.Num)
                         key_bits = env\fresh_local "key.bits"

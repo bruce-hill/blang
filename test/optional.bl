@@ -18,3 +18,14 @@ def maybe_str(s:String,nil_it:Bool):
 
 $puts(maybe_str("hi", no) or "XXX")
 foo:String? = maybe_str("hi", no)
+
+boolnil:Bool? = nil
+boolyes:Bool? = yes
+boolno:Bool? = no
+
+t := "truthy"
+f := "falsey"
+$puts("OptionalBool truthiness: nil=$(boolnil?t;f) yes=$(boolyes?t;f) no=$(boolno?t;f)")
+$puts("OptionalBool equality: nil==nil?$(boolnil==nil?yes;no) yes==nil?$(boolyes==nil?yes;no) no==nil?$(boolno==nil?yes;no)")
+$puts("OptionalBool equality: nil==no?$(boolnil==no?yes;no) yes==nil?$(boolyes==no?yes;no) no==nil?$(boolno==no?yes;no)")
+$puts("OptionalBool equality: nil==yes?$(boolnil==yes?yes;no) yes==yes?$(boolyes==yes?yes;no) no==yes?$(boolno==yes?yes;no)")
