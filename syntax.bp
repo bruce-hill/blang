@@ -9,7 +9,7 @@ term: (
     / Float / Int
     / String / DSL
     / ListComprehension / List
-    / Struct / FnCall
+    / Table / Struct / FnCall
     / `(__extended-expr__`)
 )
 IndexedTerm:: (!`0-9 @value=(methodCall / IndexedTerm / term)
@@ -72,6 +72,10 @@ Escape:: `\ (`x 2 hex / `a,b,t,n,r,v / 3 `0-8 / .)
 Float:: [`-,+] (`0-9 *`0-9,_ (`. !`. *`0-9,_ / >`e) / `. `0-9 *`0-9,_) [`e `0-9 *`0-9,_]
 Int:: "0x" +`0-9,a-f,A-F,_ / [`-,+] `0-9 *`0-9,_
 Struct:: [@name=Var] _ `{ __ *@:StructField=([@name=FieldName __`=__] @value=required-extended-expr) % (__`,__) [__`,] __ `}
+Table:: `{ __ (
+  (`:__ @type=@:TableType=(@keyType=type __ `= __ @valueType=type))
+  / (*@:TableEntry=(`[__@key=required-extended-expr__`] __`= __ @value=required-extended-expr)%(__`,__) [__`,])
+  ) __ `}
 FnCall:: @fn=(FnCall / Global / Var / `(__required-extended-expr__`)) `( __ *extended-expr % (__`,__) __ [`,__] `) [_`:_@type=type]
 methodCall: @:FnCall=((methodCall / IndexedTerm / term) _ `| _
   (@fn=(Global / Var / `(__required-extended-expr__`)) _
@@ -131,7 +135,8 @@ ButWithUpdate:: (@base=Var _ "&=" _
 required-extended-expr: extended-expr / @:ParseError=(..$ =>"Invalid expression")
 type: @:OptionalType=(@nonnil=nonoptional-type `?) / nonoptional-type
 nonoptional-type: (
-    @:StructType=(@name=id `{__ @members=@(*@:StructField=(@name=FieldName_`:_@type=type) % (__`,__)) [__`,] __`})
+    @:TableType=(`{__ @keyType=type __`=__ @valueType=type __`})
+  / @:StructType=(@name=id `{__ @members=@(*@:StructField=(@name=FieldName_`:_@type=type) % (__`,__)) [__`,] __`})
   / @:DerivedType=(@name=id ":" @derivesFrom=(type / @:ParseError=(..$ =>"Not a valid type")))
   / @:NamedType=(id)
   / @:ListType=(`[@itemtype=type`])

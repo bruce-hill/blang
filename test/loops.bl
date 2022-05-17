@@ -12,7 +12,7 @@ $printf("\n")
 
 
 for i,num in nums
-    $printf("%ld)%ld", i, num)
+    $printf("[%ld]%ld", i, num)
 between $printf(", ")
 $printf("\n")
 

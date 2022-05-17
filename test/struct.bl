@@ -18,7 +18,7 @@ butwith := v & .x=999.999
 $puts("v&.x=999.999 = $butwith")
 
 // Anonymous structs (tuples)
-x := {1, 2.3, "hello"}
+x := Tuple{1, 2.3, "hello"}
 $puts("Tuple: $x")
 x &= [2]=5.5
 $puts("Tuple: $x")

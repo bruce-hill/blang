@@ -37,17 +37,23 @@ get_function_reg = (scope, name, signature)->
                     else
                         get_type stmt.value
                     if t\is_a(Types.FnType) and ("#{t}" == signature or t\arg_signature! == signature)
-                        return "%#{stmt.var[0]}", t
+                        return stmt.var.__register, t
         when "FnDecl","Lambda"
             for a in *scope.args
                 if a.arg[0] == name
                     t = parse_type(a.type)
                     if t\is_a(Types.FnType) and ("#{t}" == signature or t\arg_signature! == signature)
-                        return "%"..a.arg[0], t
+                        return a.__register, t
         when "For","ListComprehension"
             iter_type = get_type(scope.iterable)
-            if scope.var and scope.var[0] == name and iter_type\is_a(Types.ListType) and iter_type.item_type\is_a(Types.FnType)
-                return "%"..scope.var[0], iter_type.item_type
+            if scope.var and scope.var[0] == name
+                if iter_type\is_a(Types.ListType) and iter_type.item_type\is_a(Types.FnType)
+                    return scope.var.__register, iter_type.item_type
+                elseif iter_type\is_a(Types.TableType) and iter_type.value_type\is_a(Types.FnType)
+                    return scope.var.__register, iter_type.value_type
+            if scope.index and scope.index[0] == name
+                if iter_type\is_a(Types.TableType) and iter_type.item_type\is_a(Types.FnType)
+                    return scope.index.__register, iter_type.item_type
 
     if scope.__parent and (scope.__parent.__tag == "For" or scope.__parent.__tag == "While" or scope.__parent.__tag == "Repeat")
         loop = scope.__parent
@@ -183,7 +189,7 @@ class Environment
     get_tostring_fn: (t, scope)=>
         if t != Types.String
             fn = get_function_reg scope, "tostring", "(#{t})=>String"
-            log "Getting tostring: #{t} -> #{fn}"
+            -- log "Getting tostring: #{t} -> #{fn}"
             return fn if fn
 
         if t\is_a(Types.Int)
@@ -270,6 +276,91 @@ class Environment
                 code ..= "storel #{content_str}, #{chunk}\n"
                 code ..= "#{chunk} =l add #{chunks}, #{2*8}\n"
                 code ..= "storel #{@get_string_reg("]","sqbracket.close")}, #{chunk}\n"
+                code ..= "#{dest} =l call $bl_string_join(l 3, l #{chunks}, l 0)\n"
+            elseif t\is_a(Types.TableType)
+                len = @fresh_local "len"
+                code ..= "#{len} =l call $hashmap_length(l #{reg})\n"
+
+                entry_strs = @fresh_local "entry.strings"
+                code ..= "#{entry_strs} =l call $calloc(l #{len}, l 8)\n"
+                chunk_ptr = @fresh_local "chunk.ptr"
+                code ..= "#{chunk_ptr} =l copy #{entry_strs}\n"
+
+                key = @fresh_local "key.raw"
+                code ..= "#{key} =l copy 0\n"
+
+                loop_label = @fresh_label "table.loop"
+                body_label = @fresh_label "table.loop.body"
+                end_label = @fresh_label "table.loop.end"
+
+                code ..= "jmp #{loop_label}\n#{loop_label}\n"
+
+                code ..= "#{key} =l call $hashmap_next(l #{reg}, l #{key})\n"
+                code ..= "jnz #{key}, #{body_label}, #{end_label}\n"
+                code ..= "#{body_label}\n"
+
+                entry_chunks = @fresh_local "entry.chunks"
+                code ..= "#{entry_chunks} =l alloc8 #{3*8}\n"
+                p = @fresh_local "p"
+                code ..= "#{p} =l copy #{entry_chunks}\n"
+
+                key_reg = if t.key_type\is_a(Types.Int)
+                    tmp = @fresh_local "key.int"
+                    code ..= "#{tmp} =l xor #{key}, #{INT_NIL}\n"
+                    tmp
+                elseif t.key_type\is_a(Types.Num)
+                    bits = @fresh_local "key.bits"
+                    code ..= "#{bits} =l xor #{key}, #{FLOAT_NIL}\n"
+                    tmp2 = @fresh_local "key.float"
+                    code ..= "#{tmp2} =d cast #{bits}\n"
+                    tmp2
+                else
+                    key
+                
+                key_str = append_reg key_reg, t.key_type
+                code ..= "storel #{key_str}, #{p}\n"
+                code ..= "#{p} =l add #{p}, 8\n"
+
+                code ..= "storel #{@get_string_reg "=", "equals"}, #{p}\n"
+                code ..= "#{p} =l add #{p}, 8\n"
+
+                value_raw = @fresh_local "value.raw"
+                code ..= "#{value_raw} =l call $hashmap_get(l #{reg}, l #{key})\n"
+                value_reg = if t.value_type\is_a(Types.Int)
+                    tmp = @fresh_local "value.int"
+                    code ..= "#{tmp} =l xor #{value_raw}, #{INT_NIL}\n"
+                    tmp
+                elseif t.value_type\is_a(Types.Num)
+                    bits = @fresh_local "value.bits"
+                    code ..= "#{bits} =l xor #{value_raw}, #{FLOAT_NIL}\n"
+                    tmp2 = @fresh_local "key.float"
+                    code ..= "#{tmp2} =d cast #{bits}\n"
+                    tmp2
+                else
+                    value_raw
+                
+                value_str = append_reg value_reg, t.value_type
+                code ..= "storel #{value_str}, #{p}\n"
+
+                entry_str = @fresh_local "entry.str"
+                code ..= "#{entry_str} =l call $bl_string_join(l 3, l #{entry_chunks}, l 0)\n"
+                code ..= "storel #{entry_str}, #{chunk_ptr}\n"
+                code ..= "#{chunk_ptr} =l add #{chunk_ptr}, 8\n"
+
+                code ..= "jmp #{loop_label}\n#{end_label}\n"
+
+                chunks = @fresh_local "chunks"
+                chunk = @fresh_local "chunk"
+                code ..= "#{chunks} =l alloc8 #{8*3}\n"
+                code ..= "#{chunk} =l add #{chunks}, #{0*8}\n"
+                code ..= "storel #{@get_string_reg("{","curly.open")}, #{chunk}\n"
+                content_str = @fresh_local "table.content.str"
+                code ..= "#{content_str} =l call $bl_string_join(l #{len}, l #{entry_strs}, l #{@get_string_reg(", ", "comma.space")})\n"
+                code ..= "call $free(l #{entry_strs})\n"
+                code ..= "#{chunk} =l add #{chunks}, #{1*8}\n"
+                code ..= "storel #{content_str}, #{chunk}\n"
+                code ..= "#{chunk} =l add #{chunks}, #{2*8}\n"
+                code ..= "storel #{@get_string_reg("}","curly.close")}, #{chunk}\n"
                 code ..= "#{dest} =l call $bl_string_join(l 3, l #{chunks}, l 0)\n"
             elseif t\is_a(Types.StructType)
                 chunks = @fresh_local "chunks"
@@ -622,6 +713,10 @@ expr_compilers =
             list,code = env\to_reg @value
             len = env\fresh_local "list.len"
             return len, "#{code}#{len} =l call $bl_list_len(l #{list})\n"
+        elseif t\is_a(Types.TableType)
+            tab,code = env\to_reg @value
+            len = env\fresh_local "table.len"
+            return len, "#{code}#{len} =l call $hashmap_length(l #{tab})\n"
         elseif t\is_a(Types.String)
             str,code = env\to_reg @value
             len = env\fresh_local "str.len"
@@ -681,6 +776,34 @@ expr_compilers =
                 return slice,code
             else
                 node_error @index, "Index is #{index_type} instead of Int or Range"
+        elseif t\is_a(Types.TableType)
+            tab_reg,code = env\to_reg @value
+            index_reg,index_code = env\to_reg @index
+            code ..= index_code
+            value_reg = env\fresh_local "value"
+            code ..= nil_guard tab_reg, value_reg, ->
+                code = ""
+                raw_key = if t.key_type.base_type == "d"
+                    tmp = env\fresh_local "key.bits"
+                    code ..= "#{tmp} =l cast #{index_reg}\n"
+                    tmp
+                else
+                    index_reg
+
+                raw_value = env\fresh_local "value.raw"
+                code ..= "#{raw_value} =l call $hashmap_get(l #{tab_reg}, l #{raw_key})\n"
+
+                if t.value_type\is_a(Types.Int)
+                    code ..= "#{value_reg} =l xor #{raw_value}, #{INT_NIL}\n"
+                elseif t.value_type\is_a(Types.Num)
+                    bits = @fresh_local "value.bits"
+                    code ..= "#{bits} =l xor #{raw_value}, #{FLOAT_NIL}\n"
+                    code ..= "#{value_reg} =d cast #{bits}\n"
+                else
+                    code ..= "#{value_reg} =l copy #{raw_value}\n"
+                return code
+
+            return value_reg,code
         elseif t\is_a(Types.StructType)
             i,member_type = if @index.__tag == "FieldName"
                 member_name = @index[0]
@@ -789,7 +912,7 @@ expr_compilers =
         elseif iter_type\is_a(Types.ListType)
             code ..= "#{len} =l call $bl_list_len(l #{iter_reg})\n"
         else
-            node_error @iteralbe, "Expected a list or a range, not #{iter_type}"
+            node_error @iterable, "Expected a list or a range, not #{iter_type}"
         code ..= "jmp #{next_label}\n"
         code ..= "#{body_label}\n"
         if @index
@@ -838,6 +961,36 @@ expr_compilers =
         code ..= "jnz #{is_finished}, #{end_label}, #{body_label}\n"
         code ..= "#{end_label}\n"
         return comprehension, code
+    Table: (env)=>
+        tab = env\fresh_local "table.empty"
+        code = "#{tab} =l call $hashmap_new(l 0)\n"
+
+        if #@ == 0
+            return tab, code
+
+        t = get_type @
+
+        convert_nils = (t2, src_reg, dest_reg)->
+            if t2\is_a(Types.Int)
+                code ..= "#{dest_reg} =l xor #{src_reg}, #{INT_NIL}\n"
+            elseif t2\is_a(Types.Num)
+                code ..= "#{dest_reg} =d cast #{src_reg}\n"
+                code ..= "#{dest_reg} =l xor #{dest_reg}, #{FLOAT_NIL}\n"
+            else
+                code ..= "#{dest_reg} =l copy #{src_reg}\n"
+
+        for entry in *@
+            key_reg,key_code = env\to_reg entry.key
+            code ..= key_code
+            value_reg,value_code = env\to_reg entry.value
+            code ..= key_code
+
+            key_setter = env\fresh_local "key.setter"
+            convert_nils t.key_type, key_reg, key_setter
+            value_setter = env\fresh_local "value.setter"
+            convert_nils t.value_type, value_reg, value_setter
+            code ..= "call $hashmap_set(l #{tab}, l #{key_setter}, l #{value_setter})\n"
+        return tab, code
     Range: (env)=>
         range = env\fresh_local "range"
         local code
@@ -1491,60 +1644,92 @@ stmt_compilers =
         return code
     For: (env)=>
         -- Rough breakdown:
-        -- len = #list; i = 1
-        -- jmp @for.body
+        -- i = 0 | k = NULL
+        -- len = #list
+        -- jmp @for.next
+        -- @for.next
+        -- i += 1 | k = hashmap_next(h, k)
+        -- jnz (i > len), @for.end, @for.body
         -- @for.body
-        -- item = list[i]
+        -- index = i
+        -- item = list[i] | hashmap_get(h, k)
         -- // body code
-        -- jmp @for.noskip
-        -- i += 1
+        -- i += 1 | k = hashmap_next(h, k)
         -- jnz (i <= len), @for.end, @for.between
         -- @for.between
         -- // between code
         -- jmp @for.body
-        -- @for.skip
-        -- i += 1
-        -- jnz (i <= len), @for.end, @for.body
         -- @for.end
+
         iter_type = get_type @iterable
 
+        next_label = env\fresh_label "for.next"
         body_label = env\fresh_label "for.body"
         between_label = env\fresh_label "for.between"
-        noskip_label = env\fresh_label "for.noskip"
-        skip_label = env\fresh_label "for.skip"
         end_label = env\fresh_label "for.end"
 
         for skip in coroutine.wrap(-> each_tag(@, "Skip"))
             if not skip.target or skip.target[0] == "for" or (@var and skip.target[0] == @var[0]) or (@index and skip.target[0] == @index[0])
-                skip.jump_label = skip_label
+                skip.jump_label = next_label
 
         for stop in coroutine.wrap(-> each_tag(@, "Stop"))
             if not stop.target or stop.target[0] == "for" or (@var and stop.target[0] == @var[0]) or (@index and stop.target[0] == @index[0])
                 stop.jump_label = end_label
 
-        i = env\fresh_local "i"
+        i = env\fresh_local(iter_type\is_a(Types.TableType) and "k" or "i")
         len = env\fresh_local "len"
+        is_done = env\fresh_local "for.is_done"
 
         iter_reg,code = env\to_reg @iterable
-        code ..= "#{i} =l copy 1\n"
+        code ..= "#{i} =l copy 0\n"
         if iter_type\is_a(Types.Range)
             code ..= "#{len} =l call $range_len(l #{iter_reg})\n"
         elseif iter_type\is_a(Types.ListType)
             code ..= "#{len} =l call $bl_list_len(l #{iter_reg})\n"
+        elseif iter_type\is_a(Types.TableType)
+            _=nil -- Len is not used for tables
+            -- code ..= "#{len} =l call $hashmap_len(l #{iter_reg})\n"
         else
-            node_error @iteralbe, "Expected a list or a range, not #{iter_type}"
-        finished = env\fresh_local "for.finished"
-        code ..= "#{finished} =l csgtl #{i}, #{len}\n"
-        code ..= "jnz #{finished}, #{end_label}, #{body_label}\n"
+            node_error @iterable, "Expected an iterable type, not #{iter_type}"
+        code ..= "jmp #{next_label}\n"
+        code ..= "#{next_label}\n"
+        if iter_type\is_a(Types.TableType)
+            code ..= "#{i} =l call $hashmap_next(l #{iter_reg}, l #{i})\n"
+            code ..= "jnz #{i}, #{body_label}, #{end_label}\n"
+        else
+            code ..= "#{i} =l add #{i}, 1\n"
+            code ..= "#{is_done} =l csgtl #{i}, #{len}\n"
+            code ..= "jnz #{is_done}, #{end_label}, #{body_label}\n"
+
         code ..= "#{body_label}\n"
         if @index
             index_reg = @index.__register
             env.used_names[index_reg] = true
-            code ..= "#{index_reg} =l copy #{i}\n"
+            if iter_type\is_a(Types.TableType) and iter_type.key_type\is_a(Types.Int)
+                code ..= "#{index_reg} =l xor #{i}, #{INT_NIL}\n"
+            elseif iter_type\is_a(Types.TableType) and iter_type.key_type\is_a(Types.Num)
+                bits = @fresh_local "key.bits"
+                code ..= "#{bits} =l xor #{i}, #{FLOAT_NIL}\n"
+                code ..= "#{index_reg} =d cast #{bits}\n"
+            else
+                code ..= "#{index_reg} =l copy #{i}\n"
+
         if @var
             var_reg = @var.__register
             env.used_names[var_reg] = true
-            if iter_type\is_a(Types.Range)
+            if iter_type\is_a(Types.TableType)
+                if iter_type.value_type\is_a(Types.Int)
+                    value_raw = env\fresh_local "value.raw"
+                    code ..= "#{value_raw} =l call $hashmap_get(l #{iter_reg}, l #{i})\n"
+                    code ..= "#{var_reg} =l xor #{value_raw}, #{INT_NIL}\n"
+                elseif iter_type.value_type\is_a(Types.Num)
+                    value_raw = env\fresh_local "value.raw"
+                    code ..= "#{value_raw} =l call $hashmap_get(l #{iter_reg}, l #{i})\n"
+                    code ..= "#{value_raw} =l xor #{value_raw}, #{FLOAT_NIL}\n"
+                    code ..= "#{var_reg} =d cast #{bits}\n"
+                else
+                    code ..= "#{var_reg} =l call $hashmap_get(l #{iter_reg}, l #{i})\n"
+            elseif iter_type\is_a(Types.Range)
                 code ..= "#{var_reg} =l call $range_nth(l #{iter_reg}, l #{i})\n"
             else
                 if iter_type.item_type.base_type == "d"
@@ -1553,23 +1738,26 @@ stmt_compilers =
                     code ..= "#{var_reg} =#{iter_type.item_type.abi_type} cast #{tmp}\n"
                 else
                     code ..= "#{var_reg} =#{iter_type.item_type.abi_type} call $bl_list_nth(l #{iter_reg}, l #{i})\n"
+
         code ..= "#{env\compile_stmt @body}"
+
+        -- If we reached this point, no skips
         unless has_jump\match(code)
-            code ..= "jmp #{noskip_label}\n"
-        code ..= "#{noskip_label}\n"
-        code ..= "#{i} =l add #{i}, 1\n"
-        code ..= "#{finished} =l csgtl #{i}, #{len}\n"
+            if iter_type\is_a(Types.TableType)
+                code ..= "#{i} =l call $hashmap_next(l #{iter_reg}, l #{i})\n"
+                code ..= "jnz #{i}, #{between_label}, #{end_label}\n"
+            else
+                code ..= "#{i} =l add #{i}, 1\n"
+                code ..= "#{is_done} =l csgtl #{i}, #{len}\n"
+                code ..= "jnz #{is_done}, #{end_label}, #{between_label}\n"
+
+        code ..= "#{between_label}\n"
         if @between
-            code ..= "jnz #{finished}, #{end_label}, #{between_label}\n"
-            code ..= "#{between_label}\n#{env\compile_stmt @between}"
-            unless has_jump\match(code)
-                code ..= "jmp #{body_label}\n"
-        else
-            code ..= "jnz #{finished}, #{end_label}, #{body_label}\n"
-        code ..= "#{skip_label}\n"
-        code ..= "#{i} =l add #{i}, 1\n"
-        code ..= "#{finished} =l csgtl #{i}, #{len}\n"
-        code ..= "jnz #{finished}, #{end_label}, #{body_label}\n"
+            code ..= env\compile_stmt @between
+
+        unless has_jump\match(code)
+            code ..= "jmp #{body_label}\n"
+
         code ..= "#{end_label}\n"
         return code
         

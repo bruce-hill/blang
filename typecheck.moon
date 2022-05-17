@@ -31,6 +31,13 @@ class ListType extends Type
     id_str: => "#{@item_type\id_str!}.List"
     __eq: Type.__eq
 
+class TableType extends Type
+    new: (@key_type, @value_type)=>
+        assert @key_type and @value_type
+    __tostring: => "{#{@key_type}=#{@value_type}}"
+    id_str: => "#{@key_type\id_str!}.#{@value_type\id_str!}.Table"
+    __eq: Type.__eq
+
 class FnType extends Type
     new: (@arg_types, @return_type)=>
     __tostring: => "#{@arg_signature!}=>#{@return_type}"
@@ -118,13 +125,27 @@ find_declared_type = (scope, name, arg_signature=nil)->
                 if a.arg[0] == name
                     return parse_type(a.type)
         when "For","ListComprehension"
+            iter_type = if scope.iterable.__tag == "Var"
+                find_declared_type(scope.__parent, scope.iterable[0])
+            else get_type(scope.iterable)
+
+            if not iter_type and scope.iterable[0] == "argv"
+                iter_type = ListType(String)
+
+            node_assert iter_type, scope.iterable, "Can't determine the type of this variable"
             if scope.index and scope.index[0] == name
+                if iter_type\is_a(TableType)
+                    return iter_type.key_type
                 return Int
             if scope.var and scope.var[0] == name
-                iter_type = get_type(scope.iterable)
-                return Int if iter_type\is_a(Range)
-                node_assert iter_type\is_a(ListType) or iter_type\is_a(Range), scope.iterable, "Not an iterable"
-                return iter_type.item_type
+                if iter_type\is_a(Range)
+                    return Int
+                elseif iter_type\is_a(TableType)
+                    return iter_type.value_type
+                elseif iter_type\is_a(ListType)
+                    return iter_type.item_type
+                else
+                    node_error scope.iterable, "Not an iterable value"
     
     if scope.__parent and (scope.__parent.__tag == "For" or scope.__parent.__tag == "While" or scope.__parent.__tag == "Repeat")
         loop = scope.__parent
@@ -161,6 +182,8 @@ parse_type = memoize (type_node)->
         when "ListType"
             node_assert type_node.itemtype, type_node, "List without item type"
             return ListType(parse_type(type_node.itemtype))
+        when "TableType"
+            return TableType(parse_type(type_node.keyType), parse_type(type_node.valueType))
         when "FnType"
             arg_types = [parse_type(a) for a in *type_node.args]
             return FnType(arg_types, parse_type(type_node.return))
@@ -214,13 +237,28 @@ get_type = memoize (node)->
             decl_type = node.type and parse_type(node.type)
             return decl_type if #node == 0
             t = get_type node[1]
-            node_assert t == decl_type, node[1], "Not expected type: #{t}" if decl_type
+            if decl_type
+                node_assert t == decl_type.item_type, node[1],
+                    "List is declared as having type #{decl_type}, but this item has type: #{t}"
             for i=2,#node
-                node_assert get_type(node[i]) == t, node[i], "Not expected type: #{t}"
+                t_i = get_type(node[i])
+                node_assert t_i == t, node[i], "Earlier items have type #{t}, but this item is a #{t_i}"
             return ListType(t)
         when "ListComprehension"
             t = get_type(node.expression)
             return ListType(t)
+        when "Table"
+            decl_type = node.type and parse_type(node.type)
+            return decl_type if #node == 0
+            key_type = get_type node[1].key
+            value_type = get_type node[1].value
+            if decl_type
+                node_assert key_type == decl_type.key_type and value_type == decl_type.value_type, node[1], "Not expected type: #{t}"
+            for i=2,#node
+                k_t, v_t = get_type(node[i].key), get_type(node[i].value)
+                node_assert k_t == key_type, node[i].key, "Item is type #{k_t} but should be #{key_type}"
+                node_assert v_t == value_type, node[i].value, "Item is type #{v_t} but should be #{value_type}"
+            return TableType(key_type, value_type)
         when "IndexedTerm"
             t = get_type node.value
             is_optional = t\is_a(OptionalType)
@@ -233,6 +271,10 @@ get_type = memoize (node)->
                     return is_optional and OptionalType(t) or t
                 else
                     node_error node.index, "Index has type #{index_type}, but expected Int or Range"
+            elseif t\is_a(TableType)
+                index_type = get_type(node.index, vars)
+                node_assert index_type == t.key_type, node.index, "This table has type #{t}, but is being indexed with #{index_type}"
+                return t.value_type
             elseif t\is_a(StructType)
                 if node.index.__tag == "FieldName"
                     member_name = node.index[0]
@@ -351,7 +393,7 @@ get_type = memoize (node)->
             return t
         when "Len"
             t = get_type node.value
-            node_assert t\is_a(ListType) or t\is_a(Range) or t\is_a(String), node, "Attempt to get length of non-iterable: #{t}"
+            node_assert t\is_a(ListType) or t\is_a(Range) or t\is_a(String) or t\is_a(TableType), node, "Attempt to get length of non-iterable: #{t}"
             return Int
         when "Not"
             t = get_type node.value
@@ -453,4 +495,4 @@ get_type = memoize (node)->
         return get_type(node[#node])
     return Void
 
-return {:add_parenting, :parse_type, :get_type, :Type, :NamedType, :ListType, :FnType, :StructType, :Int, :Num, :String, :Bool, :Void, :Nil, :Range, :OptionalType}
+return {:add_parenting, :parse_type, :get_type, :Type, :NamedType, :ListType, :TableType, :FnType, :StructType, :Int, :Num, :String, :Bool, :Void, :Nil, :Range, :OptionalType}
