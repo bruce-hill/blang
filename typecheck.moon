@@ -274,7 +274,7 @@ get_type = memoize (node)->
             elseif t\is_a(TableType)
                 index_type = get_type(node.index, vars)
                 node_assert index_type == t.key_type, node.index, "This table has type #{t}, but is being indexed with #{index_type}"
-                return t.value_type
+                return OptionalType(t.value_type)
             elseif t\is_a(StructType)
                 if node.index.__tag == "FieldName"
                     member_name = node.index[0]
