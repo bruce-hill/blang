@@ -133,19 +133,24 @@ find_declared_type = (scope, name, arg_signature=nil)->
                 iter_type = ListType(String)
 
             node_assert iter_type, scope.iterable, "Can't determine the type of this variable"
-            if scope.index and scope.index[0] == name
-                if iter_type\is_a(TableType)
+            if iter_type\is_a(TableType)
+                if scope.index
+                    if scope.index[0] == name
+                        return iter_type.key_type
+                    elseif scope.var and scope.var[0] == name
+                        return iter_type.value_type
+                elseif scope.var and scope.var[0] == name
                     return iter_type.key_type
-                return Int
-            if scope.var and scope.var[0] == name
-                if iter_type\is_a(Range)
+            else
+                if scope.index and scope.index[0] == name
                     return Int
-                elseif iter_type\is_a(TableType)
-                    return iter_type.value_type
-                elseif iter_type\is_a(ListType)
-                    return iter_type.item_type
-                else
-                    node_error scope.iterable, "Not an iterable value"
+                if scope.var and scope.var[0] == name
+                    if iter_type\is_a(Range)
+                        return Int
+                    elseif iter_type\is_a(ListType)
+                        return iter_type.item_type
+                    else
+                        node_error scope.iterable, "Not an iterable value"
     
     if scope.__parent and (scope.__parent.__tag == "For" or scope.__parent.__tag == "While" or scope.__parent.__tag == "Repeat")
         loop = scope.__parent

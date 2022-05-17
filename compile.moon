@@ -52,8 +52,8 @@ get_function_reg = (scope, name, signature)->
                 elseif iter_type\is_a(Types.TableType) and iter_type.value_type\is_a(Types.FnType)
                     return scope.var.__register, iter_type.value_type
             if scope.index and scope.index[0] == name
-                if iter_type\is_a(Types.TableType) and iter_type.item_type\is_a(Types.FnType)
-                    return scope.index.__register, iter_type.item_type
+                if iter_type\is_a(Types.TableType) and iter_type.key_type\is_a(Types.FnType)
+                    return scope.index.__register, iter_type.key_type
 
     if scope.__parent and (scope.__parent.__tag == "For" or scope.__parent.__tag == "While" or scope.__parent.__tag == "Repeat")
         loop = scope.__parent
@@ -1745,17 +1745,27 @@ stmt_compilers =
             var_reg = @var.__register
             env.used_names[var_reg] = true
             if iter_type\is_a(Types.TableType)
-                if iter_type.value_type\is_a(Types.Int)
-                    value_raw = env\fresh_local "value.raw"
-                    code ..= "#{value_raw} =l call $hashmap_get(l #{iter_reg}, l #{i})\n"
-                    code ..= "#{var_reg} =l xor #{value_raw}, #{INT_NIL}\n"
-                elseif iter_type.value_type\is_a(Types.Num)
-                    value_raw = env\fresh_local "value.raw"
-                    code ..= "#{value_raw} =l call $hashmap_get(l #{iter_reg}, l #{i})\n"
-                    code ..= "#{value_raw} =l xor #{value_raw}, #{FLOAT_NIL}\n"
-                    code ..= "#{var_reg} =d cast #{bits}\n"
+                if @index
+                    if iter_type.value_type\is_a(Types.Int)
+                        value_raw = env\fresh_local "value.raw"
+                        code ..= "#{value_raw} =l call $hashmap_get(l #{iter_reg}, l #{i})\n"
+                        code ..= "#{var_reg} =l xor #{value_raw}, #{INT_NIL}\n"
+                    elseif iter_type.value_type\is_a(Types.Num)
+                        value_raw = env\fresh_local "value.raw"
+                        code ..= "#{value_raw} =l call $hashmap_get(l #{iter_reg}, l #{i})\n"
+                        code ..= "#{value_raw} =l xor #{value_raw}, #{FLOAT_NIL}\n"
+                        code ..= "#{var_reg} =d cast #{bits}\n"
+                    else
+                        code ..= "#{var_reg} =l call $hashmap_get(l #{iter_reg}, l #{i})\n"
                 else
-                    code ..= "#{var_reg} =l call $hashmap_get(l #{iter_reg}, l #{i})\n"
+                    if iter_type.key_type\is_a(Types.Int)
+                        code ..= "#{var_reg} =l xor #{i}, #{INT_NIL}\n"
+                    elseif iter_type.key_type\is_a(Types.Num)
+                        key_bits = env\fresh_local "key.bits"
+                        code ..= "#{key_bits} =l xor #{i}, #{FLOAT_NIL}\n"
+                        code ..= "#{var_reg} =d cast #{key_bits}\n"
+                    else
+                        code ..= "#{var_reg} =l copy #{i}\n"
             elseif iter_type\is_a(Types.Range)
                 code ..= "#{var_reg} =l call $range_nth(l #{iter_reg}, l #{i})\n"
             else
