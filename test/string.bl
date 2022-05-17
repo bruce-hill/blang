@@ -1,4 +1,4 @@
-Vec ::: Vec{x:Num,y:Num}
+struct Vec{x:Num,y:Num}
 
 i := 5
 f := 3.14159

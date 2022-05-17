@@ -90,7 +90,7 @@ statements: @curdent:\C +(
   / !$ @:ParseError=(@dent:\C ..$ *(\n dent (` /\t)..$) =>"Invalid statement")) % (nl curdent !(` /\t))
 indentedBlock: @:Block=([comment] nl curdent +(` /\t) statements)
 statement: (
-    Declaration / FnDecl / If / When / For / While / Repeat / TypeDeclaration
+    Declaration / FnDecl / If / When / For / While / Repeat / TypeDeclaration / StructDeclaration
   / PostfixIf / PostfixFor / PostfixWhile
   / Return / Skip / Stop
   / line-statement
@@ -104,6 +104,7 @@ line-statement: (
 Fail:: \b"fail"\b _ [@message=extended-expr]
 Declaration:: @var=Var _`: _[@type=type_] `= _ @value=required-extended-expr
 TypeDeclaration:: @name=@:NamedType=(id) _ ":::" _ @alias=(type / @:ParseError=(..$ =>"Not a valid type"))
+StructDeclaration:: \b"struct"\b _ (StructType / @:ParseError=((braces /..$) =>"Not a valid struct type"))
 FnDecl:: @curdent:\C "def"\b _ (@name=Var _
   `( __ @args=@(*((@:FnArg=(@arg=Var_`:_@type=type) / @:ParseError=(Var =>"This argument doesn't have a type")))%(__`,__))__[`,__]`)_
   (`: / @:ParseError=(=>"Expected a colon here"))_[@return=type]_ [comment]
@@ -136,12 +137,13 @@ required-extended-expr: extended-expr / @:ParseError=(..$ =>"Invalid expression"
 type: @:OptionalType=(@nonnil=nonoptional-type `?) / nonoptional-type
 nonoptional-type: (
     @:TableType=(`{__ @keyType=type __`=__ @valueType=type __`})
-  / @:StructType=(@name=id `{__ @members=@(*@:StructField=(@name=FieldName_`:_@type=type) % (__`,__)) [__`,] __`})
+  / StructType
   / @:DerivedType=(@name=id ":" @derivesFrom=(type / @:ParseError=(..$ =>"Not a valid type")))
   / @:NamedType=(id)
   / @:ListType=(`[@itemtype=type`])
   / @:FnType=(`(__ @args=@(*type % (__`,__)) __ `) _ "=>" __ @return=type)
 )
+StructType:: @name=id _ `{__ @members=@(*@:StructField=(@name=FieldName_`:_@type=type) % ((__`,__/__)~(`,/\n))) [__`,] __`}
 If:: \b"if"\b @curdent:\C _ (
     @:Clause=(@condition=required-extended-expr [comment] @body=indentedBlock)
     *@:Clause=(nl curdent \b"elseif"\b _ @condition=required-extended-expr [comment] @body=indentedBlock)

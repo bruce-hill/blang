@@ -168,6 +168,8 @@ find_type_alias = (scope, name)->
                     stmt = scope[i]
                     if stmt.__tag == "TypeDeclaration" and stmt.name[0] == name
                         return parse_type stmt.alias
+                    elseif stmt.__tag == "StructDeclaration" and stmt[1].name[0] == name
+                        return parse_type stmt[1]
         scope = scope.__parent
 
 derived_types = {}

@@ -1,4 +1,8 @@
-Vec ::: Vec{x:Num,y:Num}
+struct Vec {
+    x:Num
+    y:Num
+}
+// or: struct Vec{x:Num,y:Num}
 
 def add(a:Vec, b:Vec):= Vec{a.x+b.x, a.y+b.y}
 def multiply(a:Vec, b:Vec):= a.x*b.x + a.y*b.y

@@ -1527,6 +1527,7 @@ stmt_compilers =
         else
             return "call $errx(l 1, l #{env\get_string_reg(get_node_pos(@)..': Unexpected failure!', "failure.message")})\n"
     TypeDeclaration: (env)=> ""
+    StructDeclaration: (env)=> ""
     FnCall: (env)=>
         _, code = env\to_reg @, true
         code = code\gsub("[^\n]- (call [^\n]*\n)$", "%1")
