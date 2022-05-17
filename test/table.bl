@@ -3,6 +3,8 @@ $puts("t = $t")
 $puts("t['k'] = $(t["k"])")
 $puts("t['missing'] = $(t["missing"])")
 
+fail unless #t == 2
+
 if t["k"]
     $puts("Yep 'k' is there")
 else
