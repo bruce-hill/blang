@@ -213,209 +213,202 @@ class Environment
         fn_name = @fresh_global "tostring.#{typename}"
         @tostring_funcs["#{t}"] = fn_name
 
-        varname = "%#{typename\lower()}"
-        code = "function l #{fn_name}(#{t.base_type} #{varname}) {\n@start\n"
+        reg = "%#{typename\lower()}"
+        code = "function l #{fn_name}(#{t.base_type} #{reg}) {\n@start\n"
 
-        append_reg = (reg, t)->
-            dest = @fresh_local "chunk"
-            if t\is_a(Types.Int)
-                code ..= "#{dest} =l call $bl_tostring_int(l #{reg})\n"
-            elseif t\is_a(Types.Num)
-                code ..= "#{dest} =l call $bl_tostring_float(d #{reg})\n"
-            elseif t\is_a(Types.Bool)
-                code ..= "#{dest} =l call $bl_tostring_bool(l #{reg})\n"
-            elseif t\is_a(Types.Nil)
-                code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("nil", "nil")})\n"
-            elseif t\is_a(Types.Void)
-                code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("Void", "void")})\n"
-            elseif t\is_a(Types.String)
-                code ..= "#{dest} =l call $bl_string(l #{reg})\n"
-            elseif t\is_a(Types.Range)
-                code ..= "#{dest} =l call $bl_tostring_range(:Range #{reg})\n"
-            elseif t\is_a(Types.ListType)
-                len = @fresh_local "len"
-                code ..= "#{len} =l call $bl_list_len(l #{reg})\n"
+        dest = @fresh_local "string"
+        if t\is_a(Types.Nil)
+            code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("nil", "nil")})\n"
+        elseif t\is_a(Types.Void)
+            code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("Void", "void")})\n"
+        elseif t\is_a(Types.ListType)
+            len = @fresh_local "len"
+            code ..= "#{len} =l call $bl_list_len(l #{reg})\n"
 
-                item_strs = @fresh_local "item.strings"
-                code ..= "#{item_strs} =l call $calloc(l #{len}, l 8)\n"
+            item_strs = @fresh_local "item.strings"
+            code ..= "#{item_strs} =l call $calloc(l #{len}, l 8)\n"
 
-                i = @fresh_local "i"
-                code ..= "#{i} =l copy 0\n"
+            i = @fresh_local "i"
+            code ..= "#{i} =l copy 0\n"
 
-                loop_label = @fresh_label "list.loop"
-                body_label = @fresh_label "list.loop.body"
-                end_label = @fresh_label "list.loop.end"
+            loop_label = @fresh_label "list.loop"
+            body_label = @fresh_label "list.loop.body"
+            end_label = @fresh_label "list.loop.end"
 
-                code ..= "jmp #{loop_label}\n#{loop_label}\n"
-                finished = @fresh_local "list.finished"
-                code ..= "#{finished} =l csgel #{i}, #{len}\n"
-                code ..= "jnz #{finished}, #{end_label}, #{body_label}\n"
-                code ..= "#{body_label}\n"
-                item_strloc = @fresh_local "item.str.loc"
-                code ..= "#{item_strloc} =l mul 8, #{i}\n"
-                code ..= "#{item_strloc} =l add #{item_strs}, #{item_strloc}\n"
-                code ..= "#{i} =l add #{i}, 1\n"
-                
-                item = @fresh_local "list.item"
-                code ..= "#{item} =l call $bl_list_nth(l #{reg}, l #{i})\n"
-                if t.item_type.abi_type == "d"
-                    item2 = @fresh_local "list.item.float"
-                    code ..= "#{item2} =d cast #{item}\n"
-                    item = item2
+            code ..= "jmp #{loop_label}\n#{loop_label}\n"
+            finished = @fresh_local "list.finished"
+            code ..= "#{finished} =l csgel #{i}, #{len}\n"
+            code ..= "jnz #{finished}, #{end_label}, #{body_label}\n"
+            code ..= "#{body_label}\n"
+            item_strloc = @fresh_local "item.str.loc"
+            code ..= "#{item_strloc} =l mul 8, #{i}\n"
+            code ..= "#{item_strloc} =l add #{item_strs}, #{item_strloc}\n"
+            code ..= "#{i} =l add #{i}, 1\n"
+            
+            item = @fresh_local "list.item"
+            code ..= "#{item} =l call $bl_list_nth(l #{reg}, l #{i})\n"
+            if t.item_type.abi_type == "d"
+                item2 = @fresh_local "list.item.float"
+                code ..= "#{item2} =d cast #{item}\n"
+                item = item2
 
-                item_str = append_reg item, t.item_type
-                code ..= "storel #{item_str}, #{item_strloc}\n"
-                code ..= "jmp #{loop_label}\n#{end_label}\n"
+            item_str = @fresh_local "item.string"
+            code ..= "#{item_str} =l call #{@get_tostring_fn t.item_type, scope}(#{t.item_type.base_type} #{item})\n"
 
-                chunks = @fresh_local "chunks"
-                chunk = @fresh_local "chunk"
-                code ..= "#{chunks} =l alloc8 #{8*3}\n"
-                code ..= "#{chunk} =l add #{chunks}, #{0*8}\n"
-                code ..= "storel #{@get_string_reg("[","sqbracket.open")}, #{chunk}\n"
-                content_str = @fresh_local "list.content.str"
-                code ..= "#{content_str} =l call $bl_string_join(l #{len}, l #{item_strs}, l #{@get_string_reg(", ", "comma.space")})\n"
-                code ..= "call $free(l #{item_strs})\n"
-                code ..= "#{chunk} =l add #{chunks}, #{1*8}\n"
-                code ..= "storel #{content_str}, #{chunk}\n"
-                code ..= "#{chunk} =l add #{chunks}, #{2*8}\n"
-                code ..= "storel #{@get_string_reg("]","sqbracket.close")}, #{chunk}\n"
-                code ..= "#{dest} =l call $bl_string_join(l 3, l #{chunks}, l 0)\n"
-            elseif t\is_a(Types.TableType)
-                len = @fresh_local "len"
-                code ..= "#{len} =l call $hashmap_length(l #{reg})\n"
+            code ..= "storel #{item_str}, #{item_strloc}\n"
+            code ..= "jmp #{loop_label}\n#{end_label}\n"
 
-                entry_strs = @fresh_local "entry.strings"
-                code ..= "#{entry_strs} =l call $calloc(l #{len}, l 8)\n"
-                chunk_ptr = @fresh_local "chunk.ptr"
-                code ..= "#{chunk_ptr} =l copy #{entry_strs}\n"
+            chunks = @fresh_local "chunks"
+            chunk = @fresh_local "chunk"
+            code ..= "#{chunks} =l alloc8 #{8*3}\n"
+            code ..= "#{chunk} =l add #{chunks}, #{0*8}\n"
+            code ..= "storel #{@get_string_reg("[","sqbracket.open")}, #{chunk}\n"
+            content_str = @fresh_local "list.content.str"
+            code ..= "#{content_str} =l call $bl_string_join(l #{len}, l #{item_strs}, l #{@get_string_reg(", ", "comma.space")})\n"
+            code ..= "call $free(l #{item_strs})\n"
+            code ..= "#{chunk} =l add #{chunks}, #{1*8}\n"
+            code ..= "storel #{content_str}, #{chunk}\n"
+            code ..= "#{chunk} =l add #{chunks}, #{2*8}\n"
+            code ..= "storel #{@get_string_reg("]","sqbracket.close")}, #{chunk}\n"
+            code ..= "#{dest} =l call $bl_string_join(l 3, l #{chunks}, l 0)\n"
+        elseif t\is_a(Types.TableType)
+            len = @fresh_local "len"
+            code ..= "#{len} =l call $hashmap_length(l #{reg})\n"
 
-                key = @fresh_local "key.raw"
-                code ..= "#{key} =l copy 0\n"
+            entry_strs = @fresh_local "entry.strings"
+            code ..= "#{entry_strs} =l call $calloc(l #{len}, l 8)\n"
+            chunk_ptr = @fresh_local "chunk.ptr"
+            code ..= "#{chunk_ptr} =l copy #{entry_strs}\n"
 
-                loop_label = @fresh_label "table.loop"
-                body_label = @fresh_label "table.loop.body"
-                end_label = @fresh_label "table.loop.end"
+            key = @fresh_local "key.raw"
+            code ..= "#{key} =l copy 0\n"
 
-                code ..= "jmp #{loop_label}\n#{loop_label}\n"
+            loop_label = @fresh_label "table.loop"
+            body_label = @fresh_label "table.loop.body"
+            end_label = @fresh_label "table.loop.end"
 
-                code ..= "#{key} =l call $hashmap_next(l #{reg}, l #{key})\n"
-                code ..= "jnz #{key}, #{body_label}, #{end_label}\n"
-                code ..= "#{body_label}\n"
+            code ..= "jmp #{loop_label}\n#{loop_label}\n"
 
-                entry_chunks = @fresh_local "entry.chunks"
-                code ..= "#{entry_chunks} =l alloc8 #{3*8}\n"
-                p = @fresh_local "p"
-                code ..= "#{p} =l copy #{entry_chunks}\n"
+            code ..= "#{key} =l call $hashmap_next(l #{reg}, l #{key})\n"
+            code ..= "jnz #{key}, #{body_label}, #{end_label}\n"
+            code ..= "#{body_label}\n"
 
-                key_reg = if t.key_type\is_a(Types.Int) or t.key_type\is_a(Types.Bool)
-                    tmp = @fresh_local "key.int"
-                    code ..= "#{tmp} =l xor #{key}, #{INT_NIL}\n"
-                    tmp
-                elseif t.key_type\is_a(Types.Num)
-                    bits = @fresh_local "key.bits"
-                    code ..= "#{bits} =l xor #{key}, #{FLOAT_NIL}\n"
-                    tmp2 = @fresh_local "key.float"
-                    code ..= "#{tmp2} =d cast #{bits}\n"
-                    tmp2
-                else
-                    key
-                
-                key_str = append_reg key_reg, t.key_type
-                code ..= "storel #{key_str}, #{p}\n"
-                code ..= "#{p} =l add #{p}, 8\n"
+            entry_chunks = @fresh_local "entry.chunks"
+            code ..= "#{entry_chunks} =l alloc8 #{3*8}\n"
+            p = @fresh_local "p"
+            code ..= "#{p} =l copy #{entry_chunks}\n"
 
-                code ..= "storel #{@get_string_reg "=", "equals"}, #{p}\n"
-                code ..= "#{p} =l add #{p}, 8\n"
-
-                value_raw = @fresh_local "value.raw"
-                code ..= "#{value_raw} =l call $hashmap_get(l #{reg}, l #{key})\n"
-                value_reg = if t.value_type\is_a(Types.Int) or t.value_type\is_a(Types.Bool)
-                    tmp = @fresh_local "value.int"
-                    code ..= "#{tmp} =l xor #{value_raw}, #{INT_NIL}\n"
-                    tmp
-                elseif t.value_type\is_a(Types.Num)
-                    bits = @fresh_local "value.bits"
-                    code ..= "#{bits} =l xor #{value_raw}, #{FLOAT_NIL}\n"
-                    tmp2 = @fresh_local "key.float"
-                    code ..= "#{tmp2} =d cast #{bits}\n"
-                    tmp2
-                else
-                    value_raw
-                
-                value_str = append_reg value_reg, t.value_type
-                code ..= "storel #{value_str}, #{p}\n"
-
-                entry_str = @fresh_local "entry.str"
-                code ..= "#{entry_str} =l call $bl_string_join(l 3, l #{entry_chunks}, l 0)\n"
-                code ..= "storel #{entry_str}, #{chunk_ptr}\n"
-                code ..= "#{chunk_ptr} =l add #{chunk_ptr}, 8\n"
-
-                code ..= "jmp #{loop_label}\n#{end_label}\n"
-
-                chunks = @fresh_local "chunks"
-                chunk = @fresh_local "chunk"
-                code ..= "#{chunks} =l alloc8 #{8*3}\n"
-                code ..= "#{chunk} =l add #{chunks}, #{0*8}\n"
-                code ..= "storel #{@get_string_reg("{","curly.open")}, #{chunk}\n"
-                content_str = @fresh_local "table.content.str"
-                code ..= "#{content_str} =l call $bl_string_join(l #{len}, l #{entry_strs}, l #{@get_string_reg(", ", "comma.space")})\n"
-                code ..= "call $free(l #{entry_strs})\n"
-                code ..= "#{chunk} =l add #{chunks}, #{1*8}\n"
-                code ..= "storel #{content_str}, #{chunk}\n"
-                code ..= "#{chunk} =l add #{chunks}, #{2*8}\n"
-                code ..= "storel #{@get_string_reg("}","curly.close")}, #{chunk}\n"
-                code ..= "#{dest} =l call $bl_string_join(l 3, l #{chunks}, l 0)\n"
-            elseif t\is_a(Types.StructType)
-                chunks = @fresh_local "chunks"
-                code ..= "#{chunks} =l alloc8 #{8*#t.members}\n"
-
-                for i,mem in ipairs t.members
-                    member_reg = @fresh_local "#{t\id_str!\lower!}.#{mem.name}"
-                    member_loc = @fresh_local "#{t\id_str!\lower!}.#{mem.name}.loc"
-                    code ..= "#{member_loc} =l add #{reg}, #{8*(i-1)}\n"
-                    code ..= "#{member_reg} =#{mem.type.abi_type} load#{mem.type.base_type} #{member_loc}\n"
-                    member_str = append_reg member_reg, mem.type
-                    if mem.name
-                        code ..= "#{member_str} =l call $bl_string_append_string(l #{@get_string_reg("#{mem.name}=")}, l #{member_str})\n"
-                    chunk_loc = @fresh_local "string.chunk.loc"
-                    code ..= "#{chunk_loc} =l add #{chunks}, #{8*(i-1)}\n"
-                    code ..= "storel #{member_str}, #{chunk_loc}\n"
-
-                final_chunks = @fresh_local "surrounding.chunks"
-                code ..= "#{final_chunks} =l alloc8 #{8*3}\n"
-                chunk_loc = @fresh_local "chunk.loc"
-                code ..= "#{chunk_loc} =l add #{final_chunks}, #{8*0}\n"
-                if t.name\match "^Tuple%.[0-9]+$"
-                    code ..= "storel #{@get_string_reg("{", "curly")}, #{chunk_loc}\n"
-                else
-                    code ..= "storel #{@get_string_reg("#{t.name}{", "#{t\id_str!}.name")}, #{chunk_loc}\n"
-                content = @fresh_local "struct.content"
-                code ..= "#{content} =l call $bl_string_join(l #{#t.members}, l #{chunks}, l #{@get_string_reg(", ", "comma.space")})\n"
-                code ..= "#{chunk_loc} =l add #{final_chunks}, #{8*1}\n"
-                code ..= "storel #{content}, #{chunk_loc}\n"
-                code ..= "#{chunk_loc} =l add #{final_chunks}, #{8*2}\n"
-                code ..= "storel #{@get_string_reg("}","closecurly")}, #{chunk_loc}\n"
-                code ..= "#{dest} =l call $bl_string_join(l 3, l #{final_chunks}, l 0)\n"
-            elseif t\is_a(Types.FnType)
-                code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("#{t}")})\n"
-            elseif t\is_a(Types.OptionalType)
-                nil_label = @fresh_label "optional.nil"
-                nonnil_label = @fresh_label "optional.nonnil"
-                end_label = @fresh_label "optional.end"
-                code ..= check_truthiness t, @, reg, nonnil_label, nil_label
-                code ..= "#{nil_label}\n"
-                code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("nil", "nil")})\n"
-                code ..= "jmp #{end_label}\n"
-                code ..= "#{nonnil_label}\n"
-                val = append_reg reg, t.nonnil
-                code ..= "#{dest} =l copy #{val}\n"
-                code ..= "jmp #{end_label}\n"
-                code ..= "#{end_label}\n"
+            key_reg = if t.key_type\is_a(Types.Int) or t.key_type\is_a(Types.Bool)
+                tmp = @fresh_local "key.int"
+                code ..= "#{tmp} =l xor #{key}, #{INT_NIL}\n"
+                tmp
+            elseif t.key_type\is_a(Types.Num)
+                bits = @fresh_local "key.bits"
+                code ..= "#{bits} =l xor #{key}, #{FLOAT_NIL}\n"
+                tmp2 = @fresh_local "key.float"
+                code ..= "#{tmp2} =d cast #{bits}\n"
+                tmp2
             else
-                error "Unsupported concat type: #{t}"
-            return dest
+                key
+            
+            key_str = @fresh_local "key.string"
+            code ..= "#{key_str} =l call #{@get_tostring_fn t.key_type, scope}(#{t.key_type.base_type} #{key_reg})\n"
+            code ..= "storel #{key_str}, #{p}\n"
+            code ..= "#{p} =l add #{p}, 8\n"
 
-        dest = append_reg varname, t
+            code ..= "storel #{@get_string_reg "=", "equals"}, #{p}\n"
+            code ..= "#{p} =l add #{p}, 8\n"
+
+            value_raw = @fresh_local "value.raw"
+            code ..= "#{value_raw} =l call $hashmap_get(l #{reg}, l #{key})\n"
+            value_reg = if t.value_type\is_a(Types.Int) or t.value_type\is_a(Types.Bool)
+                tmp = @fresh_local "value.int"
+                code ..= "#{tmp} =l xor #{value_raw}, #{INT_NIL}\n"
+                tmp
+            elseif t.value_type\is_a(Types.Num)
+                bits = @fresh_local "value.bits"
+                code ..= "#{bits} =l xor #{value_raw}, #{FLOAT_NIL}\n"
+                tmp2 = @fresh_local "key.float"
+                code ..= "#{tmp2} =d cast #{bits}\n"
+                tmp2
+            else
+                value_raw
+            
+            value_str = @fresh_local "value.string"
+            code ..= "#{value_str} =l call #{@get_tostring_fn t.value_type, scope}(#{t.value_type.base_type} #{value_reg})\n"
+            code ..= "storel #{value_str}, #{p}\n"
+
+            entry_str = @fresh_local "entry.str"
+            code ..= "#{entry_str} =l call $bl_string_join(l 3, l #{entry_chunks}, l 0)\n"
+            code ..= "storel #{entry_str}, #{chunk_ptr}\n"
+            code ..= "#{chunk_ptr} =l add #{chunk_ptr}, 8\n"
+
+            code ..= "jmp #{loop_label}\n#{end_label}\n"
+
+            chunks = @fresh_local "chunks"
+            chunk = @fresh_local "chunk"
+            code ..= "#{chunks} =l alloc8 #{8*3}\n"
+            code ..= "#{chunk} =l add #{chunks}, #{0*8}\n"
+            code ..= "storel #{@get_string_reg("{","curly.open")}, #{chunk}\n"
+            content_str = @fresh_local "table.content.str"
+            code ..= "#{content_str} =l call $bl_string_join(l #{len}, l #{entry_strs}, l #{@get_string_reg(", ", "comma.space")})\n"
+            code ..= "call $free(l #{entry_strs})\n"
+            code ..= "#{chunk} =l add #{chunks}, #{1*8}\n"
+            code ..= "storel #{content_str}, #{chunk}\n"
+            code ..= "#{chunk} =l add #{chunks}, #{2*8}\n"
+            code ..= "storel #{@get_string_reg("}","curly.close")}, #{chunk}\n"
+            code ..= "#{dest} =l call $bl_string_join(l 3, l #{chunks}, l 0)\n"
+        elseif t\is_a(Types.StructType)
+            chunks = @fresh_local "chunks"
+            code ..= "#{chunks} =l alloc8 #{8*#t.members}\n"
+
+            for i,mem in ipairs t.members
+                member_loc = @fresh_local "#{t\id_str!\lower!}.#{mem.name}.loc"
+                code ..= "#{member_loc} =l add #{reg}, #{8*(i-1)}\n"
+                member_reg = @fresh_local "#{t\id_str!\lower!}.#{mem.name}"
+                code ..= "#{member_reg} =#{mem.type.base_type} load#{mem.type.base_type} #{member_loc}\n"
+
+                member_str = @fresh_local "#{t\id_str!\lower!}.#{mem.name}.string"
+                code ..= "#{member_str} =l call #{@get_tostring_fn mem.type, scope}(#{mem.type.base_type} #{member_reg})\n"
+
+                if mem.name
+                    code ..= "#{member_str} =l call $bl_string_append_string(l #{@get_string_reg("#{mem.name}=")}, l #{member_str})\n"
+                chunk_loc = @fresh_local "string.chunk.loc"
+                code ..= "#{chunk_loc} =l add #{chunks}, #{8*(i-1)}\n"
+                code ..= "storel #{member_str}, #{chunk_loc}\n"
+
+            final_chunks = @fresh_local "surrounding.chunks"
+            code ..= "#{final_chunks} =l alloc8 #{8*3}\n"
+            chunk_loc = @fresh_local "chunk.loc"
+            code ..= "#{chunk_loc} =l add #{final_chunks}, #{8*0}\n"
+            if t.name\match "^Tuple%.[0-9]+$"
+                code ..= "storel #{@get_string_reg("{", "curly")}, #{chunk_loc}\n"
+            else
+                code ..= "storel #{@get_string_reg("#{t.name}{", "#{t\id_str!}.name")}, #{chunk_loc}\n"
+            content = @fresh_local "struct.content"
+            code ..= "#{content} =l call $bl_string_join(l #{#t.members}, l #{chunks}, l #{@get_string_reg(", ", "comma.space")})\n"
+            code ..= "#{chunk_loc} =l add #{final_chunks}, #{8*1}\n"
+            code ..= "storel #{content}, #{chunk_loc}\n"
+            code ..= "#{chunk_loc} =l add #{final_chunks}, #{8*2}\n"
+            code ..= "storel #{@get_string_reg("}","closecurly")}, #{chunk_loc}\n"
+            code ..= "#{dest} =l call $bl_string_join(l 3, l #{final_chunks}, l 0)\n"
+        elseif t\is_a(Types.FnType)
+            code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("#{t}")})\n"
+        elseif t\is_a(Types.OptionalType)
+            nil_label = @fresh_label "optional.nil"
+            nonnil_label = @fresh_label "optional.nonnil"
+            end_label = @fresh_label "optional.end"
+            code ..= check_truthiness t, @, reg, nonnil_label, nil_label
+            code ..= "#{nil_label}\n"
+            code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("nil", "nil")})\n"
+            code ..= "jmp #{end_label}\n"
+            code ..= "#{nonnil_label}\n"
+            code ..= "#{dest} =l call #{@get_tostring_fn t.nonnil, scope}(#{t.nonnil.base_type} #{reg})\n"
+            code ..= "jmp #{end_label}\n"
+            code ..= "#{end_label}\n"
+        else
+            error "Unsupported concat type: #{t}"
+
         code ..= "ret #{dest}\n"
         code ..= "}\n"
         code = code\gsub("[^\n]+", =>((@\match("^[@}]") or @\match("^function")) and @ or "  "..@))
@@ -450,7 +443,7 @@ class Environment
                 node_assert declared_structs[t.name] == t, s, "Struct declaration shadows"
                 continue
             declared_structs[t.name] = t
-            @type_code ..= "type :#{t.name} = {#{concat [m.type.abi_type for m in *t.members], ","}}\n"
+            @type_code ..= "type :#{t.name} = {#{concat [m.type.base_type for m in *t.members], ","}}\n"
 
         @used_names["%__argc"] = true
         @used_names["%argc"] = true

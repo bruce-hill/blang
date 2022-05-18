@@ -46,12 +46,25 @@ class FnType extends Type
     arg_signature: => "(#{concat ["#{a}" for a in *@arg_types], ","})"
 
 class StructType extends Type
-    new: (@name, @members)=> -- Members: {{type=t, name="Foo"}, {type=t2, name="Baz"}, ...}
+    new: (@name, members)=> -- Members: {{type=t, name="Foo"}, {type=t2, name="Baz"}, ...}
         @members_by_name = {}
+        @set_members(members) if members
+        @abi_type = ":#{@name}"
+    set_members: (@members)=>
         for i,m in ipairs @members
             @members_by_name[m.name] = {index: i, type: m.type} if m.name
-        @abi_type = ":#{@name}"
-    __tostring: => "#{@name}{#{concat ["#{m.name and m.name..':' or ''}#{m.type}" for m in *@members], ","}}"
+    __tostring: => "#{@name}"
+        -- if @members
+        --     mem_strs = {}
+        --     for m in *@members
+        --         t_str = if m.type.__class == StructType
+        --             m.type.name
+        --         else
+        --             "#{m.type}"
+        --         table.insert mem_strs, "#{m.name and m.name..':' or ''}#{m.type}"
+        --     "#{@name}{#{concat mem_strs, ","}}"
+        -- else
+        --     "#{@name}"
     id_str: => "#{@name}"
     __eq: Type.__eq
 
@@ -179,6 +192,11 @@ parse_type = memoize (type_node)->
         when "NamedType"
             if primitive_types[type_node[0]]
                 return primitive_types[type_node[0]]
+            tmp = type_node.__parent
+            while tmp
+                if tmp.__tag == "StructType" and tmp.name[0] == type_node[0] and tmp.__type
+                    return tmp.__type
+                tmp = tmp.__parent
             alias = find_type_alias type_node, type_node[0]
             node_assert alias, type_node, "Undefined type"
             return alias
@@ -195,9 +213,12 @@ parse_type = memoize (type_node)->
             arg_types = [parse_type(a) for a in *type_node.args]
             return FnType(arg_types, parse_type(type_node.return))
         when "StructType"
-            return StructType(type_node.name[0], [{name:m.name[0], type: parse_type(m.type)} for m in *type_node.members])
+            t = StructType(type_node.name[0])
+            type_node.__type = t
+            t\set_members [{name: m.name[0], type: parse_type(m.type)} for m in *type_node.members]
+            return t
         when "OptionalType"
-            t = parse_type(type_node.nonnil)
+            t = parse_type(type_node.nonnil, override_names)
             return OptionalType(t)
         else
             error "Not a type node: #{viz type_node}"

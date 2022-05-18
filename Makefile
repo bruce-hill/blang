@@ -4,7 +4,7 @@ CFLAGS=-std=c99 -Werror -D_XOPEN_SOURCE=700 -D_POSIX_C_SOURCE=200809L -flto -D_G
 CWARN=-Wall -Wextra
 EXTRA=
 G=-ggdb
-O=-O3
+O=-O0
 LIBS=-lm -lbhash
 ALL_FLAGS=$(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(LIBS)
 
