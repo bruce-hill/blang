@@ -289,7 +289,7 @@ get_type = memoize (node)->
             return TableType(key_type, value_type)
         when "IndexedTerm"
             t = get_type node.value
-            is_optional = t\is_a(OptionalType)
+            is_optional = t\is_a(OptionalType) and t != Nil
             t = t.nonnil if is_optional
             if t\is_a(ListType)
                 index_type = get_type(node.index, vars)
@@ -325,7 +325,7 @@ get_type = memoize (node)->
                 else
                     node_error node.index, "Strings can only be indexed by Ints or Ranges"
             else
-                print_err node, "Indexing is only valid on structs and lists, not #{t}"
+                print_err node.value, "Indexing is not valid on type #{t}"
         when "And","Or","Xor"
             all_bools = true
             maybe_nil = false

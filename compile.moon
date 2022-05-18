@@ -742,7 +742,7 @@ expr_compilers =
         return ret, code
     IndexedTerm: (env)=>
         t = get_type @value
-        is_optional = t\is_a(Types.OptionalType)
+        is_optional = t\is_a(Types.OptionalType) and t != Types.Nil
         t = t.nonnil if is_optional
         nil_guard = (check_reg, output_reg, get_nonnil_code)->
             unless is_optional
@@ -862,7 +862,7 @@ expr_compilers =
             else
                 node_error @index, "Index is #{index_type} instead of Int or Range"
         else
-            node_error @value, "Indexing is only valid on lists, strings, range and structs, not #{t}"
+            node_error @value, "Indexing is not valid on type #{t}"
     List: (env)=>
         if #@ == 0
             list = env\fresh_local "list.empty"
