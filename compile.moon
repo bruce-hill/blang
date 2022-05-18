@@ -754,9 +754,9 @@ expr_compilers =
             code ..= get_nonnil_code!
             code ..= "jmp #{done}\n"
             code ..= "#{ifnil}\n"
-            if t.nonnil\is_a(Types.Int) or t.nonnil\is_a(Types.Bool)
+            if t\is_a(Types.Int) or t\is_a(Types.Bool)
                 code ..= "#{output_reg} =l copy #{INT_NIL}\n"
-            elseif t.nonnil\is_a(Types.Num) or t.nonnil.base_type == "d"
+            elseif t\is_a(Types.Num) or t.base_type == "d"
                 code ..= "#{output_reg} =d copy #{FLOAT_NIL}\n"
             else
                 code ..= "#{output_reg} =l copy 0\n"
