@@ -325,7 +325,7 @@ get_type = memoize (node)->
                 else
                     node_error node.index, "Strings can only be indexed by Ints or Ranges"
             else
-                print_err node.value, "Indexing is not valid on type #{t}"
+                node_error node.value, "Indexing is not valid on type #{t}"
         when "And","Or","Xor"
             all_bools = true
             maybe_nil = false
