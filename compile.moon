@@ -226,7 +226,7 @@ class Environment
             code ..= "#{len} =l call $bl_list_len(l #{reg})\n"
 
             item_strs = @fresh_local "item.strings"
-            code ..= "#{item_strs} =l call $calloc(l #{len}, l 8)\n"
+            code ..= "#{item_strs} =l call $gc_calloc(l 8, l #{len})\n"
 
             i = @fresh_local "i"
             code ..= "#{i} =l copy 0\n"
@@ -265,7 +265,7 @@ class Environment
             code ..= "storel #{@get_string_reg("[","sqbracket.open")}, #{chunk}\n"
             content_str = @fresh_local "list.content.str"
             code ..= "#{content_str} =l call $bl_string_join(l #{len}, l #{item_strs}, l #{@get_string_reg(", ", "comma.space")})\n"
-            code ..= "call $free(l #{item_strs})\n"
+            code ..= "call $gc_free(l #{item_strs})\n"
             code ..= "#{chunk} =l add #{chunks}, #{1*8}\n"
             code ..= "storel #{content_str}, #{chunk}\n"
             code ..= "#{chunk} =l add #{chunks}, #{2*8}\n"
@@ -276,7 +276,7 @@ class Environment
             code ..= "#{len} =l call $hashmap_length(l #{reg})\n"
 
             entry_strs = @fresh_local "entry.strings"
-            code ..= "#{entry_strs} =l call $calloc(l #{len}, l 8)\n"
+            code ..= "#{entry_strs} =l call $gc_calloc(l 8, l #{len})\n"
             chunk_ptr = @fresh_local "chunk.ptr"
             code ..= "#{chunk_ptr} =l copy #{entry_strs}\n"
 
@@ -352,7 +352,7 @@ class Environment
             code ..= "storel #{@get_string_reg("{","curly.open")}, #{chunk}\n"
             content_str = @fresh_local "table.content.str"
             code ..= "#{content_str} =l call $bl_string_join(l #{len}, l #{entry_strs}, l #{@get_string_reg(", ", "comma.space")})\n"
-            code ..= "call $free(l #{entry_strs})\n"
+            code ..= "call $gc_free(l #{entry_strs})\n"
             code ..= "#{chunk} =l add #{chunks}, #{1*8}\n"
             code ..= "storel #{content_str}, #{chunk}\n"
             code ..= "#{chunk} =l add #{chunks}, #{2*8}\n"
@@ -980,7 +980,7 @@ expr_compilers =
             "Nil cannot be stored in a table, but this table is #{t}"
 
         tab = env\fresh_local "table.empty"
-        code = "#{tab} =l call $hashmap_new(l 0)\n"
+        code = "#{tab} =l call $gc_hashmap_new(l 0)\n"
 
         if #@ == 0
             return tab, code

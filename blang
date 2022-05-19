@@ -69,7 +69,7 @@ run_file = (filename, file, temporary=true)->
         log "\x1b[2mRunning QBE...\x1b[m"
         run "qbe #{qbe_file} > #{asm_file}"
         log "\x1b[2mCompiling assembly...\x1b[m"
-        run "cc #{asm_file} lib/*.o -ggdb -o #{bin_file} -lm -lbhash -lbp"
+        run "cc #{asm_file} lib/*.o -ggdb -o #{bin_file} -lm -lbhash -lbp -lgc"
 
         if compile
             print "Compiled to #{bin_file}"

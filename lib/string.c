@@ -1,15 +1,16 @@
+#include <assert.h>
 #include <bhash.h>
-#include <bp/pattern.h>
 #include <bp/match.h>
+#include <bp/pattern.h>
 #include <bp/printmatch.h>
 #include <ctype.h>
+#include <err.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/param.h>
 
 #include "types.h"
-#include "util.h"
 
 #define RETURN_FMT(fmt, ...) do { char *ret = NULL; int status = asprintf(&ret, fmt, __VA_ARGS__); if (status < 0) err(1, "string formatting failed"); return intern_str_transfer(ret); } while(0)
 
@@ -45,6 +46,7 @@ char *bl_string_join(int64_t count, char **strings, char *sep) {
         size_t chunklen = strlen(str);
         if (len + chunklen > maxlen) {
             buf = realloc(buf, 1+(maxlen += MAX(chunklen, 10)));
+            assert(buf);
         }
         memcpy(&buf[len], str, chunklen);
         len += chunklen;
@@ -52,6 +54,7 @@ char *bl_string_join(int64_t count, char **strings, char *sep) {
         if (sep && i < count - 1) {
             if (len + seplen > maxlen) {
                 buf = realloc(buf, 1+(maxlen += MAX(seplen, 10)));
+                assert(buf);
             }
             memcpy(&buf[len], sep, seplen);
             len += seplen;
@@ -95,7 +98,8 @@ char *bl_string_slice(char *s, range_t *r) {
     int64_t slice_len = 0;
     for (int64_t i = first; step > 0 ? i <= last : i >= last; i += step)
         ++slice_len;
-    char *buf = calloc2(slice_len+1, 1);
+    char *buf = calloc(slice_len+1, 1);
+    assert(buf);
     for (int64_t i = first, b_i = 0; step > 0 ? i <= last : i >= last; i += step)
         buf[b_i++] = s[i];
     return intern_str_transfer(buf);
@@ -126,7 +130,8 @@ int64_t bl_string_nth_char(char *s, int64_t n) {
 char *bl_string_repeat(char *s, int64_t count) {
     if (count <= 0) return intern_str("");
     size_t len = strlen(s);
-    char *buf = calloc2(len*count + 1, 1);
+    char *buf = calloc(len*count + 1, 1);
+    assert(buf);
     char *p = buf;
     for (int64_t i = 0; i < count; i++) {
         memcpy(p, s, len);

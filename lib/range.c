@@ -1,14 +1,13 @@
-#include <bhash.h>
-
 #include <stdint.h>
+
 #include "types.h"
-#include "util.h"
+#include "gc.h"
 
 int64_t RANGE_MIN = -999999999999999999;
 int64_t RANGE_MAX = +999999999999999999;
 
 range_t *range_new(int64_t first, int64_t next, int64_t last) {
-    range_t *r = calloc2(1, sizeof(range_t));
+    range_t *r = gc_alloc(sizeof(range_t));
     r->first = first;
     r->next = next;
     if (next != first && last != first) {
@@ -16,23 +15,23 @@ range_t *range_new(int64_t first, int64_t next, int64_t last) {
         last = first + len * (next - first);
     }
     r->last = last;
-    return (range_t*)intern_bytes_transfer((char*)r, sizeof(range_t));
+    return r;
 }
 
 range_t *range_new_first_last(int64_t first, int64_t last) {
-    range_t *r = calloc2(1, sizeof(range_t));
+    range_t *r = gc_alloc(sizeof(range_t));
     r->first = first;
     r->next = first <= last ? first+1 : first-1;
     r->last = last;
-    return (range_t*)intern_bytes_transfer((char*)r, sizeof(range_t));
+    return r;
 }
 
 range_t *range_new_first_next(int64_t first, int64_t next) {
-    range_t *r = calloc2(1, sizeof(range_t));
+    range_t *r = gc_alloc(sizeof(range_t));
     r->first = first;
     r->next = next;
     r->last = next >= first ? RANGE_MAX : RANGE_MIN;
-    return (range_t*)intern_bytes_transfer((char*)r, sizeof(range_t));
+    return r;
 }
 
 int64_t range_len(range_t *r) {
