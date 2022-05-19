@@ -319,7 +319,7 @@ get_type = memoize (node)->
             elseif t\is_a(String)
                 index_type = get_type(node.index, vars)
                 if index_type == Int
-                    return Int
+                    return OptionalType(Int)
                 elseif index_type == Range
                     return t
                 else

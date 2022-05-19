@@ -12,6 +12,8 @@
 
 #include "types.h"
 
+static const int64_t INT_NIL = 0x7FFFFFFFFFFFFFFF;
+
 #define RETURN_FMT(fmt, ...) do { char *ret = NULL; int status = asprintf(&ret, fmt, __VA_ARGS__); if (status < 0) err(1, "string formatting failed"); return intern_str_transfer(ret); } while(0)
 
 char *bl_string(char *s) { return intern_str(s); }
@@ -121,10 +123,10 @@ char *bl_string_lower(char *s) {
 
 int64_t bl_string_nth_char(char *s, int64_t n) {
     --n;
-    if (n < 0) return -1;
+    if (n < 0) return INT_NIL;
     int64_t len = (int64_t)strlen(s);
-    if (n > len) return -1;
-    return s[n];
+    if (n > len) return INT_NIL;
+    return (int64_t)s[n];
 }
 
 char *bl_string_repeat(char *s, int64_t count) {

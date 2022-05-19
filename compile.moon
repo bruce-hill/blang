@@ -117,10 +117,10 @@ check_truthiness = (t, env, reg, truthy_label, falsey_label)->
     elseif t\is_a(Types.Nil)
         return "jmp #{falsey_label}\n"
     elseif t\is_a(Types.OptionalType)
-        if t.nonnil\is_a(Types.Int) or t.nonnil\is_a(Types.Bool)
+        if t.nonnil\is_a(Types.Bool)
             tmp = env\fresh_local "is.true"
             return "#{tmp} =l ceql #{reg}, 1\njnz #{tmp}, #{truthy_label}, #{falsey_label}\n"
-        elseif t.nonnil\is_a(Types.Int) or t.nonnil\is_a(Types.Bool)
+        elseif t.nonnil\is_a(Types.Int)
             tmp = env\fresh_local "is.nonnil"
             return "#{tmp} =l cnel #{reg}, #{INT_NIL}\njnz #{tmp}, #{truthy_label}, #{falsey_label}\n"
         elseif t.nonnil\is_a(Types.Num)
