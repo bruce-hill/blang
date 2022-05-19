@@ -131,6 +131,22 @@ check_truthiness = (t, env, reg, truthy_label, falsey_label)->
     else
         return "jmp #{truthy_label}\n"
 
+check_nil = (t, env, reg, nonnil_label, nil_label)->
+    if t == Types.Nil
+        return "jmp #{nil_label}\n"
+    elseif not t\is_a(Types.OptionalType)
+        return "jmp #{nonnil_label}\n"
+    else
+        if t.nonnil\is_a(Types.Bool) or t.nonnil\is_a(Types.Int)
+            tmp = env\fresh_local "is.nonnil"
+            return "#{tmp} =l cnel #{reg}, #{INT_NIL}\njnz #{tmp}, #{nonnil_label}, #{nil_label}\n"
+        elseif t.nonnil\is_a(Types.Num)
+            tmp = env\fresh_local "is.nonnil"
+            return "#{tmp} =l cod #{reg}, d_0.0 # Test for NaN\njnz #{tmp}, #{nonnil_label}, #{nil_label}\n"
+        else
+            return "jnz #{reg}, #{nil_label}, #{nonnil_label}\n"
+        return "jmp #{truthy_label}\n"
+
 class Environment
     new: =>
         @strings = {}
@@ -1290,7 +1306,7 @@ expr_compilers =
                 val_reg,val_code = env\to_reg val
                 code ..= val_code
                 m_t = get_type val
-                code ..= "store#{m_t.base_type} #{val_reg}, #{p}\n"
+                code ..= "store#{m_t.base_type} #{val_reg}, #{p} #xxx\n"
         code ..= "#{ret} =l call $intern_bytes(l #{ret}, l #{struct_size})\n"
         return ret, code
 
@@ -1328,10 +1344,6 @@ stmt_compilers =
         t = get_type(@lhs.value)
         is_optional = t\is_a(Types.OptionalType)
         t = t.nonnil if is_optional
-        checknil = (reg,code)->
-            ifnonnil = env\fresh_label "if.nonnil"
-            done = env\fresh_label "if.nonnil.done"
-            return "jnz #{reg}, #{ifnonnil}, #{done}\n#{ifnonnil}\n#{code}jmp #{done}\n#{done}\n"
         if t\is_a(Types.ListType)
             index_type = get_type(@lhs.index)
             list_reg,list_code = env\to_reg @lhs.value
@@ -1343,7 +1355,12 @@ stmt_compilers =
                     rhs_casted = env\fresh_local "list.item.float"
                     code ..= "#{rhs_casted} =d cast #{rhs_reg}\n"
                     rhs_reg = rhs_casted
-                code ..= checknil list_reg, "call $bl_list_set_nth(l #{list_reg}, l #{index_reg}, l #{rhs_reg})\n"
+                nonnil_label, end_label = env\fresh_label("if.nonnil"), env\fresh_label("if.nonnil.done")
+                code ..= check_nil get_type(@lhs.value), env, list_reg, nonnil_label, end_label
+                code ..= "#{nonnil_label}\n"
+                code ..= "call $bl_list_set_nth(l #{list_reg}, l #{index_reg}, l #{rhs_reg})\n"
+                code ..= "jmp #{end_label}\n"
+                code ..= "#{end_label}\n"
                 return code
             elseif index_type\is_a(Types.Range)
                 node_error @lhs.index, "Assigning to list slices is not supported."
@@ -1371,7 +1388,14 @@ stmt_compilers =
             convert_nils t.key_type, key_reg, key_setter
             value_setter = env\fresh_local "value.setter"
             convert_nils t.value_type, val_reg, value_setter
-            code ..= checknil tab_reg, "call $hashmap_set(l #{tab_reg}, l #{key_setter}, l #{value_setter})\n"
+
+            nonnil_label, end_label = env\fresh_label("if.nonnil"), env\fresh_label("if.nonnil.done")
+            code ..= check_nil get_type(@lhs.value), env, tab_reg, nonnil_label, end_label
+            code ..= "#{nonnil_label}\n"
+            code ..= "call $hashmap_set(l #{tab_reg}, l #{key_setter}, l #{value_setter})\n"
+            code ..= "jmp #{end_label}\n"
+            code ..= "#{end_label}\n"
+
             return code
         elseif t\is_a(Types.StructType)
             i,member_type = if @lhs.index.__tag == "FieldName"
@@ -1386,7 +1410,17 @@ stmt_compilers =
                 node_error @lhs.index, "Structs can only be indexed by a field name or Int literal"
             struct_reg,code = env\to_reg @lhs.value
             loc = env\fresh_local "member.loc"
-            code ..= checknil struct_reg, "#{loc} =l add #{struct_reg}, #{8*(i-1)}\nstore#{rhs_type.base_type} #{rhs_reg}, #{loc}\n"
+            rhs_reg,rhs_code = env\to_reg @rhs
+            code ..= rhs_code
+
+            nonnil_label, end_label = env\fresh_label("if.nonnil"), env\fresh_label("if.nonnil.done")
+            code ..= check_nil get_type(@lhs.value), env, struct_reg, nonnil_label, end_label
+            code ..= "#{nonnil_label}\n"
+            code ..= "#{loc} =l add #{struct_reg}, #{8*(i-1)}\n"
+            code ..= "store#{rhs_type.base_type} #{rhs_reg}, #{loc}\n"
+            code ..= "jmp #{end_label}\n"
+            code ..= "#{end_label}\n"
+
             return code
         else
             node_error @lhs.value, "Only Lists and Structs are mutable, not #{t}"
