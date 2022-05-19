@@ -16,14 +16,6 @@ list_t *bl_list_new(int64_t nitems, int64_t *items) {
     return list;
 }
 
-void bl_list_free(list_t *list) {
-    if (list->items) {
-        gc_free(list->items);
-        list->items = NULL;
-    }
-    gc_free(list);
-}
-
 void bl_list_append(list_t *list, int64_t item) {
     list->items = gc_realloc(list->items, (list->len+1)*sizeof(int64_t));
     list->items[list->len++] = item;
