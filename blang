@@ -2,8 +2,6 @@
 util = require 'util'
 import log, viz, set_file from util
 
--- builtins = io.open("lib/builtins.bl")\read("*a").."\n"
-
 number_code = (code, color="1")->
     line = 0
     (code\gsub("\n$","")\gsub "[^\n]*", =>
@@ -12,13 +10,10 @@ number_code = (code, color="1")->
     )
 
 verbose = false
-compile = false
 files, args = {}, {}
 for i,a in ipairs arg
     if a == "-v" or a == "--verbose"
         verbose = true
-    elseif a == "-c" or a == "--compile"
-        compile = true
     elseif a == "--"
         args = {table.unpack(arg, i+1, #arg)}
         break
@@ -34,55 +29,24 @@ import compile_prog from require 'compile'
 
 mktemp = (suffix)-> io.popen("mktemp --suffix=#{suffix} /tmp/blang.XXXXXX")\read("l")
 
-run_file = (filename, file, temporary=true)->
+run = (cmd)->
+    log "> \x1b[1m#{cmd}\x1b[m"
+    success,how,what = os.execute cmd
+    if not success
+        log "\x1b[31;1mCommand `#{cmd}` #{how}ed: #{what}\x1b[m"
+        os.exit(1)
+
+run_file = (filename)->
     log "\x1b[1;4mFile #{filename}\x1b[m"
-    with file
-        text = \read "*a"
-        -- text = builtins..text
-        set_file filename, text
-        log number_code(text, "34;1")
-        ast = parse text, filename
-        assert ast, "No match!"
-        ast = ast[1]
-        log "#{viz ast}"
-
-        code = compile_prog ast, filename
-
-        log number_code(code, "36;1")
-
-        qbe_file,asm_file,bin_file = if temporary
-            mktemp(".qbe"), mktemp(".s"), mktemp(".o")
-        else
-            filename..".qbe", filename..".s", filename..".o"
-
-        with io.open qbe_file, "w"
-            \write code
-            \close!
-
-        run = (cmd)->
-            log "> \x1b[1m#{cmd}\x1b[m"
-            success,how,what = os.execute cmd
-            if not success
-                log "\x1b[31;1mCommand `#{cmd}` #{how}ed: #{what}\x1b[m"
-                os.exit(1)
-
-        log "\x1b[2mRunning QBE...\x1b[m"
-        run "qbe #{qbe_file} > #{asm_file}"
-        log "\x1b[2mCompiling assembly...\x1b[m"
-        run "cc #{asm_file} lib/*.o -ggdb -o #{bin_file} -lm -lbhash -lbp -lgc"
-
-        if compile
-            print "Compiled to #{bin_file}"
-        else
-            log "\x1b[2mRunning program:\x1b[m"
-            exec_path = bin_file\match("^/") and bin_file or "./"..bin_file
-            run "#{exec_path} #{table.concat args, " "}"
-            os.execute "rm -f \"#{qbe_file}\" \"#{asm_file}\" \"#{bin_file}\""
-
-        \close! unless file == io.stdin
+    qbe_file,asm_file,bin_file = mktemp(".qbe"), mktemp(".s"), mktemp(".o")
+    run "./blangc #{verbose and "-v" or ""} -q #{qbe_file} -a #{asm_file} -o #{bin_file} #{filename}"
+    log "\x1b[2mRunning program:\x1b[m"
+    exec_path = bin_file\match("^/") and bin_file or "./"..bin_file
+    run "#{exec_path} #{table.concat args, " "}"
+    os.execute "rm -f \"#{qbe_file}\" \"#{asm_file}\" \"#{bin_file}\""
 
 if #files == 0
-    run_file "stdin", io.stdin, true
+    run_file "stdin", io.stdin
 
 for filename in *files
-    run_file filename, assert(io.open(filename), "Couldn't open file: #{filename}"), not compile
+    run_file filename

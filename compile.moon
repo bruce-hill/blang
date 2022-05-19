@@ -451,7 +451,7 @@ class Environment
         node_assert stmt_compilers[node.__tag], node, "Not implemented: #{node.__tag}"
         return stmt_compilers[node.__tag](node, @)
 
-    compile_program: (ast, filename)=>
+    compile_program: (ast, filename, main_name="main")=>
         add_parenting(ast)
 
         @type_code = "type :Range = {l,l,l}\n"
@@ -557,7 +557,7 @@ class Environment
         code ..= "#{@type_code}\n" if #@type_code > 0
         code ..= "#{@string_code}\n" if #@string_code > 0
         code ..= "#{@fn_code}\n" if #@fn_code > 0
-        code ..= "export function w $main(w %__argc, l %__argv) {\n"
+        code ..= "export function w $#{main_name}(w %__argc, l %__argv) {\n"
         code ..= "@start\n"
         code ..= "  %argc =l extsw %__argc\n"
         code ..= "  %argv =l call $bl_list_new(l %argc, l %__argv)\n"
@@ -1877,8 +1877,8 @@ stmt_compilers =
         code ..= "#{end_label}\n"
         return code
         
-compile_prog = (ast, filename)->
+compile_prog = (ast, filename, main_name="main")->
     env = Environment!
-    return env\compile_program(ast, filename)
+    return env\compile_program(ast, filename, main_name)
 
 return {:compile_prog}

@@ -1,6 +1,6 @@
 
 def sqr(self:Num):Num
-    return self*self
+    return self*self or fail
 
 x := 5.
 s := x|sqr
