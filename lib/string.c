@@ -64,9 +64,9 @@ char *bl_string_join(int64_t count, char **strings, char *sep) {
     }
     if (buf) {
         buf[len++] = '\0';
-        return intern_bytes_transfer(buf, len);
+        return intern_str_transfer(buf);
     } else {
-        return intern_bytes("", 1);
+        return intern_str("");
 
     }
 }
@@ -167,7 +167,7 @@ char *bl_string_replace(char *text, char *pat_text, char *rep_text) {
     }
     fwrite(prev, sizeof(char), (size_t)(&text[textlen] - prev) + 1, out);
     fflush(out);
-    char *replaced = buf ? intern_bytes(buf, size) : intern_str("");
+    char *replaced = buf ? intern_str(buf) : intern_str("");
     fclose(out);
     return replaced;
 }
@@ -189,7 +189,19 @@ char *bl_string_match(char *text, char *pat_text) {
         break;
     }
     fflush(out);
-    char *match = buf ? intern_bytes(buf, size) : intern_str("");
+    char *match = buf ? intern_str(buf) : intern_str("");
     fclose(out);
     return match;
+}
+
+char *bl_ask(char *prompt) {
+    printf("%s", prompt);
+    char *line = NULL;
+    size_t capacity = 0;
+    ssize_t len = getline(&line, &capacity, stdin);
+    if (len < 0 || !line)
+        return NULL;
+    if (len > 1 && line[len-1] == '\n')
+        line[--len] = '\0';
+    return intern_str_transfer(line);
 }

@@ -63,6 +63,8 @@ get_function_reg = (scope, name, signature)->
     
     return get_function_reg(scope.__parent, name, signature)
 
+nonnil_eq = (t1, t2)-> (t1.nonnil or t1) == (t2.nonnil or t2)
+
 infixop = (env, op)=>
     assert @lhs and @rhs, "Infix node doesn't have lhs/rhs: #{viz @}"
     t = get_type @lhs
@@ -71,7 +73,7 @@ infixop = (env, op)=>
     ret_reg = env\fresh_local "result"
     rhs = @rhs
     rhs_type = get_type rhs
-    node_assert rhs_type == t, rhs, "Expected type: #{t} but got type #{rhs_type}"
+    node_assert nonnil_eq(rhs_type, t), rhs, "Expected type: #{t} but got type #{rhs_type}"
     rhs_reg, rhs_code = env\to_reg rhs
     code ..= rhs_code
     if type(op) == 'string'
@@ -116,6 +118,9 @@ check_truthiness = (t, env, reg, truthy_label, falsey_label)->
         return "jnz #{reg}, #{truthy_label}, #{falsey_label}\n"
     elseif t\is_a(Types.Nil)
         return "jmp #{falsey_label}\n"
+    elseif t\is_a(Types.Num) and t.base_type == "d"
+        tmp = env\fresh_local "is.nonnil"
+        return "#{tmp} =l cod #{reg}, d_0.0 # Test for NaN\njnz #{tmp}, #{truthy_label}, #{falsey_label}\n"
     elseif t\is_a(Types.OptionalType)
         if t.nonnil\is_a(Types.Bool)
             tmp = env\fresh_local "is.true"
@@ -624,7 +629,10 @@ expr_compilers =
         code ..= "#{c} =#{t.abi_type} cast #{reg}\n"
         return c,code
     String: (env)=>
-        return env\get_string_reg(@content[0]),"" if #@content == 0
+        str = env\fresh_local "str"
+        if #@content == 0
+            code = "#{str} =l call $bl_string(l #{env\get_string_reg(@content[0])})\n"
+            return str, code
 
         chunks = {}
         i = @content.start
@@ -659,14 +667,16 @@ expr_compilers =
                     interp_reg
                 code ..= "storel #{interp_reg}, #{chunk_loc}\n"
                 
-        str = env\fresh_local "str"
         code ..= "#{str} =l call $bl_string_join(l #{#chunks}, l #{chunks_reg}, l 0)\n"
         return str,code
 
     DSL: (env)=>
         content = @string.content
-        return env\get_string_reg(content[0]),"" if #content == 0
         str = env\fresh_local "str"
+        if #content == 0
+            code = "#{str} =l call $bl_string(l #{env\get_string_reg(content[0])})\n"
+            return str, code
+
         code = "#{str} =l call $bl_string(l #{env\get_string_reg("", "emptystr")})\n"
         dsl_type = get_type(@)
 
@@ -751,10 +761,17 @@ expr_compilers =
         else
             node_error @, "Expected List or Range type, not #{t}"
     Not: (env)=>
-        node_assert get_type(@value)\is_a(Types.Bool), @value, "Expected a Bool"
+        t = get_type(@value)
         b,code = env\to_reg @value
         ret = env\fresh_local "not"
-        code ..= "#{ret} =l ceql #{b}, 0\n"
+        if t\is_a(Types.OptionalType) and t != Types.Nil and t.nonnil\is_a(Types.Int)
+            code ..= "#{ret} =l ceql #{b}, #{INT_NIL}\n"
+        elseif t\is_a(Types.OptionalType) and t != Types.Nil and t.nonnil\is_a(Types.Num)
+            code ..= "#{ret} =l cuod #{reg}, d_0.0 # Test for NaN\n"
+        elseif t\is_a(Types.Bool)
+            code ..= "#{ret} =l cnel #{b}, 1\n"
+        else
+            code ..= "#{ret} =l ceql #{b}, 0\n"
         return ret, code
     IndexedTerm: (env)=>
         t = get_type @value
@@ -1014,7 +1031,7 @@ expr_compilers =
             key_reg,key_code = env\to_reg entry.key
             code ..= key_code
             value_reg,value_code = env\to_reg entry.value
-            code ..= key_code
+            code ..= value_code
 
             key_setter = env\fresh_local "key.setter"
             convert_nils t.key_type, key_reg, key_setter
@@ -1089,7 +1106,7 @@ expr_compilers =
         return infixop @, env, "xor"
     Add: (env)=>
         t_lhs,t_rhs = get_type(@lhs),get_type(@rhs)
-        if t_lhs == t_rhs and (t_lhs\is_a(Types.Int) or t_lhs\is_a(Types.Num))
+        if nonnil_eq(t_lhs, t_rhs) and ((t_lhs.nonnil or t_lhs)\is_a(Types.Int) or (t_lhs.nonnil or t_lhs)\is_a(Types.Num))
             return infixop @, env, "add"
         elseif t_lhs == t_rhs and t_lhs\is_a(Types.String)
             return infixop @, env, (ret,lhs,rhs)->
@@ -1102,25 +1119,25 @@ expr_compilers =
 
     Sub: (env)=>
         t_lhs,t_rhs = get_type(@lhs),get_type(@rhs)
-        if t_lhs == t_rhs and (t_lhs\is_a(Types.Int) or t_lhs\is_a(Types.Num))
+        if nonnil_eq(t_lhs, t_rhs) and ((t_lhs.nonnil or t_lhs)\is_a(Types.Int) or (t_lhs.nonnil or t_lhs)\is_a(Types.Num))
             return infixop @, env, "sub"
         else
             return overload_infix @, env, "subtract", "difference"
     Mul: (env)=>
         t_lhs,t_rhs = get_type(@lhs),get_type(@rhs)
-        if t_lhs == t_rhs and (t_lhs\is_a(Types.Int) or t_lhs\is_a(Types.Num))
+        if nonnil_eq(t_lhs, t_rhs) and ((t_lhs.nonnil or t_lhs)\is_a(Types.Int) or (t_lhs.nonnil or t_lhs)\is_a(Types.Num))
             return infixop @, env, "mul"
         else
             return overload_infix @, env, "multiply", "product"
     Div: (env)=>
         t_lhs,t_rhs = get_type(@lhs),get_type(@rhs)
-        if t_lhs == t_rhs and (t_lhs\is_a(Types.Int) or t_lhs\is_a(Types.Num))
+        if nonnil_eq(t_lhs, t_rhs) and ((t_lhs.nonnil or t_lhs)\is_a(Types.Int) or (t_lhs.nonnil or t_lhs)\is_a(Types.Num))
             return infixop @, env, "div"
         else
             return overload_infix @, env, "divide", "quotient"
     Mod: (env)=>
         t = get_type(@)
-        if t\is_a(Types.Int) or t\is_a(Types.Num)
+        if (t.nonnil or t)\is_a(Types.Int) or (t.nonnil or t)\is_a(Types.Num)
             lhs_reg,code = env\to_reg @lhs
             rhs_reg,rhs_code = env\to_reg @rhs
             code ..= rhs_code
@@ -1214,7 +1231,7 @@ expr_compilers =
             lhs_reg,lhs_code = env\to_reg @lhs
             rhs_reg,rhs_code = env\to_reg @rhs
             result = env\fresh_local "comparison"
-            code = lhs_code..rhs_code.."#{result} =l ceql #{lhs_reg}, #{rhs_reg}\n"
+            code = lhs_code..rhs_code.."#{result} =l ceq#{lhs_type.base_type} #{lhs_reg}, #{rhs_reg}\n"
             return result,code
         return comparison @, env, "ceql"
     NotEqual: (env)=>
@@ -1223,7 +1240,7 @@ expr_compilers =
             lhs_reg,lhs_code = env\to_reg @lhs
             rhs_reg,rhs_code = env\to_reg @rhs
             result = env\fresh_local "comparison"
-            code = lhs_code..rhs_code.."#{result} =l cnel #{lhs_reg}, #{rhs_reg}\n"
+            code = lhs_code..rhs_code.."#{result} =l cne#{lhs_type.base_type} #{lhs_reg}, #{rhs_reg}\n"
             return result,code
         return comparison @, env, "cnel"
     TernaryOp: (env)=>
@@ -1306,7 +1323,7 @@ expr_compilers =
                 val_reg,val_code = env\to_reg val
                 code ..= val_code
                 m_t = get_type val
-                code ..= "store#{m_t.base_type} #{val_reg}, #{p} #xxx\n"
+                code ..= "store#{m_t.base_type} #{val_reg}, #{p}\n"
         code ..= "#{ret} =l call $intern_bytes(l #{ret}, l #{struct_size})\n"
         return ret, code
 
@@ -1429,7 +1446,7 @@ stmt_compilers =
         node_assert @lhs.__register, @lhs, "Undefined variable"
         lhs_type,rhs_type = get_type(@lhs),get_type(@rhs)
         rhs_reg,code = env\to_reg @rhs
-        if lhs_type == rhs_type and (lhs_type\is_a(Types.Int) or lhs_type\is_a(Types.Num))
+        if nonnil_eq(lhs_type, rhs_type) and (lhs_type\is_a(Types.Int) or lhs_type\is_a(Types.Num))
             return code.."#{@lhs.__register} =#{lhs_type.abi_type} add #{@lhs.__register}, #{rhs_reg}\n"
         elseif lhs_type == rhs_type and lhs_type\is_a(Types.String)
             return code.."#{@lhs.__register} =l call $bl_string_append_string(l #{@lhs.__register}, l #{rhs_reg})\n"
@@ -1444,7 +1461,7 @@ stmt_compilers =
         node_assert @lhs.__register, @lhs, "Undefined variable"
         lhs_type,rhs_type = get_type(@lhs),get_type(@rhs)
         rhs_reg,code = env\to_reg @rhs
-        if lhs_type == rhs_type and (lhs_type\is_a(Types.Int) or lhs_type\is_a(Types.Num))
+        if nonnil_eq(lhs_type, rhs_type) and (lhs_type\is_a(Types.Int) or lhs_type\is_a(Types.Num))
             return code.."#{@lhs.__register} =#{lhs_type.abi_type} sub #{@lhs.__register}, #{rhs_reg}\n"
         else
             fn_reg, t2 = get_function_reg @__parent, "subtract", "(#{lhs_type},#{rhs_type})"
@@ -1455,7 +1472,7 @@ stmt_compilers =
         node_assert @lhs.__register, @lhs, "Undefined variable"
         lhs_type,rhs_type = get_type(@lhs),get_type(@rhs)
         rhs_reg,code = env\to_reg @rhs
-        if lhs_type == rhs_type and (lhs_type\is_a(Types.Int) or lhs_type\is_a(Types.Num))
+        if nonnil_eq(lhs_type, rhs_type) and (lhs_type\is_a(Types.Int) or lhs_type\is_a(Types.Num))
             return code.."#{@lhs.__register} =#{lhs_type.abi_type} mul #{@lhs.__register}, #{rhs_reg}\n"
         else
             fn_reg, t2 = get_function_reg @__parent, "multiply", "(#{lhs_type},#{rhs_type})"
@@ -1466,7 +1483,7 @@ stmt_compilers =
         node_assert @lhs.__register, @lhs, "Undefined variable"
         lhs_type,rhs_type = get_type(@lhs),get_type(@rhs)
         rhs_reg,code = env\to_reg @rhs
-        if lhs_type == rhs_type and (lhs_type\is_a(Types.Int) or lhs_type\is_a(Types.Num))
+        if nonnil_eq(lhs_type, rhs_type) and (lhs_type\is_a(Types.Int) or lhs_type\is_a(Types.Num))
             return code.."#{@lhs.__register} =#{lhs_type.abi_type} div #{@lhs.__register}, #{rhs_reg}\n"
         else
             fn_reg, t2 = get_function_reg @__parent, "divide", "(#{lhs_type},#{rhs_type})"
@@ -1606,10 +1623,10 @@ stmt_compilers =
         else
             return "ret\n"
     Stop: (env)=>
-        assert @jump_label, "Jump label should have been populated by outer loop"
+        node_assert @jump_label, @, "'stop' statement should only be used inside a loop"
         return "jmp #{@jump_label}\n"
     Skip: (env)=>
-        assert @jump_label, "Jump label should have been populated by outer loop"
+        node_assert @jump_label, @, "'skip' statement should only be used inside a loop"
         return "jmp #{@jump_label}\n"
     If: (env)=>
         code = ""

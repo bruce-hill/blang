@@ -229,16 +229,18 @@ get_op_type = (t1, op, t2)=>
             return false unless pred(mem.type)
         return true
 
-    switch op
-        when "Add"
-            if t1 == t2 and (t1\is_a(Int) or t1\is_a(Num) or t1\is_a(ListType))
-                return t1
-        when "Sub"
-            if t1 == t2 and (t1\is_a(Int) or t1\is_a(Num))
-                return t1
-        when "Mul","Div","Mod"
-            if t1 == t2 and (t1\is_a(Int) or t1\is_a(Num))
-                return t1
+    if (t1.nonnil or t1) == (t2.nonnil or t2) and (t1.nonnil or t1)\is_a(Num) and t1.base_type == "d"
+        switch op
+            when "Add","Sub","Mul","Div","Mod","Pow"
+                return OptionalType(t1)
+
+    if t1 == t2
+        if t1\is_a(Int)
+            switch op
+                when "Add","Sub","Mul","Div","Mod","Pow"
+                    return t1
+        elseif t1\is_a(ListType) and op == "Add"
+            return t1
 
     overload_names = Add:"add", Sub:"subtract", Mul:"multiply", Div:"divide", Mod:"modulus", Pow:"raise"
     return unless overload_names[op]
@@ -425,7 +427,7 @@ get_type = memoize (node)->
             return Int
         when "Not"
             t = get_type node.value
-            node_assert t == Bool, node, "Invalid type for 'not': #{t}"
+            node_assert t == Bool or t\is_a(OptionalType), node, "Invalid type for 'not': #{t}"
             return Bool
         when "Pow"
             base_type = get_type node.base

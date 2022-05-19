@@ -58,7 +58,7 @@ DSL:: `% @name=id @string=(
   String
   / @:String=(`[ @content=@..%(Escape/Interp) `]) / @:ParseError=(`[..$ =>"Missing closing ]")
   / @:String=(`{ @content=@.. `}) / @:ParseError=(`{..$ =>"Missing closing }")
-  / @:String=(@delm:`|,/,;,, @content=@..%(Escape/Interp) delim) / @:ParseError=(`|,/,;,,..$ =>"This string has no closing delimiter"))
+  / @:String=(@delm:`|,/,;,,,` @content=@..%(Escape/Interp) delim) / @:ParseError=(`|,/,;,,..$ =>"This string has no closing delimiter"))
 List:: `[__*extended-expr %(__`,__) __ [`,__] `] [_`:_@type=type] / `[__`:__@type=@:ListType=(@itemtype=type)__`]
 ListComprehension:: (`[ __
   @expression=extended-expr __ \b"for"\b __
