@@ -237,7 +237,7 @@ programmer and "unsafe" strings from elsewhere in the program.
 In Blang, there is a much better solution for this problem: DSL strings.
 
 ```python
-SQL ::: SQL:String
+deftype SQL:String
 def escape(str:String):SQL
     return ("'$(str|replace("'", "''"))'"):SQL
 
@@ -282,7 +282,7 @@ DSL strings also allow escaping values besides strings, which can be useful
 cases like escaping lists of filenames for shell code:
 
 ```python
-Shell ::: Shell:String
+deftype Shell:String
 def escape(str:String):Shell
     return ("'$(str | replace("'", "'\"'\"'"))'"):Shell
 
@@ -330,7 +330,7 @@ One way to avoid this problem is to use custom DSL strings for sensitive data,
 which defines a custom `tostring()` implementation that obscures any private data:
 
 ```python
-SensitiveString ::: SensitiveString:String
+deftype SensitiveString:String
 def escape(s:String):SensitiveString = s:SensitiveString
 def tostring(h:SensitiveString):String = "******"
 

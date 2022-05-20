@@ -103,7 +103,7 @@ line-statement: (
   / FnCall / methodCall) _ [comment]
 Fail:: \b"fail"\b _ [@message=extended-expr]
 Declaration:: @var=Var _`: _[@type=type_] `= _ @value=required-extended-expr
-TypeDeclaration:: @name=@:NamedType=(id) _ ":::" _ @alias=(type / @:ParseError=(..$ =>"Not a valid type"))
+TypeDeclaration:: \b"deftype"\b _ @name=@:NamedType=(id) _ `: _ @derivesFrom=(type / @:ParseError=(..$ =>"Not a valid type"))
 StructDeclaration:: \b"struct"\b _ (StructType / @:ParseError=((braces /..$) =>"Not a valid struct type"))
 FnDecl:: @curdent:\C "def"\b _ (@name=Var _
   `( __ @args=@(*((@:FnArg=(@arg=Var_`:_@type=type) / @:ParseError=(Var =>"This argument doesn't have a type")))%(__`,__))__[`,__]`)_
@@ -179,7 +179,7 @@ Range:: (
 comment: "//" *.
 
 keyword: ("nil"/"yes"/"no"/"for"/"while"/"between"/"if"/"elseif"/"else"/"with"/"and"/"or"/"xor"/"pass"/"not"
-  /"skip"/"stop"/"unless"/"repeat"/"as"/"fail"/"return")
+  /"skip"/"stop"/"unless"/"repeat"/"as"/"fail"/"return"/"deftype")
 hex: `0-9,a-f,A-F
 nl: +\n % (*(` /\t) [comment])
 __: *(` /\t/\n/\r/comment)

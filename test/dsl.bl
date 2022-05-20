@@ -1,4 +1,4 @@
-BP ::: BP:String
+deftype BP:String
 
 def hl(s:String):String
     return "\x1b[36;7m$s\x1b[m"
@@ -9,7 +9,7 @@ def escape(str:String):BP
 def replace(str:String, pat:String, replacement:String):String
     return str|$bl_string_replace(%BP[$pat], replacement):String
 
-SQL ::: SQL:String
+deftype SQL:String
 
 def escape(str:String):SQL
     return ("'$(str|replace("'", "''")|hl)'"):SQL
@@ -23,7 +23,7 @@ query := %SQL[select * from users where name = $name limit $limit]
 
 $puts("\x1b[1mSQL Query:\x1b[m $query")
 
-Shell ::: Shell:String
+deftype Shell:String
 def escape(str:String):Shell
     return ("'$(str | replace("'", "'\"'\"'") | hl)'"):Shell
 
@@ -39,7 +39,7 @@ dest := "/tmp"
 cmd := %Shell[cp $files $dest]
 $puts("\x1b[1mShell command:\x1b[m $cmd")
 
-HTML ::: HTML:String
+deftype HTML:String
 
 def escape(str:String):HTML
     return (str | replace("&","&amp;") | replace("<","&lt;") | replace(">","&gt;") | replace('"',"&quot;") | replace("'","&#39;")|hl):HTML

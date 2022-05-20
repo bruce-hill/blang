@@ -1,11 +1,11 @@
-Foo ::: Foo:Int
+deftype Foo:Int
 x:Foo= 5
 
-MyString ::: MyString:String
+deftype MyString:String
 s := ("Hello"):MyString
 $puts("$x $s")
 
-ShellCode ::: ShellCode:String
+deftype ShellCode:String
 
 def shell_escape(unsafe:String):String
     escaped := $bl_string_replace(unsafe, "`\",\\,\$,`", "\\\\@0"):String
