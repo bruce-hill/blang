@@ -15,3 +15,6 @@ p := [s for i,s in ["a","b","c","d"] if i mod 2 == 0]
 
 t := {[i]=i*i for i in 1.. stop if i > 6}
 "$t" | $puts
+
+t2 := {[v]=k for k,v in t}
+"$t2" | $puts
