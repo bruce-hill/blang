@@ -1,0 +1,17 @@
+// NaN is nil-like:
+x := 0./0.
+$puts("0./0. is $x")
+if x
+    $puts("$x is truthy")
+else
+    $puts("$x is falsey")
+
+if x == nil
+    $puts("$x is nil")
+else
+    $puts("$x is not nil")
+
+if x == x
+    $puts("$x is equal to itself")
+else
+    $puts("$x is not equal to itself")
