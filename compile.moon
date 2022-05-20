@@ -77,7 +77,7 @@ infixop = (env, op)=>
     rhs_reg, rhs_code = env\to_reg rhs
     code ..= rhs_code
     if type(op) == 'string'
-        code ..= "#{ret_reg} =#{t.abi_type} #{op} #{lhs_reg}, #{rhs_reg}\n"
+        code ..= "#{ret_reg} =#{t.base_type} #{op} #{lhs_reg}, #{rhs_reg}\n"
     else
         code ..= op(ret_reg, lhs_reg, rhs_reg)
     lhs_reg = ret_reg
@@ -92,7 +92,7 @@ overload_infix = (env, overload_name, regname="result")=>
     rhs_reg,rhs_code = env\to_reg @rhs
     code ..= rhs_code
     result = env\fresh_local regname
-    code ..= "#{result} =#{t.abi_type} call #{fn_reg}(#{lhs_type.abi_type} #{lhs_reg}, #{rhs_type.abi_type} #{rhs_reg})\n"
+    code ..= "#{result} =#{t.base_type} call #{fn_reg}(#{lhs_type.base_type} #{lhs_reg}, #{rhs_type.base_type} #{rhs_reg})\n"
     return result, code
 
 comparison = (env, cmp)=>
@@ -190,7 +190,7 @@ class Environment
         return @strings[str]
 
     declare_function: (fndec)=>
-        args = ["#{parse_type(arg.type).abi_type} #{arg.arg.__register}" for arg in *fndec.args]
+        args = ["#{parse_type(arg.type).base_type} #{arg.arg.__register}" for arg in *fndec.args]
         fn_scope = @inner_scope {"%#{arg.arg[0]}",true for arg in *fndec.args}
         body_code = if fndec.body.__tag == "Block"
             fn_scope\compile_stmt fndec.body
@@ -202,7 +202,7 @@ class Environment
         ret_type = fn_type.return_type
         node_assert fndec.__register, fndec, "Function has no name"
         fn_name = fndec.__register
-        @fn_code ..= "function #{ret_type\is_a(Types.Void) and "" or ret_type.abi_type.." "}"
+        @fn_code ..= "function #{ret_type\is_a(Types.Void) and "" or ret_type.base_type.." "}"
         @fn_code ..= "#{fn_name}(#{concat args, ", "}) {\n@start\n#{body_code}"
         if ret_type\is_a(Types.Void) and not has_jump\match(@fn_code)
             @fn_code ..= "  ret\n"
@@ -268,7 +268,7 @@ class Environment
             
             item = @fresh_local "list.item"
             code ..= "#{item} =l call $bl_list_nth(l #{reg}, l #{i})\n"
-            if t.item_type.abi_type == "d"
+            if t.item_type.base_type == "d"
                 item2 = @fresh_local "list.item.float"
                 code ..= "#{item2} =d cast #{item}\n"
                 item = item2
@@ -623,10 +623,10 @@ expr_compilers =
         reg,code = env\to_reg @expr
         t = parse_type @type
         actual_type = get_type(@expr)
-        if actual_type and t.abi_type == actual_type.abi_type
+        if actual_type and t.base_type == actual_type.base_type
             return reg,code
         c = env\fresh_local "casted"
-        code ..= "#{c} =#{t.abi_type} cast #{reg}\n"
+        code ..= "#{c} =#{t.base_type} cast #{reg}\n"
         return c,code
     String: (env)=>
         str = env\fresh_local "str"
@@ -731,7 +731,7 @@ expr_compilers =
         if t\is_a(Types.Int) or t\is_a(Types.Num)
             reg,code = env\to_reg @value
             ret = env\fresh_local "neg"
-            return ret, "#{code}#{ret} =#{t.abi_type} neg #{reg}\n"
+            return ret, "#{code}#{ret} =#{t.base_type} neg #{reg}\n"
         elseif t\is_a(Types.Range)
             orig,code = env\to_reg @value
             range = env\fresh_local "neg.range"
@@ -866,7 +866,7 @@ expr_compilers =
             code ..= nil_guard struct_reg, ret, ->
                 loc = env\fresh_local "member.loc"
                 code = "#{loc} =l add #{struct_reg}, #{8*(i-1)}\n"
-                return code.."#{ret} =#{member_type.abi_type} load#{member_type.base_type} #{loc}\n"
+                return code.."#{ret} =#{member_type.base_type} load#{member_type.base_type} #{loc}\n"
             return ret,code
         elseif t\is_a(Types.Range)
             index_type = get_type(@index)
@@ -974,9 +974,9 @@ expr_compilers =
                 if iter_type.item_type.base_type == "d"
                     tmp = env\fresh_local "item.int"
                     code ..= "#{tmp} =l call $bl_list_nth(l #{iter_reg}, l #{i})\n"
-                    code ..= "#{var_reg} =#{iter_type.item_type.abi_type} cast #{tmp}\n"
+                    code ..= "#{var_reg} =#{iter_type.item_type.base_type} cast #{tmp}\n"
                 else
-                    code ..= "#{var_reg} =#{iter_type.item_type.abi_type} call $bl_list_nth(l #{iter_reg}, l #{i})\n"
+                    code ..= "#{var_reg} =#{iter_type.item_type.base_type} call $bl_list_nth(l #{iter_reg}, l #{i})\n"
 
         if @condition
             cond_reg,cond_code = env\to_reg @condition
@@ -1171,7 +1171,8 @@ expr_compilers =
             lhs_reg,code = env\to_reg @base
             ret = env\fresh_local "#{t.name\lower!}.butwith"
             struct_size = 8*#t.members
-            code ..= "#{ret} =l alloc8 #{struct_size}\n"
+            -- code ..= "#{ret} =l alloc8 #{struct_size}\n"
+            code ..= "#{ret} =l call $gc_alloc(l #{struct_size})\n"
             code ..= "call $memcpy(l #{ret}, l #{lhs_reg}, l #{struct_size})\n"
             p = env\fresh_local "#{t.name\lower!}.butwith.member.loc"
             used = {}
@@ -1193,7 +1194,7 @@ expr_compilers =
                 code ..= "#{p} =l add #{ret}, #{8*(i-1)}\n"
                 code ..= "store#{t.members[i].type.base_type} #{val_reg}, #{p}\n"
 
-            code ..= "#{ret} =l call $intern_bytes(l #{ret}, l #{struct_size})\n"
+            -- code ..= "#{ret} =l call $intern_bytes(l #{ret}, l #{struct_size})\n"
             return ret, code
         else
             node_error @, "| operator is only supported for List and Struct types"
@@ -1286,14 +1287,14 @@ expr_compilers =
         for arg in *@
             arg_reg, arg_code = env\to_reg arg
             code ..= arg_code
-            table.insert args, "#{get_type(arg).abi_type} #{arg_reg}"
+            table.insert args, "#{get_type(arg).base_type} #{arg_reg}"
 
         if skip_ret
             return nil, "#{code}call #{fn_reg}(#{concat args, ", "})\n"
 
         ret_reg = env\fresh_local "return"
         ret_type = fn_type and fn_type.return_type or get_type(@)
-        code ..= "#{ret_reg} =#{ret_type.abi_type} call #{fn_reg}(#{concat args, ", "})\n"
+        code ..= "#{ret_reg} =#{ret_type.base_type} call #{fn_reg}(#{concat args, ", "})\n"
         return ret_reg, code
 
     MethodCall: (env, skip_ret=false)=> expr_compilers.FnCall(@, env, skip_ret)
@@ -1306,8 +1307,8 @@ expr_compilers =
         t = get_type @
         struct_size = 8*#t.members
         ret = env\fresh_local "#{t.name\lower!}"
-        code = "#{ret} =l alloc8 #{struct_size}\n"
-        p = env\fresh_local "#{t.name\lower!}.member.loc"
+        -- code = "#{ret} =l alloc8 #{struct_size}\n"
+        code = "#{ret} =l call $gc_alloc(l #{struct_size})\n"
         named_members = {m.name[0],m.value for m in *@ when m.name}
         unnamed_members = [m.value for m in *@ when not m.name]
         for i,m in ipairs t.members
@@ -1319,12 +1320,13 @@ expr_compilers =
                 nil
 
             if val
-                code ..= "#{p} =l add #{ret}, #{8*(i-1)}\n"
+                loc = env\fresh_local "#{t\id_str!\lower!}.#{m.name or "member"}.loc"
+                code ..= "#{loc} =l add #{ret}, #{8*(i-1)}\n"
                 val_reg,val_code = env\to_reg val
                 code ..= val_code
                 m_t = get_type val
-                code ..= "store#{m_t.base_type} #{val_reg}, #{p}\n"
-        code ..= "#{ret} =l call $intern_bytes(l #{ret}, l #{struct_size})\n"
+                code ..= "store#{m_t.base_type} #{val_reg}, #{loc}\n"
+        -- code ..= "#{ret} =l call $intern_bytes(l #{ret}, l #{struct_size})\n"
         return ret, code
 
     Fail: (env)=> "0",env\compile_stmt(@).."#{env\fresh_label "unreachable"}\n"
@@ -1368,7 +1370,7 @@ stmt_compilers =
             rhs_reg,rhs_code = env\to_reg @rhs
             code = list_code..index_code..rhs_code
             if index_type\is_a(Types.Int)
-                if rhs_type.abi_type == "d"
+                if rhs_type.base_type == "d"
                     rhs_casted = env\fresh_local "list.item.float"
                     code ..= "#{rhs_casted} =d cast #{rhs_reg}\n"
                     rhs_reg = rhs_casted
@@ -1447,7 +1449,7 @@ stmt_compilers =
         lhs_type,rhs_type = get_type(@lhs),get_type(@rhs)
         rhs_reg,code = env\to_reg @rhs
         if nonnil_eq(lhs_type, rhs_type) and (lhs_type\is_a(Types.Int) or lhs_type\is_a(Types.Num))
-            return code.."#{@lhs.__register} =#{lhs_type.abi_type} add #{@lhs.__register}, #{rhs_reg}\n"
+            return code.."#{@lhs.__register} =#{lhs_type.base_type} add #{@lhs.__register}, #{rhs_reg}\n"
         elseif lhs_type == rhs_type and lhs_type\is_a(Types.String)
             return code.."#{@lhs.__register} =l call $bl_string_append_string(l #{@lhs.__register}, l #{rhs_reg})\n"
         elseif lhs_type == rhs_type and lhs_type\is_a(Types.ListType)
@@ -1456,40 +1458,40 @@ stmt_compilers =
             fn_reg, t2 = get_function_reg @__parent, "add", "(#{lhs_type},#{rhs_type})"
             node_assert fn_reg, @, "addition is not supported for #{lhs_type} and #{rhs_type}"
             node_assert t2.return_type == lhs_type, @, "Return type for add(#{lhs_type},#{rhs_type}) is #{t2.return_type} instead of #{lhs_type}"
-            return code.."#{@lhs.__register} =#{lhs_type.abi_type} call #{fn_reg}(#{lhs_type.abi_type} #{@lhs.__register}, #{rhs_type.abi_type} #{rhs_reg})\n"
+            return code.."#{@lhs.__register} =#{lhs_type.base_type} call #{fn_reg}(#{lhs_type.base_type} #{@lhs.__register}, #{rhs_type.base_type} #{rhs_reg})\n"
     SubUpdate: (env)=>
         node_assert @lhs.__register, @lhs, "Undefined variable"
         lhs_type,rhs_type = get_type(@lhs),get_type(@rhs)
         rhs_reg,code = env\to_reg @rhs
         if nonnil_eq(lhs_type, rhs_type) and (lhs_type\is_a(Types.Int) or lhs_type\is_a(Types.Num))
-            return code.."#{@lhs.__register} =#{lhs_type.abi_type} sub #{@lhs.__register}, #{rhs_reg}\n"
+            return code.."#{@lhs.__register} =#{lhs_type.base_type} sub #{@lhs.__register}, #{rhs_reg}\n"
         else
             fn_reg, t2 = get_function_reg @__parent, "subtract", "(#{lhs_type},#{rhs_type})"
             node_assert fn_reg, @, "subtraction is not supported for #{lhs_type} and #{rhs_type}"
             node_assert t2.return_type == lhs_type, @, "Return type for subtract(#{lhs_type},#{rhs_type}) is #{t2.return_type} instead of #{lhs_type}"
-            return code.."#{@lhs.__register} =#{lhs_type.abi_type} call #{fn_reg}(#{lhs_type.abi_type} #{@lhs.__register}, #{rhs_type.abi_type} #{rhs_reg})\n"
+            return code.."#{@lhs.__register} =#{lhs_type.base_type} call #{fn_reg}(#{lhs_type.base_type} #{@lhs.__register}, #{rhs_type.base_type} #{rhs_reg})\n"
     MulUpdate: (env)=>
         node_assert @lhs.__register, @lhs, "Undefined variable"
         lhs_type,rhs_type = get_type(@lhs),get_type(@rhs)
         rhs_reg,code = env\to_reg @rhs
         if nonnil_eq(lhs_type, rhs_type) and (lhs_type\is_a(Types.Int) or lhs_type\is_a(Types.Num))
-            return code.."#{@lhs.__register} =#{lhs_type.abi_type} mul #{@lhs.__register}, #{rhs_reg}\n"
+            return code.."#{@lhs.__register} =#{lhs_type.base_type} mul #{@lhs.__register}, #{rhs_reg}\n"
         else
             fn_reg, t2 = get_function_reg @__parent, "multiply", "(#{lhs_type},#{rhs_type})"
             node_assert fn_reg, @, "multiplication is not supported for #{lhs_type} and #{rhs_type}"
             node_assert t2.return_type == lhs_type, @, "Return type for multiply(#{lhs_type},#{rhs_type}) is #{t2.return_type} instead of #{lhs_type}"
-            return code.."#{@lhs.__register} =#{lhs_type.abi_type} call #{fn_reg}(#{lhs_type.abi_type} #{@lhs.__register}, #{rhs_type.abi_type} #{rhs_reg})\n"
+            return code.."#{@lhs.__register} =#{lhs_type.base_type} call #{fn_reg}(#{lhs_type.base_type} #{@lhs.__register}, #{rhs_type.base_type} #{rhs_reg})\n"
     DivUpdate: (env)=>
         node_assert @lhs.__register, @lhs, "Undefined variable"
         lhs_type,rhs_type = get_type(@lhs),get_type(@rhs)
         rhs_reg,code = env\to_reg @rhs
         if nonnil_eq(lhs_type, rhs_type) and (lhs_type\is_a(Types.Int) or lhs_type\is_a(Types.Num))
-            return code.."#{@lhs.__register} =#{lhs_type.abi_type} div #{@lhs.__register}, #{rhs_reg}\n"
+            return code.."#{@lhs.__register} =#{lhs_type.base_type} div #{@lhs.__register}, #{rhs_reg}\n"
         else
             fn_reg, t2 = get_function_reg @__parent, "divide", "(#{lhs_type},#{rhs_type})"
             node_assert fn_reg, @, "division is not supported for #{lhs_type} and #{rhs_type}"
             node_assert t2.return_type == lhs_type, @, "Return type for divide(#{lhs_type},#{rhs_type}) is #{t2.return_type} instead of #{lhs_type}"
-            return code.."#{@lhs.__register} =#{lhs_type.abi_type} call #{fn_reg}(#{lhs_type.abi_type} #{@lhs.__register}, #{rhs_type.abi_type} #{rhs_reg})\n"
+            return code.."#{@lhs.__register} =#{lhs_type.base_type} call #{fn_reg}(#{lhs_type.base_type} #{@lhs.__register}, #{rhs_type.base_type} #{rhs_reg})\n"
     OrUpdate: (env)=>
         for val in *@
             node_assert get_type(val)\is_a(Types.Bool), val, "Expected Bool here, but got #{get_type val}"
@@ -1521,7 +1523,7 @@ stmt_compilers =
             node_assert get_type(val)\is_a(Types.Bool), val, "Expected Bool here, but got #{get_type val}"
         node_assert @lhs.__register, @lhs, "Undefined variable"
         rhs_reg,code = env\to_reg @rhs
-        return code.."#{@lhs.__register} =#{lhs_type.abi_type} xor #{@lhs.__register}, #{rhs_reg}\n"
+        return code.."#{@lhs.__register} =#{lhs_type.base_type} xor #{@lhs.__register}, #{rhs_reg}\n"
     ButWithUpdate: (env)=>
         t = get_type @base
         if t\is_a(Types.ListType)
@@ -1586,10 +1588,10 @@ stmt_compilers =
         for arg in *@
             arg_reg, arg_code = env\to_reg arg
             code ..= arg_code
-            table.insert args, "#{get_type(arg).abi_type} #{arg_reg}"
+            table.insert args, "#{get_type(arg).base_type} #{arg_reg}"
 
         ret_type = fn_type and fn_type.return_type or get_type(dest)
-        code ..= "#{dest.__register} =#{ret_type.abi_type} call #{fn_reg}(#{concat args, ", "})\n"
+        code ..= "#{dest.__register} =#{ret_type.base_type} call #{fn_reg}(#{concat args, ", "})\n"
         return code
 
     FnDecl: (env)=> ""
@@ -1851,9 +1853,9 @@ stmt_compilers =
                 if iter_type.item_type.base_type == "d"
                     tmp = env\fresh_local "item.int"
                     code ..= "#{tmp} =l call $bl_list_nth(l #{iter_reg}, l #{i})\n"
-                    code ..= "#{var_reg} =#{iter_type.item_type.abi_type} cast #{tmp}\n"
+                    code ..= "#{var_reg} =#{iter_type.item_type.base_type} cast #{tmp}\n"
                 else
-                    code ..= "#{var_reg} =#{iter_type.item_type.abi_type} call $bl_list_nth(l #{iter_reg}, l #{i})\n"
+                    code ..= "#{var_reg} =#{iter_type.item_type.base_type} call $bl_list_nth(l #{iter_reg}, l #{i})\n"
 
         code ..= "#{env\compile_stmt @body}"
 
