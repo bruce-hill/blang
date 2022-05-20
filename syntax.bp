@@ -81,7 +81,7 @@ Table:: `{ __ (
   / (*@:TableEntry=(`[__@key=required-extended-expr__`] __`= __ @value=required-extended-expr)%(__`,__) [__`,])
   ) __ `}
 TableComprehension:: (`{ __
-  @entry=@:TableEntry=(`[__@key=required-extended-expr__`] __`= __ @value=required-extended-expr) __ \b"for"\b __
+  @entry=@:TableEntry=(@key=required-extended-expr__`, __ @value=required-extended-expr) __ \b"for"\b __
   [@index=Var__`,__] @val=Var __ "in" __ @iterable=required-extended-expr __
   [(@control=(Skip/Stop) __ (PostfixConditional / @:ParseError=(..>`] =>"Expected to see a condition here")))
    / PostfixConditional] __`})
