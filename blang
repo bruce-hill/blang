@@ -46,7 +46,7 @@ run_file = (filename)->
     os.execute "rm -f \"#{qbe_file}\" \"#{asm_file}\" \"#{bin_file}\""
 
 if #files == 0
-    run_file "stdin", io.stdin
+    run_file "/dev/stdin"
 
 for filename in *files
     run_file filename
