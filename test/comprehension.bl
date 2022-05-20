@@ -12,3 +12,6 @@ w := [i*100 for i in 1..10 if i mod 2 == 0]
 
 p := [s for i,s in ["a","b","c","d"] if i mod 2 == 0]
 "$p" | $puts
+
+t := {[i]=i*i for i in 1.. stop if i > 6}
+"$t" | $puts

@@ -149,7 +149,7 @@ find_declared_type = (scope, name, arg_signature=nil)->
             for a in *scope.args
                 if a.arg[0] == name
                     return parse_type(a.type)
-        when "For","ListComprehension"
+        when "For","ListComprehension","TableComprehension"
             iter_type = if scope.iterable.__tag == "Var"
                 find_declared_type(scope.__parent, scope.iterable[0])
             else get_type(scope.iterable)
@@ -160,16 +160,18 @@ find_declared_type = (scope, name, arg_signature=nil)->
             node_assert iter_type, scope.iterable, "Can't determine the type of this variable"
             if iter_type\is_a(TableType)
                 if scope.index
+                    -- `for k,v in table`
                     if scope.index[0] == name
                         return iter_type.key_type
-                    elseif scope.var and scope.var[0] == name
+                    elseif scope.val and scope.val[0] == name
                         return iter_type.value_type
-                elseif scope.var and scope.var[0] == name
+                elseif scope.val and scope.val[0] == name
+                    -- `for k in table`
                     return iter_type.key_type
             else
                 if scope.index and scope.index[0] == name
                     return Int
-                if scope.var and scope.var[0] == name
+                if scope.val and scope.val[0] == name
                     if iter_type\is_a(Range)
                         return Int
                     elseif iter_type\is_a(ListType)
@@ -329,6 +331,8 @@ get_type = memoize (node)->
                 node_assert k_t == key_type, node[i].key, "Item is type #{k_t} but should be #{key_type}"
                 node_assert v_t == value_type, node[i].value, "Item is type #{v_t} but should be #{value_type}"
             return TableType(key_type, value_type)
+        when "TableComprehension"
+            return TableType(get_type(node.entry.key), get_type(node.entry.value))
         when "IndexedTerm"
             t = get_type node.value
             is_optional = t\is_a(OptionalType) and t != Nil

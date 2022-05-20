@@ -9,7 +9,8 @@ term: (
     / Percent / Measure / Float / Int
     / String / DSL
     / ListComprehension / List
-    / Table / Struct / FnCall
+    / TableComprehension / Table
+    / Struct / FnCall
     / `(__extended-expr__`)
 )
 IndexedTerm:: (!`0-9 @value=(methodCall / IndexedTerm / term)
@@ -62,7 +63,7 @@ DSL:: `% @name=id @string=(
 List:: `[__*extended-expr %(__`,__) __ [`,__] `] [_`:_@type=type] / `[__`:__@type=@:ListType=(@itemtype=type)__`]
 ListComprehension:: (`[ __
   @expression=extended-expr __ \b"for"\b __
-  [@index=Var_`,_] @var=Var __ "in" __ @iterable=required-extended-expr __
+  [@index=Var__`,__] @val=Var __ "in" __ @iterable=required-extended-expr __
   [(@control=(Skip/Stop) __ (PostfixConditional / @:ParseError=(..>`] =>"Expected to see a condition here")))
    / PostfixConditional] __`])
 PostfixConditional: \b"if"\b _ @condition=required-extended-expr / \b"unless"\b_ @condition=@:Not=(@value=required-extended-expr)
@@ -79,6 +80,11 @@ Table:: `{ __ (
   (`:__ @type=@:TableType=(@keyType=type __ `= __ @valueType=type))
   / (*@:TableEntry=(`[__@key=required-extended-expr__`] __`= __ @value=required-extended-expr)%(__`,__) [__`,])
   ) __ `}
+TableComprehension:: (`{ __
+  @entry=@:TableEntry=(`[__@key=required-extended-expr__`] __`= __ @value=required-extended-expr) __ \b"for"\b __
+  [@index=Var__`,__] @val=Var __ "in" __ @iterable=required-extended-expr __
+  [(@control=(Skip/Stop) __ (PostfixConditional / @:ParseError=(..>`] =>"Expected to see a condition here")))
+   / PostfixConditional] __`})
 FnCall:: @fn=(FnCall / Global / Var / `(__required-extended-expr__`)) `( __ *extended-expr % (__`,__) __ [`,__] `) [_`:_@type=type]
 methodCall: @:FnCall=((methodCall / IndexedTerm / term) _ `| _
   (@fn=(Global / Var / `(__required-extended-expr__`)) _
@@ -156,7 +162,7 @@ If:: \b"if"\b @curdent:\C _ (
 )
 PostfixIf: @:If=(@:Clause=(@body=@:Block=@(Return / Skip / Stop / line-statement) _ PostfixConditional _ [comment]))
 PostfixFor: @:For=(@body=@:Block=@(line-statement) _
-  \b"for"\b _ [@index=Var_`,_] @var=Var _ "in" _ @iterable=required-extended-expr _ [comment])
+  \b"for"\b _ [@index=Var_`,_] @val=Var _ "in" _ @iterable=required-extended-expr _ [comment])
 PostfixWhile: @:While=(@body=@:Block=@(line-statement) _
   \b"while"\b _ @condition=extended-expr _ [comment])
 When:: ( \b"when"\b @curdent:\C _
@@ -165,7 +171,7 @@ When:: ( \b"when"\b @curdent:\C _
   [nl curdent "else" _ [comment] @elseBody=maybeIndentedBlock]
 )
 For:: (
-  \b"for"\b @curdent:\C _ [@index=Var_`,_] @var=Var _ "in" _ @iterable=required-extended-expr _ [comment]
+  \b"for"\b @curdent:\C _ [@index=Var_`,_] @val=Var _ "in" _ @iterable=required-extended-expr _ [comment]
   @body=indentedBlock
   [between]
 )

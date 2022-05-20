@@ -45,13 +45,13 @@ get_function_reg = (scope, name, signature)->
                     t = parse_type(a.type)
                     if t\is_a(Types.FnType) and ("#{t}" == signature or t\arg_signature! == signature)
                         return a.__register, t
-        when "For","ListComprehension"
+        when "For","ListComprehension","TableComprehension"
             iter_type = get_type(scope.iterable)
-            if scope.var and scope.var[0] == name
+            if scope.val and scope.val[0] == name
                 if iter_type\is_a(Types.ListType) and iter_type.item_type\is_a(Types.FnType)
-                    return scope.var.__register, iter_type.item_type
+                    return scope.val.__register, iter_type.item_type
                 elseif iter_type\is_a(Types.TableType) and iter_type.value_type\is_a(Types.FnType)
-                    return scope.var.__register, iter_type.value_type
+                    return scope.val.__register, iter_type.value_type
             if scope.index and scope.index[0] == name
                 if iter_type\is_a(Types.TableType) and iter_type.key_type\is_a(Types.FnType)
                     return scope.index.__register, iter_type.key_type
@@ -544,20 +544,20 @@ class Environment
                     hook_up_refs vardec.var, loop.between
 
         for for_block in coroutine.wrap(-> each_tag(ast, "For"))
-            if for_block.var
-                hook_up_refs for_block.var, for_block.body
-                hook_up_refs for_block.var, for_block.between if for_block.between
+            if for_block.val
+                hook_up_refs for_block.val, for_block.body
+                hook_up_refs for_block.val, for_block.between if for_block.between
             if for_block.index
                 hook_up_refs for_block.index, for_block.body
                 hook_up_refs for_block.index, for_block.between if for_block.between
 
-        for comp in coroutine.wrap(-> each_tag(ast, "ListComprehension"))
+        for comp in coroutine.wrap(-> each_tag(ast, "ListComprehension", "TableComprehension"))
             if comp.index
-                hook_up_refs comp.index, {comp.expression}
+                hook_up_refs comp.index, {comp.expression or comp.entry}
                 hook_up_refs comp.index, {comp.condition} if comp.condition
-            if comp.var
-                hook_up_refs comp.var, {comp.expression}
-                hook_up_refs comp.var, {comp.condition} if comp.condition
+            if comp.val
+                hook_up_refs comp.val, {comp.expression or comp.entry}
+                hook_up_refs comp.val, {comp.condition} if comp.condition
 
         -- Compile functions:
         for fndec in coroutine.wrap(-> each_tag(ast, "FnDecl", "Lambda"))
@@ -576,6 +576,174 @@ class Environment
         code ..= body_code
         code ..= "  ret 0\n}\n"
         return code
+
+convert_nils = (t, src_reg, dest_reg)->
+    if t\is_a(Types.Int) or t\is_a(Types.Bool)
+        return "#{dest_reg} =l xor #{src_reg}, #{INT_NIL}\n"
+    elseif t\is_a(Types.Num)
+        code = "#{dest_reg} =d cast #{src_reg}\n"
+        code ..= "#{dest_reg} =l xor #{dest_reg}, #{FLOAT_NIL}\n"
+        return code
+    else
+        return "#{dest_reg} =l copy #{src_reg}\n"
+
+compile_comprehension = (env)=>
+    -- Rough breakdown:
+    -- comp = empty()
+    -- i = 0 | k = NULL
+    -- len = #iter
+    -- jmp @comprehension.next
+    -- @comprehension.next
+    -- i += 1 | k = hashmap_next(h, k)
+    -- jnz (i > len || k == NULL), @for.end, @for.body
+    -- @comprehension.body
+    -- index = i | index = k
+    -- item = list[i] | hashmap_get(h, k)
+    -- // conditional
+    -- jnz cond, @comprehension.include, @comprehension.next
+    -- @comprehension.include
+    -- expr = ...item...
+    -- comp = add(comp, expr)
+    -- jmp @comprehension.next
+    -- @comprehension.next
+    -- i += 1
+    -- jnz (i <= len), @comprehension.end, @comprehension.body
+    -- @comprehension.end
+    -- TODO: optimize allocation spam
+
+    t = get_type @
+    iter_type = get_type @iterable
+
+    next_label = env\fresh_label "comprehension.next"
+    body_label = env\fresh_label "comprehension.body"
+    include_label = env\fresh_label "comprehension.include"
+    end_label = env\fresh_label "comprehension.end"
+
+    for skip in coroutine.wrap(-> each_tag(@, "Skip"))
+        if not skip.target or skip.target[0] == "for" or (@val and skip.target[0] == @val[0]) or (@index and skip.target[0] == @index[0])
+            skip.jump_label = next_label
+
+    for stop in coroutine.wrap(-> each_tag(@, "Stop"))
+        if not stop.target or stop.target[0] == "for" or (@val and stop.target[0] == @val[0]) or (@index and stop.target[0] == @index[0])
+            stop.jump_label = end_label
+
+    comprehension = env\fresh_local "comprehension"
+    code = if @__tag == "ListComprehension"
+        "#{comprehension} =l call $bl_list_new(l 0, l 0)\n"
+    elseif @__tag == "TableComprehension"
+        "#{comprehension} =l call $gc_hashmap_new(l 0)\n"
+    else
+        node_error @, "Unsupported comprehension type: #{@__tag}"
+
+    i = env\fresh_local(iter_type\is_a(Types.TableType) and "k" or "i")
+    len = env\fresh_local "len"
+    is_done = env\fresh_local "comprehension.is_done"
+
+    iter_reg,iter_code = env\to_reg @iterable
+    code ..= iter_code
+    code ..= "#{i} =l copy 0\n"
+    if iter_type\is_a(Types.Range)
+        code ..= "#{len} =l call $range_len(l #{iter_reg})\n"
+    elseif iter_type\is_a(Types.ListType)
+        code ..= "#{len} =l call $bl_list_len(l #{iter_reg})\n"
+    elseif iter_type\is_a(Types.TableType)
+        len = nil -- Len is not used for tables
+    else
+        node_error @iterable, "Expected an iterable type, not #{iter_type}"
+    code ..= "jmp #{next_label}\n"
+    code ..= "#{next_label}\n"
+    if iter_type\is_a(Types.TableType)
+        code ..= "#{i} =l call $hashmap_next(l #{iter_reg}, l #{i})\n"
+        code ..= "jnz #{i}, #{body_label}, #{end_label}\n"
+    else
+        code ..= "#{i} =l add #{i}, 1\n"
+        code ..= "#{is_done} =l csgtl #{i}, #{len}\n"
+        code ..= "jnz #{is_done}, #{end_label}, #{body_label}\n"
+
+    code ..= "#{body_label}\n"
+    if @index
+        index_reg = @index.__register
+        if iter_type\is_a(Types.TableType) and (iter_type.key_type\is_a(Types.Int) or iter_type.key_type\is_a(Types.Bool))
+            code ..= "#{index_reg} =l xor #{i}, #{INT_NIL}\n"
+        elseif iter_type\is_a(Types.TableType) and iter_type.key_type\is_a(Types.Num)
+            bits = @fresh_local "key.bits"
+            code ..= "#{bits} =l xor #{i}, #{FLOAT_NIL}\n"
+            code ..= "#{index_reg} =d cast #{bits}\n"
+        else
+            code ..= "#{index_reg} =l copy #{i}\n"
+
+    if @val
+        var_reg = @val.__register
+        if iter_type\is_a(Types.TableType)
+            if @index
+                if iter_type.value_type\is_a(Types.Int) or iter_type.value_type\is_a(Types.Bool)
+                    value_raw = env\fresh_local "value.raw"
+                    code ..= "#{value_raw} =l call $hashmap_get(l #{iter_reg}, l #{i})\n"
+                    code ..= "#{var_reg} =l xor #{value_raw}, #{INT_NIL}\n"
+                elseif iter_type.value_type\is_a(Types.Num)
+                    value_raw = env\fresh_local "value.raw"
+                    code ..= "#{value_raw} =l call $hashmap_get(l #{iter_reg}, l #{i})\n"
+                    code ..= "#{value_raw} =l xor #{value_raw}, #{FLOAT_NIL}\n"
+                    code ..= "#{var_reg} =d cast #{bits}\n"
+                else
+                    code ..= "#{var_reg} =l call $hashmap_get(l #{iter_reg}, l #{i})\n"
+            else
+                if iter_type.key_type\is_a(Types.Int) or iter_type.key_type\is_a(Types.Bool)
+                    code ..= "#{var_reg} =l xor #{i}, #{INT_NIL}\n"
+                elseif iter_type.key_type\is_a(Types.Num)
+                    key_bits = env\fresh_local "key.bits"
+                    code ..= "#{key_bits} =l xor #{i}, #{FLOAT_NIL}\n"
+                    code ..= "#{var_reg} =d cast #{key_bits}\n"
+                else
+                    code ..= "#{var_reg} =l copy #{i}\n"
+        elseif iter_type\is_a(Types.Range)
+            code ..= "#{var_reg} =l call $range_nth(l #{iter_reg}, l #{i})\n"
+        else
+            if iter_type.item_type.base_type == "d"
+                tmp = env\fresh_local "item.int"
+                code ..= "#{tmp} =l call $bl_list_nth(l #{iter_reg}, l #{i})\n"
+                code ..= "#{var_reg} =#{iter_type.item_type.base_type} cast #{tmp}\n"
+            else
+                code ..= "#{var_reg} =#{iter_type.item_type.base_type} call $bl_list_nth(l #{iter_reg}, l #{i})\n"
+
+    if @condition
+        cond_reg,cond_code = env\to_reg @condition
+        code ..= cond_code
+        if @control and @control.__tag == "Skip"
+            code ..= "jnz #{cond_reg}, #{next_label}, #{include_label}\n"
+        elseif @control and @control.__tag == "Stop"
+            code ..= "jnz #{cond_reg}, #{end_label}, #{include_label}\n"
+        else
+            code ..= "jnz #{cond_reg}, #{include_label}, #{next_label}\n"
+    else
+        code ..= "jmp #{include_label}\n"
+
+    code ..= "#{include_label}\n"
+    if @__tag == "ListComprehension"
+        expr_reg,expr_code = env\to_reg @expression
+        code ..= expr_code
+        expr_i = env\fresh_local "comprehension.expr.int"
+        if get_type(@expression).base_type != "l"
+            code ..= "#{expr_i} =l cast #{expr_reg}\n"
+        else
+            expr_i = expr_reg
+        code ..= "call $bl_list_append(l #{comprehension}, l #{expr_i})\n"
+    elseif @__tag == "TableComprehension"
+        entry_key_reg,entry_key_code = env\to_reg @entry.key
+        code ..= entry_key_code
+        entry_value_reg,entry_value_code = env\to_reg @entry.value
+        code ..= entry_value_code
+
+        key_setter = env\fresh_local "key.setter"
+        code ..= convert_nils t.key_type, entry_key_reg, key_setter
+        value_setter = env\fresh_local "value.setter"
+        code ..= convert_nils t.value_type, entry_value_reg, value_setter
+        code ..= "call $hashmap_set(l #{comprehension}, l #{key_setter}, l #{value_setter})\n"
+
+    code ..= "jmp #{next_label}\n"
+
+    code ..= "#{end_label}\n"
+    return comprehension, code
 
 expr_compilers =
     Var: (env)=>
@@ -937,95 +1105,8 @@ expr_compilers =
         list = env\fresh_local "list"
         code ..= "#{list} =l call $bl_list_new(l #{#@}, l #{buf})\n"
         return list, code
-    ListComprehension: (env)=>
-        -- Rough breakdown:
-        -- comp = empty_list()
-        -- len = #iter
-        -- i = 0
-        -- jmp @comprehension.next
-        -- @comprehension.body
-        -- item = list[i]
-        -- // conditional
-        -- jnz cond, @comprehension.include, @comprehension.next
-        -- @comprehension.include
-        -- expr = ...item...
-        -- comp = list_append(comp, expr)
-        -- jmp @comprehension.next
-        -- @comprehension.next
-        -- i += 1
-        -- jnz (i <= len), @comprehension.end, @comprehension.body
-        -- @comprehension.end
-        -- TODO: optimize allocation spam
-        comprehension = env\fresh_local "comprehension"
-        code = "#{comprehension} =l call $bl_list_new(l 0, l 0)\n"
-
-        iter_type = get_type @iterable
-
-        body_label = env\fresh_label "comprehension.body"
-        include_label = env\fresh_label "comprehension.include"
-        next_label = env\fresh_label "comprehension.next"
-        end_label = env\fresh_label "comprehension.end"
-
-        i = env\fresh_local "i"
-        len = env\fresh_local "len"
-
-        iter_reg,iter_code = env\to_reg @iterable
-        code ..= iter_code
-        code ..= "#{i} =l copy 0\n"
-        if iter_type\is_a(Types.Range)
-            code ..= "#{len} =l call $range_len(l #{iter_reg})\n"
-        elseif iter_type\is_a(Types.ListType)
-            code ..= "#{len} =l call $bl_list_len(l #{iter_reg})\n"
-        else
-            node_error @iterable, "Expected a list or a range, not #{iter_type}"
-        code ..= "jmp #{next_label}\n"
-        code ..= "#{body_label}\n"
-        if @index
-            index_reg = @index.__register
-            env.used_names[index_reg] = true
-            code ..= "#{index_reg} =l copy #{i}\n"
-        if @var
-            var_reg = @var.__register
-            env.used_names[var_reg] = true
-            if iter_type\is_a(Types.Range)
-                code ..= "#{var_reg} =l call $range_nth(l #{iter_reg}, l #{i})\n"
-            else
-                if iter_type.item_type.base_type == "d"
-                    tmp = env\fresh_local "item.int"
-                    code ..= "#{tmp} =l call $bl_list_nth(l #{iter_reg}, l #{i})\n"
-                    code ..= "#{var_reg} =#{iter_type.item_type.base_type} cast #{tmp}\n"
-                else
-                    code ..= "#{var_reg} =#{iter_type.item_type.base_type} call $bl_list_nth(l #{iter_reg}, l #{i})\n"
-
-        if @condition
-            cond_reg,cond_code = env\to_reg @condition
-            code ..= cond_code
-            if @control and @control.__tag == "Skip"
-                code ..= "jnz #{cond_reg}, #{next_label}, #{include_label}\n"
-            elseif @control and @control.__tag == "Stop"
-                code ..= "jnz #{cond_reg}, #{end_label}, #{include_label}\n"
-            else
-                code ..= "jnz #{cond_reg}, #{include_label}, #{next_label}\n"
-        else
-            code ..= "jmp #{include_label}\n"
-
-        code ..= "#{include_label}\n"
-        expr_reg,expr_code = env\to_reg @expression
-        code ..= expr_code
-        expr_i = env\fresh_local "comprehension.expr.int"
-        if get_type(@expression).base_type != "l"
-            code ..= "#{expr_i} =l cast #{expr_reg}\n"
-        else
-            expr_i = expr_reg
-        code ..= "call $bl_list_append(l #{comprehension}, l #{expr_i})\n"
-        code ..= "jmp #{next_label}\n"
-        code ..= "#{next_label}\n"
-        code ..= "#{i} =l add #{i}, 1\n"
-        is_finished = env\fresh_local "comprehension.is_finished"
-        code ..= "#{is_finished} =l csgtl #{i}, #{len}\n"
-        code ..= "jnz #{is_finished}, #{end_label}, #{body_label}\n"
-        code ..= "#{end_label}\n"
-        return comprehension, code
+    ListComprehension: (env)=> compile_comprehension(@, env)
+    TableComprehension: (env)=> compile_comprehension(@, env)
     Table: (env)=>
         t = get_type @
         node_assert not t.key_type\is_a(Types.OptionalType) and not t.value_type\is_a(Types.OptionalType), @,
@@ -1037,15 +1118,6 @@ expr_compilers =
         if #@ == 0
             return tab, code
 
-        convert_nils = (t2, src_reg, dest_reg)->
-            if t2\is_a(Types.Int) or t2\is_a(Types.Bool)
-                code ..= "#{dest_reg} =l xor #{src_reg}, #{INT_NIL}\n"
-            elseif t2\is_a(Types.Num) or t2.base_type == "d"
-                code ..= "#{dest_reg} =d cast #{src_reg}\n"
-                code ..= "#{dest_reg} =l xor #{dest_reg}, #{FLOAT_NIL}\n"
-            else
-                code ..= "#{dest_reg} =l copy #{src_reg}\n"
-
         for entry in *@
             key_reg,key_code = env\to_reg entry.key
             code ..= key_code
@@ -1053,9 +1125,9 @@ expr_compilers =
             code ..= value_code
 
             key_setter = env\fresh_local "key.setter"
-            convert_nils t.key_type, key_reg, key_setter
+            code ..= convert_nils t.key_type, key_reg, key_setter
             value_setter = env\fresh_local "value.setter"
-            convert_nils t.value_type, value_reg, value_setter
+            code ..= convert_nils t.value_type, value_reg, value_setter
             code ..= "call $hashmap_set(l #{tab}, l #{key_setter}, l #{value_setter})\n"
         return tab, code
     Range: (env)=>
@@ -1421,19 +1493,10 @@ stmt_compilers =
             val_reg,val_code = env\to_reg @rhs
             code ..= val_code
 
-            convert_nils = (t2, src_reg, dest_reg)->
-                if t2\is_a(Types.Int) or t2\is_a(Types.Bool)
-                    code ..= "#{dest_reg} =l xor #{src_reg}, #{INT_NIL}\n"
-                elseif t2\is_a(Types.Num)
-                    code ..= "#{dest_reg} =d cast #{src_reg}\n"
-                    code ..= "#{dest_reg} =l xor #{dest_reg}, #{FLOAT_NIL}\n"
-                else
-                    code ..= "#{dest_reg} =l copy #{src_reg}\n"
-
             key_setter = env\fresh_local "key.setter"
-            convert_nils t.key_type, key_reg, key_setter
+            code ..= convert_nils t.key_type, key_reg, key_setter
             value_setter = env\fresh_local "value.setter"
-            convert_nils t.value_type, val_reg, value_setter
+            code ..= convert_nils t.value_type, val_reg, value_setter
 
             nonnil_label, end_label = env\fresh_label("if.nonnil"), env\fresh_label("if.nonnil.done")
             code ..= check_nil get_type(@lhs.value), env, tab_reg, nonnil_label, end_label
@@ -1805,11 +1868,11 @@ stmt_compilers =
         end_label = env\fresh_label "for.end"
 
         for skip in coroutine.wrap(-> each_tag(@, "Skip"))
-            if not skip.target or skip.target[0] == "for" or (@var and skip.target[0] == @var[0]) or (@index and skip.target[0] == @index[0])
+            if not skip.target or skip.target[0] == "for" or (@val and skip.target[0] == @val[0]) or (@index and skip.target[0] == @index[0])
                 skip.jump_label = next_label
 
         for stop in coroutine.wrap(-> each_tag(@, "Stop"))
-            if not stop.target or stop.target[0] == "for" or (@var and stop.target[0] == @var[0]) or (@index and stop.target[0] == @index[0])
+            if not stop.target or stop.target[0] == "for" or (@val and stop.target[0] == @val[0]) or (@index and stop.target[0] == @index[0])
                 stop.jump_label = end_label
 
         i = env\fresh_local(iter_type\is_a(Types.TableType) and "k" or "i")
@@ -1840,7 +1903,6 @@ stmt_compilers =
         code ..= "#{body_label}\n"
         if @index
             index_reg = @index.__register
-            env.used_names[index_reg] = true
             if iter_type\is_a(Types.TableType) and (iter_type.key_type\is_a(Types.Int) or iter_type.key_type\is_a(Types.Bool))
                 code ..= "#{index_reg} =l xor #{i}, #{INT_NIL}\n"
             elseif iter_type\is_a(Types.TableType) and iter_type.key_type\is_a(Types.Num)
@@ -1850,9 +1912,8 @@ stmt_compilers =
             else
                 code ..= "#{index_reg} =l copy #{i}\n"
 
-        if @var
-            var_reg = @var.__register
-            env.used_names[var_reg] = true
+        if @val
+            var_reg = @val.__register
             if iter_type\is_a(Types.TableType)
                 if @index
                     if iter_type.value_type\is_a(Types.Int) or iter_type.value_type\is_a(Types.Bool)
