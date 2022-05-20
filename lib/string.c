@@ -205,3 +205,29 @@ char *bl_ask(char *prompt) {
         line[--len] = '\0';
     return intern_str_transfer(line);
 }
+
+char *bl_system(char *cmd) {
+    FILE *f = popen(cmd, "r");
+    char buffer[256];
+    size_t chread;
+    /* String to store entire command contents in */
+    size_t comalloc = 256;
+    size_t comlen = 0;
+    char *comout = malloc(comalloc);
+ 
+    /* Use fread so binary data is dealt with correctly */
+    while ((chread = fread(buffer, 1, sizeof(buffer), f)) > 0) {
+        if (comlen + chread >= comalloc) {
+            comalloc *= 2;
+            comout = realloc(comout, comalloc);
+        }
+        memmove(comout + comlen, buffer, chread);
+        comlen += chread;
+    }
+ 
+    comout[strlen(comout)-1] = '\0';
+    char *ret = bl_string(comout);
+    free(comout);
+    pclose(f);
+    return ret;
+}
