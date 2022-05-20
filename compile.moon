@@ -2,6 +2,7 @@ Types = require 'typecheck'
 bp = require 'bp'
 import add_parenting, get_type, parse_type from Types
 import log, viz, node_assert, node_error, get_node_pos, print_err from require 'util'
+import Measure, register_unit_alias from require 'units'
 concat = table.concat
 
 INT_NIL = tostring(0x7FFFFFFFFFFFFFFF)
@@ -73,7 +74,7 @@ infixop = (env, op)=>
     ret_reg = env\fresh_local "result"
     rhs = @rhs
     rhs_type = get_type rhs
-    node_assert nonnil_eq(rhs_type, t), rhs, "Expected type: #{t} but got type #{rhs_type}"
+    -- node_assert nonnil_eq(rhs_type, t), rhs, "Expected type: #{t} but got type #{rhs_type}"
     rhs_reg, rhs_code = env\to_reg rhs
     code ..= rhs_code
     if type(op) == 'string'
@@ -118,7 +119,7 @@ check_truthiness = (t, env, reg, truthy_label, falsey_label)->
         return "jnz #{reg}, #{truthy_label}, #{falsey_label}\n"
     elseif t\is_a(Types.Nil)
         return "jmp #{falsey_label}\n"
-    elseif t\is_a(Types.Num) and t.base_type == "d"
+    elseif t.base_type == "d"
         tmp = env\fresh_local "is.nonnil"
         return "#{tmp} =l cod #{reg}, d_0.0 # Test for NaN\njnz #{tmp}, #{truthy_label}, #{falsey_label}\n"
     elseif t\is_a(Types.OptionalType)
@@ -128,7 +129,7 @@ check_truthiness = (t, env, reg, truthy_label, falsey_label)->
         elseif t.nonnil\is_a(Types.Int)
             tmp = env\fresh_local "is.nonnil"
             return "#{tmp} =l cnel #{reg}, #{INT_NIL}\njnz #{tmp}, #{truthy_label}, #{falsey_label}\n"
-        elseif t.nonnil\is_a(Types.Num)
+        elseif t.nonnil.base_type == "d"
             tmp = env\fresh_local "is.nonnil"
             return "#{tmp} =l cod #{reg}, d_0.0 # Test for NaN\njnz #{tmp}, #{truthy_label}, #{falsey_label}\n"
         else
@@ -429,6 +430,9 @@ class Environment
             code ..= "#{dest} =l call #{@get_tostring_fn t.nonnil, scope}(#{t.nonnil.base_type} #{reg})\n"
             code ..= "jmp #{end_label}\n"
             code ..= "#{end_label}\n"
+        elseif t\is_a(Types.MeasureType)
+            code ..= "#{dest} =l call $bl_tostring_float(d #{reg})\n"
+            code ..= "#{dest} =l call $bl_string_append_string(l #{dest}, l #{@get_string_reg("<"..t.units..">", "units")})\n"
         else
             error "Unsupported concat type: #{t}"
 
@@ -467,6 +471,12 @@ class Environment
                 continue
             declared_structs[t.name] = t
             @type_code ..= "type :#{t.name} = {#{concat [m.type.base_type for m in *t.members], ","}}\n"
+
+        -- Declared units:
+        for u in coroutine.wrap(-> each_tag(ast, "UnitDeclaration"))
+            n = tonumber((u.measure.amount[0]\gsub("_","")))
+            m = Measure(n, u.measure.units[0]\gsub("[<>]",""))
+            register_unit_alias(u.name[0], m)
 
         @used_names["%__argc"] = true
         @used_names["%argc"] = true
@@ -582,6 +592,10 @@ expr_compilers =
     Float: (env)=>
         s = @[0]\gsub("_","")
         return "d_#{tonumber(s)}",""
+    Measure: (env)=>
+        n = tonumber((@amount[0]\gsub("_","")))
+        m = Measure(n, @units[0]\gsub("[<>]",""))
+        return "d_#{m.amount}",""
     Percent: (env)=>
         s = @[0]\gsub("_","")\gsub("%%","")
         return "d_#{tonumber(s)/100.0}",""
@@ -733,7 +747,7 @@ expr_compilers =
 
     Negative: (env)=>
         t = get_type @value
-        if t\is_a(Types.Int) or t\is_a(Types.Num)
+        if t\is_a(Types.Int) or t\is_a(Types.Num) or t\is_a(Types.MeasureType)
             reg,code = env\to_reg @value
             ret = env\fresh_local "neg"
             return ret, "#{code}#{ret} =#{t.base_type} neg #{reg}\n"
@@ -771,7 +785,7 @@ expr_compilers =
         ret = env\fresh_local "not"
         if t\is_a(Types.OptionalType) and t != Types.Nil and t.nonnil\is_a(Types.Int)
             code ..= "#{ret} =l ceql #{b}, #{INT_NIL}\n"
-        elseif t\is_a(Types.OptionalType) and t != Types.Nil and t.nonnil\is_a(Types.Num)
+        elseif t\is_a(Types.OptionalType) and t != Types.Nil and t.nonnil.base_type == "d"
             code ..= "#{ret} =l cuod #{reg}, d_0.0 # Test for NaN\n"
         elseif t\is_a(Types.Bool)
             code ..= "#{ret} =l cnel #{b}, 1\n"
@@ -835,7 +849,7 @@ expr_compilers =
                 key_getter = env\fresh_local "key.getter"
                 if t.key_type\is_a(Types.Int) or t.key_type\is_a(Types.Bool)
                     code ..= "#{key_getter} =l xor #{index_reg}, #{INT_NIL}\n"
-                elseif t.key_type\is_a(Types.Num)
+                elseif t.key_type\is_a(Types.Num) or t.key_type.base_type == "d"
                     code ..= "#{key_getter} =l cast #{index_reg}\n"
                     code ..= "#{key_getter} =l xor #{key_getter}, #{INT_NIL}\n"
                 else
@@ -846,7 +860,7 @@ expr_compilers =
 
                 if t.value_type\is_a(Types.Int) or t.value_type\is_a(Types.Bool)
                     code ..= "#{value_reg} =l xor #{raw_value}, #{INT_NIL}\n"
-                elseif t.value_type\is_a(Types.Num)
+                elseif t.value_type\is_a(Types.Num) or t.value_type.base_type == "d"
                     bits = @fresh_local "value.bits"
                     code ..= "#{bits} =l xor #{raw_value}, #{FLOAT_NIL}\n"
                     code ..= "#{value_reg} =d cast #{bits}\n"
@@ -1026,7 +1040,7 @@ expr_compilers =
         convert_nils = (t2, src_reg, dest_reg)->
             if t2\is_a(Types.Int) or t2\is_a(Types.Bool)
                 code ..= "#{dest_reg} =l xor #{src_reg}, #{INT_NIL}\n"
-            elseif t2\is_a(Types.Num)
+            elseif t2\is_a(Types.Num) or t2.base_type == "d"
                 code ..= "#{dest_reg} =d cast #{src_reg}\n"
                 code ..= "#{dest_reg} =l xor #{dest_reg}, #{FLOAT_NIL}\n"
             else
@@ -1111,7 +1125,8 @@ expr_compilers =
         return infixop @, env, "xor"
     Add: (env)=>
         t_lhs,t_rhs = get_type(@lhs),get_type(@rhs)
-        if nonnil_eq(t_lhs, t_rhs) and ((t_lhs.nonnil or t_lhs)\is_a(Types.Int) or (t_lhs.nonnil or t_lhs)\is_a(Types.Num))
+        tl_nn, tr_nn = (t_lhs.nonnil or t_lhs), (t_rhs.nonnil or t_rhs)
+        if tl_nn == tr_nn and (tl_nn\is_a(Types.Int) or tl_nn\is_a(Types.Num) or tl_nn\is_a(Types.MeasureType))
             return infixop @, env, "add"
         elseif t_lhs == t_rhs and t_lhs\is_a(Types.String)
             return infixop @, env, (ret,lhs,rhs)->
@@ -1124,20 +1139,27 @@ expr_compilers =
 
     Sub: (env)=>
         t_lhs,t_rhs = get_type(@lhs),get_type(@rhs)
-        if nonnil_eq(t_lhs, t_rhs) and ((t_lhs.nonnil or t_lhs)\is_a(Types.Int) or (t_lhs.nonnil or t_lhs)\is_a(Types.Num))
+        tl_nn, tr_nn = (t_lhs.nonnil or t_lhs), (t_rhs.nonnil or t_rhs)
+        if tl_nn == tr_nn and (tl_nn\is_a(Types.Int) or tl_nn\is_a(Types.Num) or tl_nn\is_a(Types.MeasureType))
             return infixop @, env, "sub"
         else
             return overload_infix @, env, "subtract", "difference"
     Mul: (env)=>
         t_lhs,t_rhs = get_type(@lhs),get_type(@rhs)
-        if nonnil_eq(t_lhs, t_rhs) and ((t_lhs.nonnil or t_lhs)\is_a(Types.Int) or (t_lhs.nonnil or t_lhs)\is_a(Types.Num))
+        tl_nn, tr_nn = (t_lhs.nonnil or t_lhs), (t_rhs.nonnil or t_rhs)
+        if tl_nn == tr_nn and (tl_nn\is_a(Types.Int) or tl_nn\is_a(Types.Num))
+            return infixop @, env, "mul"
+        elseif (tl_nn\is_a(Types.MeasureType) and tr_nn\is_a(Types.Num)) or (tl_nn\is_a(Types.Num) and tr_nn\is_a(Types.MeasureType)) or (tl_nn\is_a(Types.MeasureType) and tr_nn\is_a(Types.MeasureType))
             return infixop @, env, "mul"
         else
             return overload_infix @, env, "multiply", "product"
     Div: (env)=>
         t_lhs,t_rhs = get_type(@lhs),get_type(@rhs)
-        if nonnil_eq(t_lhs, t_rhs) and ((t_lhs.nonnil or t_lhs)\is_a(Types.Int) or (t_lhs.nonnil or t_lhs)\is_a(Types.Num))
+        tl_nn, tr_nn = (t_lhs.nonnil or t_lhs), (t_rhs.nonnil or t_rhs)
+        if tl_nn == tr_nn and (tl_nn\is_a(Types.Int) or tl_nn\is_a(Types.Num))
             return infixop @, env, "div"
+        elseif (tl_nn\is_a(Types.MeasureType) and tr_nn\is_a(Types.Num)) or (tl_nn\is_a(Types.Num) and tr_nn\is_a(Types.MeasureType)) or (tl_nn\is_a(Types.MeasureType) and tr_nn\is_a(Types.MeasureType))
+            return infixop @, env, "mul"
         else
             return overload_infix @, env, "divide", "quotient"
     Mod: (env)=>
@@ -1613,6 +1635,7 @@ stmt_compilers =
             return "call $errx(l 1, l #{env\get_string_reg(get_node_pos(@)..': Unexpected failure!', "failure.message")})\n"
     TypeDeclaration: (env)=> ""
     StructDeclaration: (env)=> ""
+    UnitDeclaration: (env)=> ""
     FnCall: (env)=>
         _, code = env\to_reg @, true
         code = code\gsub("[^\n]- (call [^\n]*\n)$", "%1")

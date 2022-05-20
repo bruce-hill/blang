@@ -1,6 +1,7 @@
 -- Type checking/inference logic
 concat = table.concat
 import log, viz, print_err, node_assert, node_error from require 'util'
+import Measure, register_unit_alias from require 'units'
 
 local get_type, parse_type
 
@@ -24,6 +25,14 @@ class DerivedType extends Type
     __tostring: => @name
     __eq: Type.__eq
     is_a: (cls)=> @ == cls or @derived_from\is_a(cls) or @.__class == cls or cls\contains @
+
+class MeasureType extends Type
+    new: (@units)=>
+    base_type: 'd'
+    abi_type: 'd'
+    __tostring: => "<#{@units}>"
+    __eq: Type.__eq
+    is_a: (cls)=> @ == cls or @.__class == cls or cls\contains @
 
 class ListType extends Type
     new: (@item_type)=>
@@ -201,6 +210,9 @@ parse_type = memoize (type_node)->
             alias = find_type_alias type_node, type_node[0]
             node_assert alias, type_node, "Undefined type"
             return alias
+        when "MeasureType"
+            m = Measure(1, type_node[0]\gsub("[<>]",""))
+            return MeasureType(m.str)
         when "DerivedType"
             unless derived_types[type_node.name[0]]
                 derived_types[type_node.name[0]] = DerivedType type_node.name[0], parse_type(type_node.derivesFrom)
@@ -230,6 +242,27 @@ get_op_type = (t1, op, t2)=>
             return false unless pred(mem.type)
         return true
 
+    if t1\is_a(MeasureType) and t2\is_a(Num)
+        switch op
+            when "Mul","Div"
+                return OptionalType(t1)
+    elseif t1\is_a(Num) and t2\is_a(MeasureType)
+        if op == "Mul"
+            return OptionalType(t1)
+        elseif op == "Div"
+            m2 = Measure(1,t1.units)\invert!
+            return OptionalType(MeasureType(m2.str))
+    elseif t1\is_a(MeasureType) and t2\is_a(MeasureType)
+        switch op
+            when "Add","Sub"
+                return t1 if t1 == t2
+            when "Mul"
+                m2 = Measure(1,t1.units)*Measure(1,t2.units)
+                return OptionalType(MeasureType(m2.str))
+            when "Div"
+                m2 = Measure(1,t1.units)/Measure(1,t2.units)
+                return OptionalType(MeasureType(m2.str))
+
     if (t1.nonnil or t1) == (t2.nonnil or t2) and (t1.nonnil or t1)\is_a(Num) and t1.base_type == "d"
         switch op
             when "Add","Sub","Mul","Div","Mod","Pow"
@@ -253,6 +286,9 @@ get_type = memoize (node)->
         when "Int" then return Int
         when "Float" then return Num
         when "Percent" then return Percent
+        when "Measure"
+            m = Measure(1, node.units[0]\gsub("[<>]",""))
+            return MeasureType(m.str)
         when "Bool" then return Bool
         when "Nil" then return Nil
         when "String","Escape","Newline" then return String
@@ -530,5 +566,5 @@ get_type = memoize (node)->
 
 return {
     :add_parenting, :parse_type, :get_type, :Type, :NamedType, :ListType, :TableType, :FnType, :StructType,
-    :Int, :Num, :Percent, :String, :Bool, :Void, :Nil, :Range, :OptionalType
+    :Int, :Num, :Percent, :String, :Bool, :Void, :Nil, :Range, :OptionalType, :MeasureType
 }

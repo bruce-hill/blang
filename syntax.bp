@@ -6,7 +6,7 @@ term: (
     / Lambda / Cast
     / unaryOp
     / Global !(_`(,{) / Var !(_`(,{)
-    / Percent / Float / Int
+    / Percent / Measure / Float / Int
     / String / DSL
     / ListComprehension / List
     / Table / Struct / FnCall
@@ -66,10 +66,12 @@ ListComprehension:: (`[ __
   [(@control=(Skip/Stop) __ (PostfixConditional / @:ParseError=(..>`] =>"Expected to see a condition here")))
    / PostfixConditional] __`])
 PostfixConditional: \b"if"\b _ @condition=required-extended-expr / \b"unless"\b_ @condition=@:Not=(@value=required-extended-expr)
-Cast:: @expr=(methodCall / Float / Percent / Int / Global / Var / `(__extended-expr__`))_`:_@type=type
+Cast:: @expr=(methodCall / Measure / Float / Percent / Int / Global / Var / `(__extended-expr__`))_`:_@type=type
 Interp:: `$ @value=(Var / `(__ required-extended-expr __`))
 Escape:: `\ (`x 2 hex / `a,b,t,n,r,v / 3 `0-8 / .)
 Float:: [`-,+] (`0-9 *`0-9,_ (`. !`. *`0-9,_ / >`e) / `. `0-9 *`0-9,_) [`e `0-9 *`0-9,_]
+Measure:: @amount=(Float/Int) @units=MeasureType
+MeasureType:: `< +@(@unit=id [`^ @power=([`-] +`0-9)]) % (`*,/) `>
 Percent:: (`0-9 *`0-9,_ [`. *`0-9] / `. +`0-9) `%
 Int:: "0x" +`0-9,a-f,A-F,_ / [`-,+] `0-9 *`0-9,_
 Struct:: [@name=Var] _ `{ __ *@:StructField=([@name=FieldName __`=__] @value=required-extended-expr) % (__`,__) [__`,] __ `}
@@ -91,7 +93,7 @@ statements: @curdent:\C +(
   / !$ @:ParseError=(@dent:\C ..$ *(\n dent (` /\t)..$) =>"Invalid statement")) % (nl curdent !(` /\t))
 indentedBlock: @:Block=([comment] nl curdent +(` /\t) statements)
 statement: (
-    Declaration / FnDecl / If / When / For / While / Repeat / TypeDeclaration / StructDeclaration
+    Declaration / FnDecl / If / When / For / While / Repeat / TypeDeclaration / StructDeclaration / UnitDeclaration
   / PostfixIf / PostfixFor / PostfixWhile
   / Return / Skip / Stop
   / line-statement
@@ -105,6 +107,7 @@ line-statement: (
 Fail:: \b"fail"\b _ [@message=extended-expr]
 Declaration:: @var=Var _`: _[@type=type_] `= _ @value=required-extended-expr
 TypeDeclaration:: \b"deftype"\b _ @name=@:NamedType=(id) _ `: _ @derivesFrom=(type / @:ParseError=(..$ =>"Not a valid type"))
+UnitDeclaration:: \b"unit"\b _ @name=@:NamedType=(id) _ `= _ @measure=Measure
 StructDeclaration:: \b"struct"\b _ (StructType / @:ParseError=((braces /..$) =>"Not a valid struct type"))
 FnDecl:: @curdent:\C "def"\b _ (@name=Var _
   `( __ @args=@(*((@:FnArg=(@arg=Var_`:_@type=type) / @:ParseError=(Var =>"This argument doesn't have a type")))%(__`,__))__[`,__]`)_
@@ -138,6 +141,7 @@ required-extended-expr: extended-expr / @:ParseError=(..$ =>"Invalid expression"
 type: @:OptionalType=(@nonnil=nonoptional-type `?) / nonoptional-type
 nonoptional-type: (
     @:TableType=(`{__ @keyType=type __`=__ @valueType=type __`})
+  / MeasureType
   / StructType
   / @:DerivedType=(@name=id ":" @derivesFrom=(type / @:ParseError=(..$ =>"Not a valid type")))
   / @:NamedType=(id)
@@ -180,7 +184,7 @@ Range:: (
 comment: "//" *.
 
 keyword: ("nil"/"yes"/"no"/"for"/"while"/"between"/"if"/"elseif"/"else"/"with"/"and"/"or"/"xor"/"pass"/"not"
-  /"skip"/"stop"/"unless"/"repeat"/"as"/"fail"/"return"/"deftype")
+  /"skip"/"stop"/"unless"/"repeat"/"as"/"fail"/"return"/"deftype"/"unit")
 hex: `0-9,a-f,A-F
 nl: +\n % (*(` /\t) [comment])
 __: *(` /\t/\n/\r/comment)
