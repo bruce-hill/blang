@@ -636,6 +636,8 @@ class Environment
         code ..= "  %argv =l call $bl_list_new(l %argc, l %__argv)\n"
         code ..= body_code
         code ..= "  ret 0\n}\n"
+        source_chunks = ast[0]\gsub('[^ !#-[^-~]', (c)->"\",b #{c\byte(1)},b\"")\gsub("\n", "\\n")
+        code ..= "\nexport data $source = {b\"#{source_chunks}\",b 0}\n"
         return code
 
 convert_nils = (t, src_reg, dest_reg)->
