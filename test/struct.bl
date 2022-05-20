@@ -30,9 +30,9 @@ $puts("Tuple: $x")
 // Return values
 def foo(n:Int):
     if n > 0
-        return {ok=yes, msg="Can be used for multi-returns"}
+        return {.ok=yes, .msg="Can be used for multi-returns"}
     else
-        return {ok=no, msg="Uh oh"}
+        return {.ok=no, .msg="Uh oh"}
 
 result := foo(4)
 if result.ok
