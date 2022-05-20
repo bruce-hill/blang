@@ -44,11 +44,11 @@ HTML ::: HTML:String
 def escape(str:String):HTML
     return (str | replace("&","&amp;") | replace("<","&lt;") | replace(">","&gt;") | replace('"',"&quot;") | replace("'","&#39;")|hl):HTML
 
-html_val := "I <3 things and don't care"
+message := "I <3 things and don't care"
 html := %HTML"""
     <html>
         <body>
-        $html_val
+        $message
         </body>
 """
 html += %HTML[\n</html>]
