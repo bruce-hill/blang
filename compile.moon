@@ -218,6 +218,8 @@ class Environment
 
         if t\is_a(Types.Int)
             return "$bl_tostring_int"
+        elseif t\is_a(Types.Percent)
+            return "$bl_tostring_percent"
         elseif t\is_a(Types.Num)
             return "$bl_tostring_float"
         elseif t\is_a(Types.Bool)
@@ -580,6 +582,9 @@ expr_compilers =
     Float: (env)=>
         s = @[0]\gsub("_","")
         return "d_#{tonumber(s)}",""
+    Percent: (env)=>
+        s = @[0]\gsub("_","")\gsub("%%","")
+        return "d_#{tonumber(s)/100.0}",""
     Nil: (env)=>
         -- Figure out what kind of nil this is, since different types have different binary
         -- representations of nil (Int -> INT_MAX, Float -> NaN, otherwise -> 0)

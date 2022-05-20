@@ -89,12 +89,13 @@ Num.abi_type = 'd'
 Int = DerivedType("Int", Num)
 Int.base_type = 'l'
 Int.abi_type = 'l'
+Percent = DerivedType("Percent", Num)
 
 Void = NamedType("Void")
 Bool = NamedType("Bool")
 String = NamedType("String")
 Range = StructType("Range", {{name:"first",type:Int},{name:"next",type:Int},{name:"last",type:Int}})
-primitive_types = {:Int, :Num, :Void, :Nil, :Bool, :String, :Range, :OptionalType}
+primitive_types = {:Int, :Num, :Void, :Nil, :Bool, :String, :Range, :OptionalType, :Percent}
 
 tuples = {}
 tuple_index = 1
@@ -251,6 +252,7 @@ get_type = memoize (node)->
     switch node.__tag
         when "Int" then return Int
         when "Float" then return Num
+        when "Percent" then return Percent
         when "Bool" then return Bool
         when "Nil" then return Nil
         when "String","Escape","Newline" then return String
@@ -526,4 +528,7 @@ get_type = memoize (node)->
         return get_type(node[#node])
     return Void
 
-return {:add_parenting, :parse_type, :get_type, :Type, :NamedType, :ListType, :TableType, :FnType, :StructType, :Int, :Num, :String, :Bool, :Void, :Nil, :Range, :OptionalType}
+return {
+    :add_parenting, :parse_type, :get_type, :Type, :NamedType, :ListType, :TableType, :FnType, :StructType,
+    :Int, :Num, :Percent, :String, :Bool, :Void, :Nil, :Range, :OptionalType
+}

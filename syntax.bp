@@ -6,7 +6,7 @@ term: (
     / Lambda / Cast
     / unaryOp
     / Global !(_`(,{) / Var !(_`(,{)
-    / Float / Int
+    / Percent / Float / Int
     / String / DSL
     / ListComprehension / List
     / Table / Struct / FnCall
@@ -66,10 +66,11 @@ ListComprehension:: (`[ __
   [(@control=(Skip/Stop) __ (PostfixConditional / @:ParseError=(..>`] =>"Expected to see a condition here")))
    / PostfixConditional] __`])
 PostfixConditional: \b"if"\b _ @condition=required-extended-expr / \b"unless"\b_ @condition=@:Not=(@value=required-extended-expr)
-Cast:: @expr=(methodCall / Int / Float / Global / Var / `(__extended-expr__`))_`:_@type=type
+Cast:: @expr=(methodCall / Float / Percent / Int / Global / Var / `(__extended-expr__`))_`:_@type=type
 Interp:: `$ @value=(Var / `(__ required-extended-expr __`))
 Escape:: `\ (`x 2 hex / `a,b,t,n,r,v / 3 `0-8 / .)
 Float:: [`-,+] (`0-9 *`0-9,_ (`. !`. *`0-9,_ / >`e) / `. `0-9 *`0-9,_) [`e `0-9 *`0-9,_]
+Percent:: (`0-9 *`0-9,_ [`. *`0-9] / `. +`0-9) `%
 Int:: "0x" +`0-9,a-f,A-F,_ / [`-,+] `0-9 *`0-9,_
 Struct:: [@name=Var] _ `{ __ *@:StructField=([@name=FieldName __`=__] @value=required-extended-expr) % (__`,__) [__`,] __ `}
 Table:: `{ __ (
