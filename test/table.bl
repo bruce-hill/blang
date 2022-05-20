@@ -1,4 +1,4 @@
-t :{String=Int}= {["k"]=123, ["v"]=456}
+t :{String=Int}= {k=123, v=456}
 $puts("t = $t")
 $puts("t['k'] = $(t["k"])")
 $puts("t['missing'] = $(t["missing"])")
