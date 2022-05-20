@@ -26,8 +26,10 @@ class DerivedType extends Type
     __eq: Type.__eq
     is_a: (cls)=> @ == cls or @derived_from\is_a(cls) or @.__class == cls or cls\contains @
 
+local Num
 class MeasureType extends Type
     new: (@units)=>
+    normalized: => @units == "" and assert(Num) or @
     base_type: 'd'
     abi_type: 'd'
     __tostring: => "<#{@units}>"
@@ -212,7 +214,7 @@ parse_type = memoize (type_node)->
             return alias
         when "MeasureType"
             m = Measure(1, type_node[0]\gsub("[<>]",""))
-            return MeasureType(m.str)
+            return MeasureType(m.str)\normalized!
         when "DerivedType"
             unless derived_types[type_node.name[0]]
                 derived_types[type_node.name[0]] = DerivedType type_node.name[0], parse_type(type_node.derivesFrom)
@@ -251,17 +253,17 @@ get_op_type = (t1, op, t2)=>
             return OptionalType(t1)
         elseif op == "Div"
             m2 = Measure(1,t1.units)\invert!
-            return OptionalType(MeasureType(m2.str))
+            return OptionalType(MeasureType(m2.str)\normalized!)
     elseif t1\is_a(MeasureType) and t2\is_a(MeasureType)
         switch op
             when "Add","Sub"
                 return t1 if t1 == t2
             when "Mul"
                 m2 = Measure(1,t1.units)*Measure(1,t2.units)
-                return OptionalType(MeasureType(m2.str))
+                return OptionalType(MeasureType(m2.str)\normalized!)
             when "Div"
                 m2 = Measure(1,t1.units)/Measure(1,t2.units)
-                return OptionalType(MeasureType(m2.str))
+                return OptionalType(MeasureType(m2.str)\normalized!)
 
     if (t1.nonnil or t1) == (t2.nonnil or t2) and (t1.nonnil or t1)\is_a(Num) and t1.base_type == "d"
         switch op
@@ -288,7 +290,7 @@ get_type = memoize (node)->
         when "Percent" then return Percent
         when "Measure"
             m = Measure(1, node.units[0]\gsub("[<>]",""))
-            return MeasureType(m.str)
+            return MeasureType(m.str)\normalized!
         when "Bool" then return Bool
         when "Nil" then return Nil
         when "String","Escape","Newline" then return String

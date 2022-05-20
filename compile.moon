@@ -1159,7 +1159,7 @@ expr_compilers =
         if tl_nn == tr_nn and (tl_nn\is_a(Types.Int) or tl_nn\is_a(Types.Num))
             return infixop @, env, "div"
         elseif (tl_nn\is_a(Types.MeasureType) and tr_nn\is_a(Types.Num)) or (tl_nn\is_a(Types.Num) and tr_nn\is_a(Types.MeasureType)) or (tl_nn\is_a(Types.MeasureType) and tr_nn\is_a(Types.MeasureType))
-            return infixop @, env, "mul"
+            return infixop @, env, "div"
         else
             return overload_infix @, env, "divide", "quotient"
     Mod: (env)=>

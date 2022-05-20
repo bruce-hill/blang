@@ -4,7 +4,7 @@ unit mm = .001<m>
 unit inch = 0.0254<m>
 unit ft = 12<inch>
 unit yd = 3<ft>
-unit mi = 5280<ft>
+unit mi = 5_280<ft>
 unit min = 60<s>
 unit hr = 60<min>
 
@@ -16,4 +16,6 @@ $puts("$(x * 10%)")
 
 $puts("5ft + 1m = $(5<ft> + 1<m>)")
 
-$puts("100<mi/hr> = $(100<mi/hr>)")
+vel := 100<mi/hr>
+$puts("100<mi/hr> = $vel")
+$puts("$vel in km/hr = $(vel/1<km/hr>)")
