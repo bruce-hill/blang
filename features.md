@@ -11,14 +11,14 @@ types of loops: `for` loops and `while` loops (with `repeat` as syntactic
 sugar for `while 1`). `while` loops follow the standard pattern of checking
 a condition:
 
-```blang
+```python
 while i < 10
     i += 1
 ```
 
 And `for` loops iterate over values in an iterable container or numeric range:
 
-```blang
+```python
 for item in list
     say("$item")
 
@@ -31,7 +31,7 @@ for i in 1..5
 
 `for` loops also have an optional extra parameter used for an index:
 
-```blang
+```python
 for i,item in list
     say("$i: $item")
 
@@ -48,7 +48,7 @@ breaking/continuing encompassing loops. For clarity and brevity, Blang uses
 `skip` and `stop` for this functionality and supports skipping/stopping
 loops by referencing either a loop variable or the type of loop:
 
-```blang
+```python
 while i < 10
     if i == 7
         stop
@@ -68,7 +68,7 @@ something I believe is original to Blang: `between` blocks. A really common
 behavior in programming tasks is doing something between iterations. In Blang,
 it looks like this:
 
-```blang
+```python
 str := ""
 for num in nums
     skip if num < 0
@@ -113,7 +113,7 @@ that can be checked at compile time, since lists can have dynamic lengths. One
 solution to this would be to handle it as an exception, but this is heavy-handed.
 Blang's approach is to have the operation defined to return `nil`.
 
-```blang
+```python
 l := [40,50,60]
 // l[99] == nil
 ```
@@ -130,7 +130,7 @@ required, there are three options available: provide a fallback value, fail
 (exit the program with an error status) if a nil value appears, or manually
 check for nil and cast the result if it's safe to do so:
 
-```blang
+```python
 // nums:[Int]
 n := nums[x]
 // Provide a fallback in case of nil:
@@ -152,7 +152,7 @@ specify that any indexing into `nil` returns `nil`, and setting any index on
 value, then `foo[x][y][z]` is also not a value. And if `foo[x]` is not a value
 then setting a new value on it `foo[x][y] = nil` won't have any effect.
 
-```blang
+```python
 nested := [[40,50,60],[70,80]]
 x := nested[999][1] // returns `nil`
 nested[-456][789] = 5 // no-op
@@ -203,7 +203,7 @@ have the type `String`.
 Like many modern programming languages, Blang supports string interpolation,
 which makes it easy to insert values into strings:
 
-```blang
+```python
 say("Hi, my name is $my_name and my favorite number is $(random())")
 ```
 
@@ -236,7 +236,7 @@ programmer and "unsafe" strings from elsewhere in the program.
 
 In Blang, there is a much better solution for this problem: DSL strings.
 
-```blang
+```python
 SQL ::: SQL:String
 def escape(str:String):SQL
     return ("'$(str|replace("'", "''"))'"):SQL
@@ -262,7 +262,7 @@ conveniently represent whatever you need to.
 Secondly, it will be a compile-time type error if the programmer attempts to
 pass an unsafe string to a function that expects an SQL query string:
 
-```blang
+```python
 s:String = get_unsafe_string()
 sql_execute(s) // <-- type error
 ```
@@ -271,7 +271,7 @@ And finally, DSL string interpolation *automatically* escapes values, using a
 user-defined escaping function. Doing the safe thing (escaping values) becomes
 the easy and automatic thing to do.
 
-```blang
+```python
 malicious:String = "xxx'; drop table users; --"
 query := %SQL[SELECT * FROM users WHERE name = $malicious]
 say("$query")
@@ -281,7 +281,7 @@ say("$query")
 DSL strings also allow escaping values besides strings, which can be useful
 cases like escaping lists of filenames for shell code:
 
-```blang
+```python
 Shell ::: Shell:String
 def escape(str:String):Shell
     return ("'$(str | replace("'", "'\"'\"'"))'"):Shell
@@ -303,7 +303,7 @@ say("$cmd")
 DSLs can also be used to guard against sensitive information being revealed
 accidentally.
 
-```blang
+```python
 struct User {name:String, password_hash:String, credit_card:String}
 
 def check_credentials(users:{String=User}, username:String, password:Password):Bool
@@ -329,7 +329,7 @@ card numbers or password hashes:
 One way to avoid this problem is to use custom DSL strings for sensitive data,
 which defines a custom `tostring()` implementation that obscures any private data:
 
-```blang
+```python
 SensitiveString ::: SensitiveString:String
 def escape(s:String):SensitiveString = s:SensitiveString
 def tostring(h:SensitiveString):String = "******"
