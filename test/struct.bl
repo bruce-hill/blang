@@ -48,4 +48,5 @@ struct Tree {
 }
 
 t := Tree{5, Tree{0, nil, nil}, nil}
-$puts("Recursive struct: $t")
+t.right = t
+$puts("Recursive struct with cyclical references: $t")

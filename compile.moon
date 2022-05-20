@@ -217,6 +217,9 @@ class Environment
             -- log "Getting tostring: #{t} -> #{fn}"
             return fn if fn
 
+        -- HACK: these primitive values' functions only take 1 arg, but it
+        -- should be safe to pass them an extra callstack argument, which
+        -- they'll just ignore.
         if t\is_a(Types.Int)
             return "$bl_tostring_int"
         elseif t\is_a(Types.Percent)
@@ -238,7 +241,14 @@ class Environment
         @tostring_funcs["#{t}"] = fn_name
 
         reg = "%#{typename\lower()}"
-        code = "function l #{fn_name}(#{t.base_type} #{reg}) {\n@start\n"
+        -- To avoid stack overflow on self-referencing structs, pass a callstack
+        -- as a stack-allocated linked list and check before recursing
+        callstack = "%callstack"
+        code = "function l #{fn_name}(#{t.base_type} #{reg}, l #{callstack}) {\n@start\n"
+
+        -- TODO: Check for recursive lists/tables? It probably doesn't matter,
+        -- since the type system currently only allows recursive types for
+        -- structs, not lists/tables, so cycles can only be achieved with structs.
 
         dest = @fresh_local "string"
         if t\is_a(Types.Nil)
@@ -277,7 +287,7 @@ class Environment
                 item = item2
 
             item_str = @fresh_local "item.string"
-            code ..= "#{item_str} =l call #{@get_tostring_fn t.item_type, scope}(#{t.item_type.base_type} #{item})\n"
+            code ..= "#{item_str} =l call #{@get_tostring_fn t.item_type, scope}(#{t.item_type.base_type} #{item}, l #{callstack})\n"
 
             code ..= "storel #{item_str}, #{item_strloc}\n"
             code ..= "jmp #{loop_label}\n#{end_label}\n"
@@ -336,7 +346,7 @@ class Environment
                 key
             
             key_str = @fresh_local "key.string"
-            code ..= "#{key_str} =l call #{@get_tostring_fn t.key_type, scope}(#{t.key_type.base_type} #{key_reg})\n"
+            code ..= "#{key_str} =l call #{@get_tostring_fn t.key_type, scope}(#{t.key_type.base_type} #{key_reg}, l #{callstack})\n"
             code ..= "storel #{key_str}, #{p}\n"
             code ..= "#{p} =l add #{p}, 8\n"
 
@@ -359,7 +369,7 @@ class Environment
                 value_raw
             
             value_str = @fresh_local "value.string"
-            code ..= "#{value_str} =l call #{@get_tostring_fn t.value_type, scope}(#{t.value_type.base_type} #{value_reg})\n"
+            code ..= "#{value_str} =l call #{@get_tostring_fn t.value_type, scope}(#{t.value_type.base_type} #{value_reg}, l #{callstack})\n"
             code ..= "storel #{value_str}, #{p}\n"
 
             entry_str = @fresh_local "entry.str"
@@ -383,9 +393,44 @@ class Environment
             code ..= "storel #{@get_string_reg("}","curly.close")}, #{chunk}\n"
             code ..= "#{dest} =l call $bl_string_join(l 3, l #{chunks}, l 0)\n"
         elseif t\is_a(Types.StructType)
+            content = @fresh_local "struct.content"
+
+            -- Check callstack for cyclical references
+            cycle_next = @fresh_label "cycle.check.next"
+            cycle_check = @fresh_label "cycle.check"
+            cycle_found = @fresh_label "cycle.found"
+            cycle_notfound = @fresh_label "cycle.notfound"
+            conclusion = @fresh_label "tostring.conclusion"
+
+            walker = @fresh_local "cycle.walker"
+            code ..= "#{walker} =l copy #{callstack}\n"
+            code ..= "jmp #{cycle_next}\n"
+            code ..= "#{cycle_next}\n"
+            code ..= "call $puts(l #{@get_string_reg "DOOP"})\n"
+            code ..= "jnz #{walker}, #{cycle_check}, #{cycle_notfound}\n"
+            code ..= "#{cycle_check}\n"
+            cycle_parent = @fresh_local "cycle.parent"
+            code ..= "#{cycle_parent} =l add #{walker}, 8\n"
+            code ..= "#{cycle_parent} =l loadl #{cycle_parent}\n"
+            code ..= "#{walker} =l loadl #{walker}\n"
+            wasfound = @fresh_local "cycle.wasfound"
+            code ..= "#{wasfound} =l ceql #{cycle_parent}, #{reg}\n"
+            code ..= "jnz #{wasfound}, #{cycle_found}, #{cycle_next}\n"
+            code ..= "#{cycle_found}\n"
+            code ..= "call $puts(l #{@get_string_reg "Cycle found!"})\n"
+            code ..= "#{content} =l copy #{@get_string_reg "...", "ellipsis"}\n"
+            code ..= "jmp #{conclusion}\n"
+
+            code ..= "#{cycle_notfound}\n"
+            code ..= "call $puts(l #{@get_string_reg "Cycle not found!"})\n"
+            new_callstack = @fresh_local "new.callstack"
+            code ..= "#{new_callstack} =l alloc8 #{2*8}\n"
+            code ..= "storel #{callstack}, #{new_callstack}\n"
+            p = @fresh_local "p"
+            code ..= "#{p} =l add #{new_callstack}, 8\n"
+            code ..= "storel #{reg}, #{p}\n"
             chunks = @fresh_local "chunks"
             code ..= "#{chunks} =l alloc8 #{8*#t.members}\n"
-
             for i,mem in ipairs t.members
                 member_loc = @fresh_local "#{t\id_str!\lower!}.#{mem.name}.loc"
                 code ..= "#{member_loc} =l add #{reg}, #{8*(i-1)}\n"
@@ -393,14 +438,17 @@ class Environment
                 code ..= "#{member_reg} =#{mem.type.base_type} load#{mem.type.base_type} #{member_loc}\n"
 
                 member_str = @fresh_local "#{t\id_str!\lower!}.#{mem.name}.string"
-                code ..= "#{member_str} =l call #{@get_tostring_fn mem.type, scope}(#{mem.type.base_type} #{member_reg})\n"
+                code ..= "#{member_str} =l call #{@get_tostring_fn mem.type, scope}(#{mem.type.base_type} #{member_reg}, l #{new_callstack})\n"
 
                 if mem.name
                     code ..= "#{member_str} =l call $bl_string_append_string(l #{@get_string_reg("#{mem.name}=")}, l #{member_str})\n"
                 chunk_loc = @fresh_local "string.chunk.loc"
                 code ..= "#{chunk_loc} =l add #{chunks}, #{8*(i-1)}\n"
                 code ..= "storel #{member_str}, #{chunk_loc}\n"
+            code ..= "#{content} =l call $bl_string_join(l #{#t.members}, l #{chunks}, l #{@get_string_reg(", ", "comma.space")})\n"
+            code ..= "jmp #{conclusion}\n"
 
+            code ..= "#{conclusion}\n"
             final_chunks = @fresh_local "surrounding.chunks"
             code ..= "#{final_chunks} =l alloc8 #{8*3}\n"
             chunk_loc = @fresh_local "chunk.loc"
@@ -409,8 +457,6 @@ class Environment
                 code ..= "storel #{@get_string_reg("{", "curly")}, #{chunk_loc}\n"
             else
                 code ..= "storel #{@get_string_reg("#{t.name}{", "#{t\id_str!}.name")}, #{chunk_loc}\n"
-            content = @fresh_local "struct.content"
-            code ..= "#{content} =l call $bl_string_join(l #{#t.members}, l #{chunks}, l #{@get_string_reg(", ", "comma.space")})\n"
             code ..= "#{chunk_loc} =l add #{final_chunks}, #{8*1}\n"
             code ..= "storel #{content}, #{chunk_loc}\n"
             code ..= "#{chunk_loc} =l add #{final_chunks}, #{8*2}\n"
@@ -427,7 +473,7 @@ class Environment
             code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("nil", "nil")})\n"
             code ..= "jmp #{end_label}\n"
             code ..= "#{nonnil_label}\n"
-            code ..= "#{dest} =l call #{@get_tostring_fn t.nonnil, scope}(#{t.nonnil.base_type} #{reg})\n"
+            code ..= "#{dest} =l call #{@get_tostring_fn t.nonnil, scope}(#{t.nonnil.base_type} #{reg}, l #{callstack})\n"
             code ..= "jmp #{end_label}\n"
             code ..= "#{end_label}\n"
         elseif t\is_a(Types.MeasureType)
@@ -850,7 +896,7 @@ expr_compilers =
                 else
                     fn_name = env\get_tostring_fn t, @
                     interp_reg = env\fresh_local "string.interp"
-                    code ..= "#{interp_reg} =l call #{fn_name}(#{t.base_type} #{val_reg})\n"
+                    code ..= "#{interp_reg} =l call #{fn_name}(#{t.base_type} #{val_reg}, l 0)\n"
                     interp_reg
                 code ..= "storel #{interp_reg}, #{chunk_loc}\n"
                 
