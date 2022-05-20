@@ -101,6 +101,44 @@ for num in nums:
     s += str(num)
 ```
 
+## Units of Measure
+
+Inspired by [Graydon Hoare's blogpost "What's
+next?"](https://graydon2.dreamwidth.org/253769.html) as well as the
+implementation of [F#'s Units of
+Measure](https://docs.microsoft.com/en-us/dotnet/fsharp/language-reference/units-of-measure),
+Blang supports typed units of measure with typechecking and automatic
+conversions between units.
+
+```python
+unit km = 1_000<m>
+unit cm = .01<m>
+unit mm = .001<m>
+
+1<m> + 1<cm> == 1.01<m>
+
+10.0 * 2.5<m> == 25.0<m>
+
+unit min = 60<s>
+unit hr = 60<min>
+
+1<m> + 1<hr> // Type error!
+
+unit inch = 0.0254<m>
+unit ft = 12<inch>
+unit yd = 3<ft>
+unit mi = 5_280<ft>
+
+10<mi> / 2<hr> == 5<mi/hr> == 2.2352<m/s>
+1<mi>/1<km> == 1<mi/km> == 1.60934
+```
+
+Type checking and unit conversions are all performed *at compile time* relative
+to irreducible base units (i.e. those not defined in relation to other units),
+and all math occurs as double precision floating point operations in base
+units. In other words, there is no run-time overhead when performing unitful
+calculations.
+
 ## Minimally Intrusive Optional Types
 
 Optional types in many programming languages are either verbose and annoying to
@@ -354,4 +392,4 @@ Some ideas in Blang were inspired by Cristina Cifuentes' talk [What Is a Secure
 Programming Language?](https://www.youtube.com/watch?v=dhoP-dyIr54) In the
 talk, Cifuentes points out that roughly half of all exploited vulnerabilities
 discovered in the National Vulnerability Database come down to buffer errors,
-code injection, or 
+code injection, or accidental data leaks.
