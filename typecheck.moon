@@ -318,16 +318,19 @@ get_type = memoize (node)->
                 source = cmd\read("a")
                 unless cmd\close!
                     src_file = io.open("#{search_path}/#{module_dirname}/#{module_basename}.bl")
-                    if src_file
-                        -- Compile on-demand:
-                        log "Compiling on the fly #{search_path}/#{module_dirname}/#{module_basename}.bl"
-                        os.execute("./blangc -c #{search_path}/#{module_dirname}/#{module_basename}.bl")
-                        src_file\close!
+                    continue unless src_file
+                    -- Compile on-demand:
+                    tmpfile = io.popen("mktemp /tmp/blang-module-XXXXXX.so")\read("l")
+                    log "Compiling on the fly #{search_path}/#{module_dirname}/#{module_basename}.bl -> #{tmpfile}"
+                    unless os.execute("./blangc -c #{search_path}/#{module_dirname}/#{module_basename}.bl -s #{tmpfile}")
+                        continue
+                    src_file\close!
 
-                    cmd = io.popen("./getsym #{search_path}/#{module_dirname}/lib#{module_basename}.so source")
+                    cmd = io.popen("./getsym #{tmpfile} source")
                     source = cmd\read("a")
                     unless cmd\close!
-                        log "Getsym #{search_path}/#{module_dirname}/lib#{module_basename}.so failed! #{source}"
+                        log "Getsym #{tmpfile} failed!"
+                    os.execute("rm #{tmpfile}")
 
                 ast = parse source, filename
                 exports = {}
@@ -386,7 +389,7 @@ get_type = memoize (node)->
             elseif t\is_a(StructType)
                 if node.index.__tag == "FieldName"
                     member_name = node.index[0]
-                    node_assert t.members_by_name[member_name], node.index, "Not a valid struct member of #{t}"
+                    node_assert t.members_by_name[member_name], node.index, "Not a valid struct member of #{t}{#{concat ["#{m.name or i}=#{m.type}" for i,m in ipairs t.members], ", "}}"
                     ret_type = t.members_by_name[member_name].type
                     return is_optional and OptionalType(ret_type) or ret_type
                 elseif node.index.__tag == "Int"

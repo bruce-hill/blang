@@ -85,7 +85,7 @@ TableComprehension:: (`{ __
   [@index=Var__`,__] @val=Var __ "in" __ @iterable=required-extended-expr __
   [(@control=(Skip/Stop) __ (PostfixConditional / @:ParseError=(..>`] =>"Expected to see a condition here")))
    / PostfixConditional] __`})
-FnCall:: @fn=(FnCall / Global / Var / `(__required-extended-expr__`)) `( __ *extended-expr % (__`,__) __ [`,__] `) [_`:_@type=type]
+FnCall:: @fn=(FnCall / IndexedTerm / Global / Var / `(__required-extended-expr__`)) `( __ *extended-expr % (__`,__) __ [`,__] `) [_`:_@type=type]
 methodCall: @:FnCall=((methodCall / IndexedTerm / term) _ `| _
   (@fn=(Global / Var / `(__required-extended-expr__`)) _
    [`( __ *expr % (__`,__) __ [`,__] `)] / @:ParseError=(=>"Not a valid method call")) [_`:_@type=type])

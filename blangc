@@ -15,6 +15,7 @@ files, args = {}, {}
 output_file = nil
 qbe_file = nil
 asm_file = nil
+so_file = nil
 i = 1
 while i <= #arg
     a = arg[i]
@@ -28,6 +29,10 @@ while i <= #arg
         continue
     elseif a == "-a"
         asm_file = assert(arg[i+1], "No asm name provided")
+        i += 2
+        continue
+    elseif a == "-s"
+        so_file = assert(arg[i+1], "No .so file provided")
         i += 2
         continue
     elseif a == "-q"
@@ -90,9 +95,9 @@ with file
     run "rm -f #{output_file}"
     if compile
         run "cc #{asm_file} -c -fPIC -ggdb -o #{output_file} -lm -lbhash -lbp -lgc"
-        so_file = "lib"..base_name..".so"
+        so_file or= dirname.."lib"..base_name..".so"
         run "rm -f #{so_file}"
-        run "cc -shared -Wl,-soname,lib#{base_name}.so.1 -o #{dirname}#{so_file} #{output_file} lib/*.o -lc -lm -lbhash -lbp -lgc"
+        run "cc -shared -Wl,-soname,lib#{base_name}.so.1 -o #{so_file} #{output_file} lib/*.o -lc -lm -lbhash -lbp -lgc"
         log "Compiled to #{so_file}"
     else
         run "cc #{asm_file} -ggdb -o #{output_file} lib/*.o -lc -lm -lbhash -lbp -lgc"

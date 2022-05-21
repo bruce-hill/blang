@@ -623,26 +623,16 @@ class Environment
         code ..= "data $exports = {#{concat [get_type(e).base_type.." 0" for e in *exports], ","}}\n"
         code ..= "#{@fn_code}\n" if #@fn_code > 0
 
-        code ..= "data $loaded = {w 0}\n"
         code ..= "export function l $load() {\n"
         code ..= "@start\n"
-        first_load, already_loaded = @fresh_labels "first.load", "already.loaded"
-        is_loaded = @fresh_local "is_loaded"
-        code ..= "  #{is_loaded} =w loadw $loaded\n"
-        code ..= "  jnz #{is_loaded}, #{already_loaded}, #{first_load}\n"
-        code ..= @block first_load, ->
-            code = body_code
-            for i,e in ipairs exports
-                var_reg,var_code = @to_reg e
-                code ..= var_code
-                dest = @fresh_local "export.loc"
-                code ..= "  #{dest} =l add $exports, #{(i-1)*8}\n"
-                code ..= "  storel #{var_reg}, #{dest}\n"
-            code ..= "  storew 1, $loaded\n"
-            code ..= "  jmp #{already_loaded}\n"
-            return code
-        code ..= @block already_loaded, ->
-            "  ret $exports\n"
+        code ..= body_code
+        for i,e in ipairs exports
+            var_reg,var_code = @to_reg e
+            code ..= var_code
+            dest = @fresh_local "export.loc"
+            code ..= "  #{dest} =l add $exports, #{(i-1)*8}\n"
+            code ..= "  storel #{var_reg}, #{dest}\n"
+        code ..= "  ret $exports\n"
         code ..= "}\n"
 
         code ..= "export function w $main(w %argc, l %argv) {\n"

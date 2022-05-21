@@ -3,4 +3,7 @@ baz := "Hello $(2 + 3)"
 rand := $random():Int
 
 $puts("wip loaded!")
-export foo, baz, rand
+
+def bloop(s:String):= "bloop $s"
+
+export foo, baz, rand, bloop
