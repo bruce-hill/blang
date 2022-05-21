@@ -5,13 +5,13 @@ CWARN=-Wall -Wextra
 EXTRA=
 G=-ggdb
 O=-O0
-LIBS=-lm -lbhash
+LIBS=-lm -lbhash -ldl
 ALL_FLAGS=$(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(LIBS)
 
-CFILES=lib/range.c lib/string.c lib/reduce.c lib/list.c lib/math.c lib/gc.c
+CFILES=lib/range.c lib/string.c lib/reduce.c lib/list.c lib/math.c lib/gc.c lib/use.c
 OBJFILES=$(CFILES:.c=.o)
 
-all: $(OBJFILES) libblang.so
+all: getsym $(OBJFILES) libblang.so
 
 libblang.so: $(OBJFILES)
 	cc -shared -Wl,-soname,libblang.so -o $@ $^

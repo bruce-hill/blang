@@ -1,7 +1,8 @@
 -- Type checking/inference logic
 concat = table.concat
-import log, viz, print_err, node_assert, node_error from require 'util'
+import log, viz, print_err, node_assert, node_error, each_tag from require 'util'
 import Measure, register_unit_alias from require 'units'
+parse = require 'parse'
 
 local get_type, parse_type
 
@@ -117,12 +118,6 @@ memoize = (fn)->
         unless cache[x]
             cache[x] = fn(x)
         return cache[x]
-
-add_parenting = (ast)->
-    for k,node in pairs ast
-        if type(node) == 'table' and not (type(k) == 'string' and k\match("^__"))
-            node.__parent = ast
-            add_parenting node
 
 find_returns = (node)->
     switch node.__tag
@@ -302,8 +297,25 @@ get_type = memoize (node)->
                 derived_types[name] = DerivedType name, String
             return derived_types[name]
         when "Range" then return Range
-        when "Stop","Skip","Return","Fail"
+        when "Stop","Skip","Return","Fail","Export"
             return Void
+        when "Use"
+            name = node.name[0]
+            for search_path in (os.getenv("BLANG_MODULE_PATHS") or ".")\gmatch("[^:]+")
+                filename = "#{search_path}/lib#{name}.so"
+                cmd = io.popen("./getsym #{filename} source")
+                source = cmd\read("a")
+                continue unless cmd\close!
+
+                ast = parse source, filename
+                exports = {}
+                for exp in coroutine.wrap(-> each_tag(ast, "Export"))
+                    for var in *exp
+                        table.insert(exports, var)
+                t = OptionalType(StructType("Module:#{name}", [{type: get_type(e), name: e[0]} for e in *exports]))
+                return t
+            node_error node, "Cannot find module: #{name}"
+
         when "Cast" then return parse_type(node.type)
         when "List"
             decl_type = node.type and parse_type(node.type)
@@ -571,6 +583,6 @@ get_type = memoize (node)->
     return Void
 
 return {
-    :add_parenting, :parse_type, :get_type, :Type, :NamedType, :ListType, :TableType, :FnType, :StructType,
+    :parse_type, :get_type, :Type, :NamedType, :ListType, :TableType, :FnType, :StructType,
     :Int, :Num, :Percent, :String, :Bool, :Void, :Nil, :Range, :OptionalType, :MeasureType
 }

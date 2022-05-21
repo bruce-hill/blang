@@ -24,9 +24,6 @@ unless verbose
     log = ->
     util.log = log
 
-parse = require 'parse'
-import compile_prog from require 'compile'
-
 mktemp = (suffix)-> io.popen("mktemp --suffix=#{suffix} /tmp/blang.XXXXXX")\read("l")
 
 run = (cmd)->

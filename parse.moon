@@ -32,6 +32,11 @@ process = (ast)=>
         if v[1]
             ast[k] = v[1]
 
+add_parenting = (ast)->
+    for k,node in pairs ast
+        if type(node) == 'table' and not (type(k) == 'string' and k\match("^__"))
+            node.__parent = ast
+            add_parenting node
 
 parse = (text, filename)->
     log "Parsing..."
@@ -44,6 +49,7 @@ parse = (text, filename)->
 
     if errors > 0 then os.exit(1)
 
+    add_parenting ast
     return ast
 
 return parse

@@ -1,7 +1,7 @@
 Types = require 'typecheck'
 bp = require 'bp'
-import add_parenting, get_type, parse_type from Types
-import log, viz, node_assert, node_error, get_node_pos, print_err from require 'util'
+import get_type, parse_type from Types
+import log, viz, node_assert, node_error, get_node_pos, print_err, each_tag from require 'util'
 import Measure, register_unit_alias from require 'units'
 concat = table.concat
 
@@ -11,16 +11,6 @@ FLOAT_NIL = INT_NIL
 has_jump = bp.compile('^_("jmp"/"jnz"/"ret")\\b ..$ $$')
 
 local stmt_compilers, expr_compilers
-
-each_tag = (...)=>
-    return unless type(@) == 'table'
-
-    tags = {...}
-    for tag in *tags
-        coroutine.yield @ if @__tag == tag
-
-    for k,v in pairs(@)
-        each_tag(v, ...) if type(v) == 'table' and not (type(k) == 'string' and k\match("^__"))
 
 get_function_reg = (scope, name, signature)->
     return nil unless scope
@@ -172,18 +162,19 @@ class Environment
         })
 
     fresh_name: (base_name)=>
+        base_name = base_name\gsub("[^a-zA-Z0-9_.]", "_")
         @dups[base_name] += 1
         name = "#{base_name}.#{@dups[base_name]}"
         assert not @used_names[name], "How is this used? #{name}"
         @used_names[name] = true
         return name
 
-    fresh_local: (suggestion="x")=> @fresh_name("%#{suggestion}")
-    fresh_global: (suggestion="g")=> @fresh_name("$#{suggestion}")
-    fresh_label: (suggestion="label")=> @fresh_name("@#{suggestion}")
+    fresh_local: (suggestion="x")=> "%"..@fresh_name(suggestion)
+    fresh_global: (suggestion="g")=> "$"..@fresh_name(suggestion)
+    fresh_label: (suggestion="label")=> "@"..@fresh_name(suggestion)
     fresh_labels: (...)=>
         labels = {...}
-        for i,l in ipairs(labels) do labels[i] = @fresh_name "@#{l}"
+        for i,l in ipairs(labels) do labels[i] = "@"..@fresh_name(l)
         return table.unpack(labels)
 
     block: (label, get_body)=> label.."\n"..get_body(label)
@@ -246,7 +237,7 @@ class Environment
         fn_name = @fresh_global "tostring.#{typename}"
         @tostring_funcs["#{t}"] = fn_name
 
-        reg = "%#{typename\lower()}"
+        reg = @fresh_local typename\lower()
         -- To avoid stack overflow on self-referencing structs, pass a callstack
         -- as a stack-allocated linked list and check before recursing
         callstack = "%callstack"
@@ -518,9 +509,7 @@ class Environment
         node_assert stmt_compilers[node.__tag], node, "Not implemented: #{node.__tag}"
         return stmt_compilers[node.__tag](node, @)
 
-    compile_program: (ast, filename, main_name="main")=>
-        add_parenting(ast)
-
+    compile_program: (ast, filename)=>
         @type_code = "type :Range = {l,l,l}\n"
         declared_structs = {}
         for s in coroutine.wrap(-> each_tag(ast, "StructType", "Struct"))
@@ -624,18 +613,51 @@ class Environment
         for fndec in coroutine.wrap(-> each_tag(ast, "FnDecl", "Lambda"))
             @declare_function fndec
 
+        exports = {}
+        for exp in coroutine.wrap(-> each_tag(ast, "Export"))
+            for var in *exp
+                table.insert(exports, var)
+
+        -- TODO: check for top-level returns and error if they exist
         body_code = @compile_stmt(ast)\gsub("[^\n]+", =>(@\match("^%@") and @ or "  "..@))
 
         code = "# Source file: #{filename}\n\n"
         code ..= "#{@type_code}\n" if #@type_code > 0
         code ..= "#{@string_code}\n" if #@string_code > 0
+        code ..= "data $args = {l 0}\n"
+        code ..= "data $exports = {#{concat [get_type(e).base_type.." 0" for e in *exports], ","}}\n"
         code ..= "#{@fn_code}\n" if #@fn_code > 0
-        code ..= "export function w $#{main_name}(w %__argc, l %__argv) {\n"
+
+        code ..= "data $loaded = {w 0}\n"
+        code ..= "export function l $load() {\n"
         code ..= "@start\n"
-        code ..= "  %argc =l extsw %__argc\n"
-        code ..= "  %argv =l call $bl_list_new(l %argc, l %__argv)\n"
-        code ..= body_code
-        code ..= "  ret 0\n}\n"
+        first_load, already_loaded = @fresh_labels "first.load", "already.loaded"
+        is_loaded = @fresh_local "is_loaded"
+        code ..= "  #{is_loaded} =w loadw $loaded\n"
+        code ..= "  jnz #{is_loaded}, #{already_loaded}, #{first_load}\n"
+        code ..= @block first_load, ->
+            code = body_code
+            for i,e in ipairs exports
+                var_reg,var_code = @to_reg e
+                code ..= var_code
+                dest = @fresh_local "export.loc"
+                code ..= "  #{dest} =l add $exports, #{(i-1)*8}\n"
+                code ..= "  storel #{var_reg}, #{dest}\n"
+            code ..= "  storew 1, $loaded\n"
+            code ..= "  jmp #{already_loaded}\n"
+            return code
+        code ..= @block already_loaded, ->
+            "  ret $exports\n"
+        code ..= "}\n"
+
+        code ..= "export function w $main(w %argc, l %argv) {\n"
+        code ..= "@start\n"
+        code ..= "  %argc2 =l extsw %argc\n"
+        code ..= "  %args =l call $bl_list_new(l %argc2, l %argv)\n"
+        code ..= "  storel %args, $args\n"
+        code ..= "  call $load()\n"
+        code ..= "  ret 0\n"
+        code ..= "}\n"
         source_chunks = ast[0]\gsub('[^ !#-[^-~]', (c)->"\",b #{c\byte(1)},b\"")\gsub("\n", "\\n")
         code ..= "\nexport data $source = {b\"#{source_chunks}\",b 0}\n"
         return code
@@ -1503,6 +1525,12 @@ expr_compilers =
     Skip: (env)=> "0",env\compile_stmt(@).."#{env\fresh_label "unreachable"}\n"
     Stop: (env)=> "0",env\compile_stmt(@).."#{env\fresh_label "unreachable"}\n"
 
+    Use: (env)=>
+        name = @name[0]
+        mod = env\fresh_local name
+        code = "#{mod} =l call $bl_use(l #{env\get_string_reg name, name})\n"
+        return mod, code
+
 stmt_compilers =
     Block: (env)=>
         concat([env\compile_stmt(stmt) for stmt in *@], "")
@@ -1769,6 +1797,7 @@ stmt_compilers =
     TypeDeclaration: (env)=> ""
     StructDeclaration: (env)=> ""
     UnitDeclaration: (env)=> ""
+    Export: (env)=> ""
     FnCall: (env)=>
         _, code = env\to_reg @, true
         code = code\gsub("[^\n]- (call [^\n]*\n)$", "%1")
@@ -2040,8 +2069,8 @@ stmt_compilers =
         code ..= "#{end_label}\n"
         return code
         
-compile_prog = (ast, filename, main_name="main")->
+compile_prog = (ast, filename)->
     env = Environment!
-    return env\compile_program(ast, filename, main_name)
+    return env\compile_program(ast, filename)
 
 return {:compile_prog}
