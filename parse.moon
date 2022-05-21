@@ -50,6 +50,7 @@ parse = (text, filename)->
     if errors > 0 then os.exit(1)
 
     add_parenting ast
+    ast.__filename = filename
     return ast
 
 return parse

@@ -1,0 +1,6 @@
+foo := 12345
+baz := "Hello $(2 + 3)"
+rand := $random():Int
+
+$puts("wip loaded!")
+export foo, baz, rand

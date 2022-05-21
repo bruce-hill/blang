@@ -144,7 +144,7 @@ check_nil = (t, env, reg, nonnil_label, nil_label)->
         return "jmp #{truthy_label}\n"
 
 class Environment
-    new: =>
+    new: (@filename)=>
         @strings = {}
         @used_names = {}
         @dups = setmetatable({}, {__index:->0})
@@ -528,15 +528,10 @@ class Environment
             m = Measure(n, u.measure.units[0]\gsub("[<>]",""))
             register_unit_alias(u.name[0], m)
 
-        @used_names["%__argc"] = true
-        @used_names["%argc"] = true
-        @used_names["%__argv"] = true
-        @used_names["%argv"] = true
+        @used_names["args"] = true
         for v in coroutine.wrap(-> each_tag(ast, "Var"))
-            if v[0] == "argc"
-                v.__register = "%argc"
-            elseif v[0] == "argv"
-                v.__register = "%argv"
+            if v[0] == "args"
+                v.__register = "$args"
 
         -- Set up variable registers:
         hook_up_refs = (var, scope, arg_signature)->
@@ -1528,7 +1523,7 @@ expr_compilers =
     Use: (env)=>
         name = @name[0]
         mod = env\fresh_local name
-        code = "#{mod} =l call $bl_use(l #{env\get_string_reg name, name})\n"
+        code = "#{mod} =l call $bl_use(l #{env\get_string_reg env.filename, "current_file"}, l #{env\get_string_reg name, name})\n"
         return mod, code
 
 stmt_compilers =
@@ -2070,7 +2065,7 @@ stmt_compilers =
         return code
         
 compile_prog = (ast, filename)->
-    env = Environment!
+    env = Environment(filename)
     return env\compile_program(ast, filename)
 
 return {:compile_prog}

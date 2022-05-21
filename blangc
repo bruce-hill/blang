@@ -50,16 +50,14 @@ import compile_prog from require 'compile'
 
 mktemp = (suffix)-> io.popen("mktemp --suffix=#{suffix} /tmp/blang.XXXXXX")\read("l")
 
-mangle = (name)->
-    name\gsub("%.x([0-9A-F][0-9A-F])", ".x78%1")\gsub("[^a-zA-Z0-9_.]", (c)-> (".x%02X")\format(c\byte(1)))
-
 assert #files == 1, "Expected exactly one file, but got #{#files}"
 
 filename = files[1]
 file = assert(io.open(filename), "Couldn't open file: #{filename}")
 log "\x1b[1;4mFile #{filename}\x1b[m"
 with file
-    base_name = filename\gsub("%.bl$", "")
+    dirname = filename\match("^.*/") or "./"
+    base_name = filename\match("[^/]*$")\gsub("%.bl$", "")
     text = \read "*a"
     set_file filename, text
     log number_code(text, "34;1")
@@ -68,9 +66,7 @@ with file
     ast = ast[1]
     log "#{viz ast}"
 
-    main_name = compile and "load.#{mangle base_name}" or "main"
-    code = compile_prog ast, filename, main_name
-
+    code = compile_prog ast, filename
     log number_code(code, "36;1")
 
     qbe_file or= filename..".qbe"
@@ -90,13 +86,13 @@ with file
     asm_file or= filename..".s"
     run "qbe #{qbe_file} > #{asm_file}"
     log "\x1b[2mCompiling assembly...\x1b[m"
-    output_file or= base_name..".o"
+    output_file or= dirname..base_name..".o"
     run "rm -f #{output_file}"
     if compile
         run "cc #{asm_file} -c -fPIC -ggdb -o #{output_file} -lm -lbhash -lbp -lgc"
         so_file = "lib"..base_name..".so"
         run "rm -f #{so_file}"
-        run "cc -shared -Wl,-soname,lib#{base_name}.so.1 -o #{so_file} #{output_file} lib/*.o -lc -lm -lbhash -lbp -lgc"
+        run "cc -shared -Wl,-soname,lib#{base_name}.so.1 -o #{dirname}#{so_file} #{output_file} lib/*.o -lc -lm -lbhash -lbp -lgc"
         log "Compiled to #{so_file}"
     else
         run "cc #{asm_file} -ggdb -o #{output_file} lib/*.o -lc -lm -lbhash -lbp -lgc"

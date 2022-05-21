@@ -1,3 +1,0 @@
-$puts("$argc args in total:")
-for arg in argv
-    arg | $puts

@@ -1,0 +1,7 @@
+$puts("Loading wip...")
+x := use "modules/testmod"
+$puts("Fully loaded: $(x.rand)")
+$puts("Loading wip again...")
+y := use "modules/testmod"
+$puts("Fully loaded: $(y.rand)")
+fail unless x.rand == y.rand

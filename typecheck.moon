@@ -301,11 +301,33 @@ get_type = memoize (node)->
             return Void
         when "Use"
             name = node.name[0]
+            tmp = node.__parent
+            while tmp.__parent
+                tmp = tmp.__parent
+            filename = tmp.__filename
+
+            module_dirname,module_basename = name\match("(.*/)([^/]*)$")
+            if not module_dirname
+                module_dirname,module_basename = "",name
+
             for search_path in (os.getenv("BLANG_MODULE_PATHS") or ".")\gmatch("[^:]+")
-                filename = "#{search_path}/lib#{name}.so"
-                cmd = io.popen("./getsym #{filename} source")
+                unless search_path\match("^/")
+                    dirname = filename\match("^.*/") or ""
+                    search_path = dirname..search_path
+                cmd = io.popen("./getsym #{search_path}/#{module_dirname}/lib#{module_basename}.so source")
                 source = cmd\read("a")
-                continue unless cmd\close!
+                unless cmd\close!
+                    src_file = io.open("#{search_path}/#{module_dirname}/#{module_basename}.bl")
+                    if src_file
+                        -- Compile on-demand:
+                        log "Compiling on the fly #{search_path}/#{module_dirname}/#{module_basename}.bl"
+                        os.execute("./blangc -c #{search_path}/#{module_dirname}/#{module_basename}.bl")
+                        src_file\close!
+
+                    cmd = io.popen("./getsym #{search_path}/#{module_dirname}/lib#{module_basename}.so source")
+                    source = cmd\read("a")
+                    unless cmd\close!
+                        log "Getsym #{search_path}/#{module_dirname}/lib#{module_basename}.so failed! #{source}"
 
                 ast = parse source, filename
                 exports = {}
@@ -538,8 +560,7 @@ get_type = memoize (node)->
                 return get_type(node.__decl)
             var_type = find_declared_type(node.__parent, node[0])
             if not var_type
-                return Int if node[0] == "argc"
-                return ListType(String) if node[0] == "argv"
+                return ListType(String) if node[0] == "args"
             node_assert var_type, node, "Cannot determine type for undefined variable"
             return var_type
         when "Global"
