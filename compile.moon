@@ -21,36 +21,42 @@ get_function_reg = (scope, name, signature)->
                 if stmt.__tag == "FnDecl" and stmt.name[0] == name
                     t = get_type(stmt)
                     if "#{t}" == signature or t\arg_signature! == signature
-                        return node_assert(stmt.__register, stmt, "Function without a name"), get_type(stmt)
+                        return node_assert(stmt.__register, stmt, "Function without a name"), false, get_type(stmt)
                 elseif stmt.__tag == "Declaration" and stmt.var[0] == name
                     t = if stmt.type
                         parse_type(stmt.type)
                     else
                         get_type stmt.value
                     if t\is_a(Types.FnType) and ("#{t}" == signature or t\arg_signature! == signature)
-                        return stmt.var.__register, t
+                        return stmt.var.__register, false, t
+                elseif stmt.__tag == "Use"
+                    mod_type = get_type(stmt)
+                    mem = mod_type.nonnil.members_by_name[name]
+                    if mem and mem.type\is_a(Types.FnType) and ("#{mem.type}" == signature or mem.type\arg_signature! == signature)
+                        t = stmt.orElse and mem.type or OptionalType(mem.type)
+                        return mem.__location, true, t
         when "FnDecl","Lambda"
             for a in *scope.args
                 if a.arg[0] == name
                     t = parse_type(a.type)
                     if t\is_a(Types.FnType) and ("#{t}" == signature or t\arg_signature! == signature)
-                        return a.__register, t
+                        return a.__register, false, t
         when "For","ListComprehension","TableComprehension"
             iter_type = get_type(scope.iterable)
             if scope.val and scope.val[0] == name
                 if iter_type\is_a(Types.ListType) and iter_type.item_type\is_a(Types.FnType)
-                    return scope.val.__register, iter_type.item_type
+                    return scope.val.__register, false, iter_type.item_type
                 elseif iter_type\is_a(Types.TableType) and iter_type.value_type\is_a(Types.FnType)
-                    return scope.val.__register, iter_type.value_type
+                    return scope.val.__register, false, iter_type.value_type
             if scope.index and scope.index[0] == name
                 if iter_type\is_a(Types.TableType) and iter_type.key_type\is_a(Types.FnType)
-                    return scope.index.__register, iter_type.key_type
+                    return scope.index.__register, false, iter_type.key_type
 
     if scope.__parent and (scope.__parent.__tag == "For" or scope.__parent.__tag == "While" or scope.__parent.__tag == "Repeat")
         loop = scope.__parent
         if scope == loop.between
-            r,t = get_function_reg(loop.body, name, signature)
-            return r,t if r
+            r,c,t = get_function_reg(loop.body, name, signature)
+            return r,c,t if r
     
     return get_function_reg(scope.__parent, name, signature)
 
@@ -76,11 +82,12 @@ infixop = (env, op)=>
 overload_infix = (env, overload_name, regname="result")=>
     t = get_type @
     lhs_type, rhs_type = get_type(@lhs), get_type(@rhs)
-    fn_reg, t2 = get_function_reg @__parent, overload_name, "(#{lhs_type},#{rhs_type})"
+    fn_reg, needs_loading, t2 = get_function_reg @__parent, overload_name, "(#{lhs_type},#{rhs_type})"
     node_assert fn_reg, @, "#{overload_name} is not supported for #{lhs_type} and #{rhs_type}"
-    lhs_reg,code = env\to_reg @lhs
-    rhs_reg,rhs_code = env\to_reg @rhs
-    code ..= rhs_code
+    lhs_reg,rhs_reg,operand_code = env\to_regs @lhs, @rhs
+    code = ""
+    code ..= "#{fn_reg} =l loadl #{fn_reg}\n" if needs_loading
+    code ..= operand_code
     result = env\fresh_local regname
     code ..= "#{result} =#{t.base_type} call #{fn_reg}(#{lhs_type.base_type} #{lhs_reg}, #{rhs_type.base_type} #{rhs_reg})\n"
     return result, code
@@ -139,7 +146,7 @@ check_nil = (t, env, reg, nonnil_label, nil_label)->
             tmp = env\fresh_local "is.nonnil"
             return "#{tmp} =l cod #{reg}, d_0.0 # Test for NaN\njnz #{tmp}, #{nonnil_label}, #{nil_label}\n"
         else
-            return "jnz #{reg}, #{nil_label}, #{nonnil_label}\n"
+            return "jnz #{reg}, #{nonnil_label}, #{nil_label}\n"
         return "jmp #{truthy_label}\n"
 
 class Environment
@@ -209,28 +216,27 @@ class Environment
 
     get_tostring_fn: (t, scope)=>
         if t != Types.String
-            fn = get_function_reg scope, "tostring", "(#{t})=>String"
-            -- log "Getting tostring: #{t} -> #{fn}"
-            return fn if fn
+            fn,needs_loading = get_function_reg scope, "tostring", "(#{t})=>String"
+            return fn,needs_loading if fn
 
         -- HACK: these primitive values' functions only take 1 arg, but it
         -- should be safe to pass them an extra callstack argument, which
         -- they'll just ignore.
         if t\is_a(Types.Int)
-            return "$bl_tostring_int"
+            return "$bl_tostring_int",false
         elseif t\is_a(Types.Percent)
-            return "$bl_tostring_percent"
+            return "$bl_tostring_percent",false
         elseif t\is_a(Types.Num)
-            return "$bl_tostring_float"
+            return "$bl_tostring_float",false
         elseif t\is_a(Types.Bool)
-            return "$bl_tostring_bool"
+            return "$bl_tostring_bool",false
         elseif t\is_a(Types.String)
-            return "$bl_string"
+            return "$bl_string",false
         elseif t\is_a(Types.Range)
-            return "$bl_tostring_range"
+            return "$bl_tostring_range",false
 
         if @tostring_funcs["#{t}"]
-            return @tostring_funcs["#{t}"]
+            return @tostring_funcs["#{t}"],false
 
         typename = t\id_str!
         fn_name = @fresh_global "tostring.#{typename}"
@@ -284,7 +290,9 @@ class Environment
                     item = item2
 
                 item_str = @fresh_local "item.string"
-                code ..= "#{item_str} =l call #{@get_tostring_fn t.item_type, scope}(#{t.item_type.base_type} #{item}, l #{callstack})\n"
+                fn,needs_loading = @get_tostring_fn t.item_type, scope
+                code ..= "#{fn} =l loadl #{fn}\n" if needs_loading
+                code ..= "#{item_str} =l call #{fn}(#{t.item_type.base_type} #{item}, l #{callstack})\n"
 
                 code ..= "storel #{item_str}, #{item_strloc}\n"
                 code ..= "jmp #{loop_label}\n"
@@ -347,7 +355,9 @@ class Environment
                     key
                 
                 key_str = @fresh_local "key.string"
-                code ..= "#{key_str} =l call #{@get_tostring_fn t.key_type, scope}(#{t.key_type.base_type} #{key_reg}, l #{callstack})\n"
+                fn,needs_loading = @get_tostring_fn t.key_type, scope
+                code ..= "#{fn} =l loadl #{fn}\n" if needs_loading
+                code ..= "#{key_str} =l call #{fn}(#{t.key_type.base_type} #{key_reg}, l #{callstack})\n"
                 code ..= "storel #{key_str}, #{p}\n"
                 code ..= "#{p} =l add #{p}, 8\n"
 
@@ -370,7 +380,9 @@ class Environment
                     value_raw
                 
                 value_str = @fresh_local "value.string"
-                code ..= "#{value_str} =l call #{@get_tostring_fn t.value_type, scope}(#{t.value_type.base_type} #{value_reg}, l #{callstack})\n"
+                fn,needs_loading = @get_tostring_fn t.value_type, scope
+                code ..= "#{fn} =l loadl #{fn}\n" if needs_loading
+                code ..= "#{value_str} =l call #{fn}(#{t.value_type.base_type} #{value_reg}, l #{callstack})\n"
                 code ..= "storel #{value_str}, #{p}\n"
 
                 entry_str = @fresh_local "entry.str"
@@ -440,7 +452,9 @@ class Environment
                     code ..= "#{member_reg} =#{mem.type.base_type} load#{mem.type.base_type} #{member_loc}\n"
 
                     member_str = @fresh_local "#{t\id_str!\lower!}.#{mem.name}.string"
-                    code ..= "#{member_str} =l call #{@get_tostring_fn mem.type, scope}(#{mem.type.base_type} #{member_reg}, l #{new_callstack})\n"
+                    fn,needs_loading = @get_tostring_fn mem.type, scope
+                    code ..= "#{fn} =l loadl #{fn}\n" if needs_loading
+                    code ..= "#{member_str} =l call #{fn}(#{mem.type.base_type} #{member_reg}, l #{new_callstack})\n"
 
                     if mem.name
                         code ..= "#{member_str} =l call $bl_string_append_string(l #{@get_string_reg("#{mem.name}=")}, l #{member_str})\n"
@@ -477,7 +491,10 @@ class Environment
                 code ..= "jmp #{end_label}\n"
                 return code
             code ..= @block nonnil_label, ->
-                code = "#{dest} =l call #{@get_tostring_fn t.nonnil, scope}(#{t.nonnil.base_type} #{reg}, l #{callstack})\n"
+                fn,needs_loading = @get_tostring_fn t.nonnil, scope
+                code = ""
+                code ..= "#{fn} =l loadl #{fn}\n" if needs_loading
+                code ..= "#{dest} =l call #{fn}(#{t.nonnil.base_type} #{reg}, l #{callstack})\n"
                 code ..= "jmp #{end_label}\n"
                 return code
             code ..= "#{end_label}\n"
@@ -492,7 +509,7 @@ class Environment
         code = code\gsub("[^\n]+", =>((@\match("^[@}]") or @\match("^function")) and @ or "  "..@))
         @fn_code ..= code
 
-        return fn_name
+        return fn_name,false
 
     to_reg: (node, ...)=>
         node_assert expr_compilers[node.__tag], node, "Expression compiler not implemented for #{node.__tag}"
@@ -581,6 +598,9 @@ class Environment
                     else
                         hook_up_refs var, node, arg_signature
 
+        for glob in coroutine.wrap(-> each_tag(ast, "Global"))
+            glob.__register = glob[0]
+
         -- Set up function names (global):
         for fndec in coroutine.wrap(-> each_tag(ast, "FnDecl", "Lambda"))
             fndec.__register = @fresh_global(fndec.name and fndec.name[0] or "lambda")
@@ -610,6 +630,25 @@ class Environment
             if loop and (loop.__tag == "For" or loop.__tag == "While" or loop.__tag == "Repeat")
                 if block == loop.body and loop.between
                     hook_up_refs vardec.var, loop.between
+
+        naked_imports = {}
+        -- Hook up naked imports
+        for use in coroutine.wrap(-> each_tag(ast, "Use"))
+            if use.__parent.__tag == "Block"
+                i = 1
+                while use.__parent[i] != use
+                    i += 1
+                scope = {table.unpack(use.__parent, i+1)}
+                mod_type = get_type(use)
+                use.__imports = {}
+                for i,mem in ipairs (mod_type.nonnil or mod_type).members
+                    loc = @fresh_global "#{use.name[0]}.#{mem.name}"
+                    t = use.orElse and mem.type or Types.OptionalType(mem.type)
+                    pseudo_var = setmetatable({[0]: mem.name, __tag:"Var", __type: t, __location: loc, __from_use:true}, getmetatable(use))
+                    use.__imports[i] = pseudo_var
+                    sig = mem.type\is_a(Types.FnType) and mem.type\arg_signature! or nil
+                    hook_up_refs pseudo_var, scope, sig
+                    table.insert naked_imports, pseudo_var
 
         for for_block in coroutine.wrap(-> each_tag(ast, "For"))
             if for_block.val
@@ -658,6 +697,8 @@ class Environment
         code ..= "#{@string_code}\n" if #@string_code > 0
         code ..= "data $args = {l 0}\n"
         code ..= "data $exports = {#{concat [get_type(e).base_type.." 0" for e in *exports], ","}}\n"
+        for var in *naked_imports
+            code ..= "data #{var.__location} = {#{get_type(var).base_type} 0}\n"
         for var in pairs file_scope_vars
             code ..= "data #{var.__location} = {#{get_type(var).base_type} 0}\n"
         code ..= "#{@fn_code}\n" if #@fn_code > 0
@@ -962,9 +1003,10 @@ expr_compilers =
                 interp_reg = if t == Types.String
                     val_reg
                 else
-                    fn_name = env\get_tostring_fn t, @
+                    fn,needs_loading = env\get_tostring_fn t, scope
+                    code ..= "#{fn} =l loadl #{fn}\n" if needs_loading
                     interp_reg = env\fresh_local "string.interp"
-                    code ..= "#{interp_reg} =l call #{fn_name}(#{t.base_type} #{val_reg}, l 0)\n"
+                    code ..= "#{interp_reg} =l call #{fn}(#{t.base_type} #{val_reg}, l 0)\n"
                     interp_reg
                 code ..= "storel #{interp_reg}, #{chunk_loc}\n"
                 
@@ -988,8 +1030,9 @@ expr_compilers =
             safe = if t == dsl_type
                 val_reg
             else
-                fn_reg = get_function_reg @__parent, "escape", "(#{t})=>#{dsl_type}"
+                fn_reg,needs_loading = get_function_reg @__parent, "escape", "(#{t})=>#{dsl_type}"
                 node_assert fn_reg, val, "No escape(#{t})=>#{dsl_type} function is implemented, so this value cannot be safely inserted"
+                code ..= "#{fn_reg} =l loadl #{fn_reg}\n" if needs_loading
                 escaped = env\fresh_local "escaped"
                 code ..= "#{escaped} =l call #{fn_reg}(#{t.base_type} #{val_reg})\n"
                 escaped
@@ -1452,11 +1495,9 @@ expr_compilers =
 
     FnCall: (env, skip_ret=false)=>
         call_sig = "(#{concat [tostring(get_type(a)) for a in *@], ","})"
-        code = ""
         local fn_type, fn_reg
         fn_type = get_type @fn
-        fn_reg,fn_code = env\to_reg @fn
-        code ..= fn_code
+        fn_reg,code = env\to_reg @fn
 
         if fn_type
             node_assert fn_type\is_a(Types.FnType), @fn, "This is not a function, it's a #{fn_type or "???"}"
@@ -1517,11 +1558,40 @@ expr_compilers =
         name = @name[0]
         mod = env\fresh_local name
         code = "#{mod} =l call $bl_use(l #{env\get_string_reg env.filename, "current_file"}, l #{env\get_string_reg name, name})\n"
+        if @orElse
+            success_label,fail_label = env\fresh_labels "use.success","use.fail"
+            code ..= check_nil Types.OptionalType(get_type(@)), env, mod, success_label, fail_label
+            code ..= env\block fail_label, -> env\compile_stmt(@orElse)
+            code ..= "jmp #{success_label}\n" unless has_jump\match(code)
+            code ..= "#{success_label}\n"
         return mod, code
 
 stmt_compilers =
     Block: (env)=>
         concat([env\compile_stmt(stmt) for stmt in *@], "")
+    Use: (env)=>
+        assert @__imports
+        name = @name[0]
+        mod = env\fresh_local name
+        code = "#{mod} =l call $bl_use(l #{env\get_string_reg env.filename, "current_file"}, l #{env\get_string_reg name, name})\n"
+        success_label,fail_label,done_label = env\fresh_labels "use.success","use.fail","use.done"
+        if @orElse
+            code ..= check_nil Types.OptionalType(get_type(@)), env, mod, success_label, fail_label
+            code ..= env\block fail_label, -> env\compile_stmt(@orElse)
+            code ..= "jmp #{done_label}\n" unless has_jump\match(code)
+            code ..= "#{success_label}\n"
+
+        for i,mem in ipairs @__imports
+            loc = env\fresh_local "#{name}.#{mem[0]}.loc"
+            code ..= "#{loc} =l add #{mod}, #{8*(i-1)}\n"
+            tmp = env\fresh_local "#{name}.#{mem[0]}"
+            code ..= "#{tmp} =#{mem.__type.base_type} load#{mem.__type.base_type} #{loc}\n"
+            code ..= "storel #{tmp}, #{mem.__location}\n"
+
+        if @orElse
+            code ..= "jmp #{done_label}\n" unless has_jump\match(code)
+            code ..= "#{done_label}\n"
+        return code
     Declaration: (env)=>
         varname = "%#{@var[0]}"
         node_assert not env.used_names[varname], @var, "Variable being shadowed: #{varname}"
@@ -1627,9 +1697,10 @@ stmt_compilers =
         elseif lhs_type == rhs_type and lhs_type\is_a(Types.ListType)
             return code.."#{lhs_reg} =l call $bl_list_concat(l #{lhs_reg}, l #{rhs_reg})\n"..store_code
         else
-            fn_reg, t2 = get_function_reg @__parent, "add", "(#{lhs_type},#{rhs_type})"
+            fn_reg, needs_loading, t2 = get_function_reg @__parent, "add", "(#{lhs_type},#{rhs_type})"
             node_assert fn_reg, @, "addition is not supported for #{lhs_type} and #{rhs_type}"
             node_assert t2.return_type == lhs_type, @, "Return type for add(#{lhs_type},#{rhs_type}) is #{t2.return_type} instead of #{lhs_type}"
+            code ..= "#{fn_reg} =l loadl #{fn_reg}\n" if needs_loading
             return code.."#{lhs_reg} =#{lhs_type.base_type} call #{fn_reg}(#{lhs_type.base_type} #{lhs_reg}, #{rhs_type.base_type} #{rhs_reg})\n"..store_code
     SubUpdate: (env)=>
         lhs_type,rhs_type = get_type(@lhs),get_type(@rhs)
@@ -1638,9 +1709,10 @@ stmt_compilers =
         if nonnil_eq(lhs_type, rhs_type) and (lhs_type\is_a(Types.Int) or lhs_type\is_a(Types.Num))
             return code.."#{lhs_reg} =#{lhs_type.base_type} sub #{lhs_reg}, #{rhs_reg}\n"..store_code
         else
-            fn_reg, t2 = get_function_reg @__parent, "subtract", "(#{lhs_type},#{rhs_type})"
+            fn_reg, needs_loading, t2 = get_function_reg @__parent, "subtract", "(#{lhs_type},#{rhs_type})"
             node_assert fn_reg, @, "subtraction is not supported for #{lhs_type} and #{rhs_type}"
             node_assert t2.return_type == lhs_type, @, "Return type for subtract(#{lhs_type},#{rhs_type}) is #{t2.return_type} instead of #{lhs_type}"
+            code ..= "#{fn_reg} =l loadl #{fn_reg}\n" if needs_loading
             return code.."#{lhs_reg} =#{lhs_type.base_type} call #{fn_reg}(#{lhs_type.base_type} #{lhs_reg}, #{rhs_type.base_type} #{rhs_reg})\n"..store_code
     MulUpdate: (env)=>
         lhs_type,rhs_type = get_type(@lhs),get_type(@rhs)
@@ -1649,9 +1721,10 @@ stmt_compilers =
         if nonnil_eq(lhs_type, rhs_type) and (lhs_type\is_a(Types.Int) or lhs_type\is_a(Types.Num))
             return code.."#{lhs_reg} =#{lhs_type.base_type} mul #{lhs_reg}, #{rhs_reg}\n"..store_code
         else
-            fn_reg, t2 = get_function_reg @__parent, "multiply", "(#{lhs_type},#{rhs_type})"
+            fn_reg, needs_loading, t2 = get_function_reg @__parent, "multiply", "(#{lhs_type},#{rhs_type})"
             node_assert fn_reg, @, "multiplication is not supported for #{lhs_type} and #{rhs_type}"
             node_assert t2.return_type == lhs_type, @, "Return type for multiply(#{lhs_type},#{rhs_type}) is #{t2.return_type} instead of #{lhs_type}"
+            code ..= "#{fn_reg} =l loadl #{fn_reg}\n" if needs_loading
             return code.."#{lhs_reg} =#{lhs_type.base_type} call #{fn_reg}(#{lhs_type.base_type} #{lhs_reg}, #{rhs_type.base_type} #{rhs_reg})\n"..store_code
     DivUpdate: (env)=>
         lhs_type,rhs_type = get_type(@lhs),get_type(@rhs)
@@ -1660,9 +1733,10 @@ stmt_compilers =
         if nonnil_eq(lhs_type, rhs_type) and (lhs_type\is_a(Types.Int) or lhs_type\is_a(Types.Num))
             return code.."#{lhs_reg} =#{lhs_type.base_type} div #{lhs_reg}, #{rhs_reg}\n"..store_code
         else
-            fn_reg, t2 = get_function_reg @__parent, "divide", "(#{lhs_type},#{rhs_type})"
+            fn_reg, needs_loading, t2 = get_function_reg @__parent, "divide", "(#{lhs_type},#{rhs_type})"
             node_assert fn_reg, @, "division is not supported for #{lhs_type} and #{rhs_type}"
             node_assert t2.return_type == lhs_type, @, "Return type for divide(#{lhs_type},#{rhs_type}) is #{t2.return_type} instead of #{lhs_type}"
+            code ..= "#{fn_reg} =l loadl #{fn_reg}\n" if needs_loading
             return code.."#{lhs_reg} =#{lhs_type.base_type} call #{fn_reg}(#{lhs_type.base_type} #{lhs_reg}, #{rhs_type.base_type} #{rhs_reg})\n"..store_code
     OrUpdate: (env)=>
         t_lhs, t_rhs = get_type(@lhs), get_type(@rhs)

@@ -9,3 +9,8 @@ fail "Module idempotency failed" unless x.rand == y.rand
 fail "Module string equality check failed" unless x.str == "string"
 
 "blop" | (x.bloop) | $puts
+
+use "modules/testothermod" or fail
+
+$puts("$from_othermod")
+$puts("Call: $(othermod_foo(5))")

@@ -140,6 +140,16 @@ find_declared_type = (scope, name, arg_signature=nil)->
                 elseif stmt.__tag == "Declaration" and stmt.var[0] == name
                     return parse_type(stmt.type) if stmt.type
                     return get_type stmt.value
+                elseif stmt.__tag == "Use"
+                    -- Naked "use"
+                    if stmt.__parent.__tag == "Block"
+                        mod_type = get_type(stmt)
+                        mem = (mod_type.nonnil or mod_type).members_by_name[name]
+                        if mem and mem.type\is_a(FnType) and ("#{mem.type}" == arg_signature or mem.type\arg_signature! == arg_signature)
+                            if stmt.orElse
+                                return mem.type
+                            else
+                                return OptionalType(mem.type)
         when "FnDecl","Lambda"
             for a in *scope.args
                 if a.arg[0] == name
@@ -337,7 +347,9 @@ get_type = memoize (node)->
                 for exp in coroutine.wrap(-> each_tag(ast, "Export"))
                     for var in *exp
                         table.insert(exports, var)
-                t = OptionalType(StructType("Module:#{name}", [{type: get_type(e), name: e[0]} for e in *exports]))
+                t = StructType("Module:#{name}", [{type: get_type(e), name: e[0]} for e in *exports])
+                log "Module type #{node.name[0]} = {#{concat ["#{m.name}=#{m.type}" for m in *t.members], ", "}}"
+                t = OptionalType(t) unless node.orElse
                 return t
             node_error node, "Cannot find module: #{name}"
 
@@ -561,7 +573,7 @@ get_type = memoize (node)->
         when "Var"
             if node.__decl
                 return get_type(node.__decl)
-            var_type = find_declared_type(node.__parent, node[0])
+            var_type = node.__type or find_declared_type(node.__parent, node[0])
             if not var_type
                 return ListType(String) if node[0] == "args"
             node_assert var_type, node, "Cannot determine type for undefined variable"
@@ -575,8 +587,8 @@ get_type = memoize (node)->
                 find_declared_type node, node.fn[0], target_sig
             else
                 get_type node.fn
+            node_assert fn_type or node.__parent.__tag == "Block", node, "This function's return type cannot be inferred. It must be specified manually using a type annotation"
             return Void unless fn_type
-            -- node_assert fn_type, node.fn, "This function's return type cannot be inferred. It must be specified manually using a type annotation"
             node_assert fn_type\is_a(FnType), node.fn, "This is not a function, it's a #{fn_type or "???"}"
             return fn_type.return_type
         when "Block"

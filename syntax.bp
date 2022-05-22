@@ -101,7 +101,7 @@ indentedBlock: @:Block=([comment] nl curdent +(` /\t) statements)
 statement: (
     Declaration / FnDecl / If / When / For / While / Repeat / TypeDeclaration / StructDeclaration / UnitDeclaration
   / PostfixIf / PostfixFor / PostfixWhile
-  / Return / Skip / Stop / Export
+  / Return / Skip / Stop / Export / Use
   / line-statement
   ) _ [comment]
 Skip:: \b"skip"\b [_ @target=(\b"for"\b / \b"while"\b / \b"repeat"\b / Var)]
@@ -184,7 +184,7 @@ Repeat:: \b"repeat"\b @curdent:\C _ [comment] @body=maybeIndentedBlock [between]
 maybeIndentedBlock: indentedBlock / @:Block=@(_line-statement_)
 between: nl curdent \b"between"\b _ [comment] @between=(maybeIndentedBlock / @:ParseError=(..$ => "Invalid 'between' body"))
 Return:: \b"return"\b _ [@value=extended-expr]
-Use:: \b"use"\b _ `" @name=.. `"
+Use:: \b"use"\b _ `" @name=.. `" [_\b"or"\b_ @orElse=(Fail/Return/Skip/Stop)]
 Export:: \b"export"\b _ +Var %(_`,__)
 Range:: (
   @first=maybe-index-term [`,@next=maybe-index-term] ".." [@last=maybe-index-term] # 0,2..4 x..y 1..
