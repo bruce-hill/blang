@@ -1,0 +1,23 @@
+deftype Speed:Num
+
+def tostring(speed:Speed):String
+    n := speed:Num
+    if n >= 1000.0
+        return "$(n / 1000.) km/sec"
+    else
+        return "$n m/sec"
+
+def add(a:Speed,b:Speed):Speed = (a:Num + b:Num):Speed
+def subtract(a:Speed,b:Speed):Speed = (a:Num - b:Num):Speed
+def multiply(a:Speed,b:Num):Speed = (a:Num * b):Speed
+def multiply(a:Num,b:Speed):Speed = (a * b:Num):Speed
+def divide(a:Speed,b:Num):Speed = (a:Num / b):Speed
+
+def meters_per_sec(n:Num):Speed = n:Speed
+def km_per_sec(n:Num):Speed = (n*1000.):Speed
+
+speed := meters_per_sec(234.5)
+$puts("speed is: $speed")
+$puts("add speed: $(speed + km_per_sec(5.))")
+$puts("100x speed: $(100.*speed)")
+$puts("1/10 speed: $(speed/10.)")
