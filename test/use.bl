@@ -14,3 +14,6 @@ use "modules/testothermod" or fail
 
 $puts("$from_othermod")
 $puts("Call: $(othermod_foo(5))")
+
+emp := use "modules/emptymod"
+$puts("$emp")
