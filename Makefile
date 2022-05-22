@@ -26,6 +26,6 @@ clean:
 	rm -f $(OBJFILES)
 
 test: all
-	./blang test/*.bl
+	for f in test/*.bl; do printf '\x1b[33;1;4m%s\x1b[m\n' "$$f" && ./blang $$f || exit 1; done
 
 .PHONY: all clean test

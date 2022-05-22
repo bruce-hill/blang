@@ -36,3 +36,7 @@ for i in 1..5
     fail "Failed to short circuit"
 
 $puts("Successfully short circuited with stop")
+
+opt:String? = nil
+opt or= "optstring"
+fail unless opt == "optstring"
