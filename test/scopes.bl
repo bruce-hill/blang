@@ -1,0 +1,11 @@
+
+top := "Hello"
+$puts("Outside: $top")
+def foo():
+    mid := "world"
+    def baz():
+        inner := "!"
+        $puts("$top $inner")
+    baz()
+
+foo()

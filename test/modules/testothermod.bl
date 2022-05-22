@@ -1,0 +1,4 @@
+from_othermod := "from othermod"
+def othermod_foo(x:Int):Int = x + 1
+
+export othermod_foo, from_othermod
