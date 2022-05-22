@@ -1646,7 +1646,7 @@ stmt_compilers =
         lhs_type,rhs_type = get_type(@lhs),get_type(@rhs)
         lhs_reg,rhs_reg,code = env\to_regs @lhs, @rhs
         store_code = @lhs.__location and "store#{lhs_type.base_type} #{lhs_reg}, #{@lhs.__location}\n" or ""
-        if nonnil_eq(lhs_type, rhs_type) and (lhs_type\is_a(Types.Int) t_lhs lhs_type\is_a(Types.Num))
+        if nonnil_eq(lhs_type, rhs_type) and (lhs_type\is_a(Types.Int) or lhs_type\is_a(Types.Num))
             return code.."#{lhs_reg} =#{lhs_type.base_type} mul #{lhs_reg}, #{rhs_reg}\n"..store_code
         else
             fn_reg, t2 = get_function_reg @__parent, "multiply", "(#{lhs_type},#{rhs_type})"
@@ -1724,11 +1724,11 @@ stmt_compilers =
         elseif t\is_a(Types.String)
             error "Not impl"
         elseif t\is_a(Types.StructType)
-            node_assert @base.__register or @base.__location, @base, "Undefined variable"
+            base_reg,code = env\to_reg @base
             struct_size = 8*#t.members
             ret = env\fresh_local "#{t.name\lower!}.butwith"
-            code = "#{ret} =l alloc8 #{struct_size}\n"
-            code ..= "call $memcpy(l #{ret}, l #{@base.__register}, l #{struct_size})\n"
+            code ..= "#{ret} =l alloc8 #{struct_size}\n"
+            code ..= "call $memcpy(l #{ret}, l #{base_reg}, l #{struct_size})\n"
             p = env\fresh_local "#{t.name\lower!}.butwith.member.loc"
             used = {}
             for override in *@
@@ -1749,7 +1749,8 @@ stmt_compilers =
                 code ..= "#{p} =l add #{ret}, #{8*(i-1)}\n"
                 code ..= "store#{t.members[i].type.base_type} #{val_reg}, #{p}\n"
 
-            code ..= "#{@base.__register} =l call $intern_bytes(l #{ret}, l #{struct_size})\n"
+            code ..= "#{base_reg} =l call $intern_bytes(l #{ret}, l #{struct_size})\n"
+            code ..= "store#{t.base_type} #{base_reg}, #{@base.__location}\n" if @base.__location
             return code
         else
             node_error @, "| operator is only supported for List and Struct types"
