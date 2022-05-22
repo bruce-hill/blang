@@ -13,6 +13,7 @@ class Type
     abi_type: 'l'
     id_str: => tostring(@)\gsub('[^%w%d.]','')
     __eq: (other)=> type(other) == type(@) and other.__class == @__class and tostring(other) == tostring(@)
+    verbose_type: => "#{@}"
 
 class NamedType extends Type
     new: (@name)=>
@@ -66,17 +67,18 @@ class StructType extends Type
         for i,m in ipairs @members
             @members_by_name[m.name] = {index: i, type: m.type} if m.name
     __tostring: => "#{@name}"
-        -- if @members
-        --     mem_strs = {}
-        --     for m in *@members
-        --         t_str = if m.type.__class == StructType
-        --             m.type.name
-        --         else
-        --             "#{m.type}"
-        --         table.insert mem_strs, "#{m.name and m.name..':' or ''}#{m.type}"
-        --     "#{@name}{#{concat mem_strs, ","}}"
-        -- else
-        --     "#{@name}"
+    verbose_type: =>
+        if @members
+            mem_strs = {}
+            for m in *@members
+                t_str = if m.type.__class == StructType
+                    m.type.name
+                else
+                    "#{m.type}"
+                table.insert mem_strs, "#{m.name and m.name..':' or ''}#{m.type}"
+            "#{@name}{#{concat mem_strs, ","}}"
+        else
+            "#{@name}"
     id_str: => "#{@name}"
     __eq: Type.__eq
 
@@ -91,6 +93,7 @@ class OptionalType extends Type
         @abi_type = @nonnil.abi_type
     contains: (other)=> other == @ or other == Nil or (@nonnil and other\is_a(@nonnil))
     __tostring: => @nonnil\is_a(FnType) and "(#{@nonnil})?" or "#{@nonnil}?"
+    verbose_type: => @nonnil\is_a(FnType) and "(#{@nonnil\verbose_type!})?" or "#{@nonnil\verbose_type!}?"
     id_str: => "Optional.#{@nonnil\id_str!}"
     __eq: Type.__eq
 
@@ -106,8 +109,9 @@ Percent = DerivedType("Percent", Num)
 Void = NamedType("Void")
 Bool = NamedType("Bool")
 String = NamedType("String")
+TypeString = DerivedType("TypeString", String)
 Range = StructType("Range", {{name:"first",type:Int},{name:"next",type:Int},{name:"last",type:Int}})
-primitive_types = {:Int, :Num, :Void, :Nil, :Bool, :String, :Range, :OptionalType, :Percent}
+primitive_types = {:Int, :Num, :Void, :Nil, :Bool, :String, :Range, :OptionalType, :Percent, :TypeString}
 
 tuples = {}
 tuple_index = 1
@@ -301,6 +305,7 @@ get_type = memoize (node)->
         when "Bool" then return Bool
         when "Nil" then return Nil
         when "String","Escape","Newline" then return String
+        when "TypeOf" then return TypeString
         when "DSL"
             name = node.name[0]
             unless derived_types[name]
@@ -347,7 +352,7 @@ get_type = memoize (node)->
                 for exp in coroutine.wrap(-> each_tag(ast, "Export"))
                     for var in *exp
                         table.insert(exports, var)
-                t = StructType("Module:#{name}", [{type: get_type(e), name: e[0]} for e in *exports])
+                t = StructType("Module", [{type: get_type(e), name: e[0]} for e in *exports])
                 log "Module type #{node.name[0]} = {#{concat ["#{m.name}=#{m.type}" for m in *t.members], ", "}}"
                 t = OptionalType(t) unless node.orElse
                 return t
@@ -620,5 +625,5 @@ get_type = memoize (node)->
 
 return {
     :parse_type, :get_type, :Type, :NamedType, :ListType, :TableType, :FnType, :StructType,
-    :Int, :Num, :Percent, :String, :Bool, :Void, :Nil, :Range, :OptionalType, :MeasureType
+    :Int, :Num, :Percent, :String, :Bool, :Void, :Nil, :Range, :OptionalType, :MeasureType, :TypeString
 }

@@ -1,0 +1,10 @@
+struct Vec {
+    x:Num
+    y:Num
+}
+
+v :=  Vec{0.,0.}
+$puts("$v : $(typeof v)")
+$puts("typeof $v : $(typeof (typeof v))")
+$puts("use \"modules/testmod\" : $(typeof use "modules/testmod")")
+

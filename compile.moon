@@ -970,6 +970,9 @@ expr_compilers =
         c = env\fresh_local "casted"
         code ..= "#{c} =#{t.base_type} cast #{reg}\n"
         return c,code
+    TypeOf: (env)=>
+        assert @expression
+        return env\get_string_reg(get_type(@expression)\verbose_type!, "typename"), ""
     String: (env)=>
         str = env\fresh_local "str"
         if #@content == 0
