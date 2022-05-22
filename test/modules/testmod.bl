@@ -1,9 +1,10 @@
 foo := 12345
 baz := "Hello $(2 + 3)"
+str := "string"
 rand := $random():Int
 
 $puts("wip loaded!")
 
 def bloop(s:String):= "bloop $s"
 
-export foo, baz, rand, bloop
+export foo, baz, rand, bloop, str

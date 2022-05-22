@@ -4,6 +4,8 @@ $puts("Fully loaded: $(x.rand)")
 $puts("Loading wip again...")
 y := use "modules/testmod" or fail
 $puts("Fully loaded: $(y.rand)")
-fail unless x.rand == y.rand
+fail "Module idempotency failed" unless x.rand == y.rand
+
+fail "Module string equality check failed" unless x.str == "string"
 
 "blop" | (x.bloop) | $puts
