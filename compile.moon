@@ -1124,7 +1124,7 @@ expr_compilers =
         t = get_type @value
         is_optional = t\is_a(Types.OptionalType) and t != Types.Nil
         t = t.nonnil if is_optional
-        nil_guard = (check_reg, output_reg, get_nonnil_code)->
+        nil_guard = (check_reg, output_reg, output_type, get_nonnil_code)->
             unless is_optional
                 return get_nonnil_code!
 
@@ -1135,12 +1135,12 @@ expr_compilers =
                 get_nonnil_code!.."jmp #{done}\n"
 
             code ..= env\block ifnil, ->
-                code = if t\is_a(Types.Int) or t\is_a(Types.Bool)
+                code = if output_type\is_a(Types.Int) or output_type\is_a(Types.Bool)
                     "#{output_reg} =l copy #{INT_NIL}\n"
-                elseif t\is_a(Types.Num) or t.base_type == "d"
+                elseif output_type\is_a(Types.Num) or output_type.base_type == "d"
                     "#{output_reg} =d copy #{FLOAT_NIL}\n"
                 else
-                    "#{output_reg} =l copy 0\n"
+                    "#{output_reg} =l copy 0 # hmmmm #{output_type}\n"
                 return code.."jmp #{done}\n"
 
             code ..= "#{done}\n"
@@ -1152,7 +1152,7 @@ expr_compilers =
             list_reg, index_reg, code = env\to_regs @value, @index
             if index_type\is_a(Types.Int)
                 item = env\fresh_local "list.item"
-                code ..= nil_guard list_reg, item, ->
+                code ..= nil_guard list_reg, item, t.item_type, ->
                     if t.item_type.base_type == "d"
                         tmp = env\fresh_local "list.item.as_int"
                         code = "#{tmp} =l call $bl_list_nth(l #{list_reg}, l #{index_reg})\n"
@@ -1162,7 +1162,7 @@ expr_compilers =
                 return item,code
             elseif index_type\is_a(Types.Range)
                 slice = env\fresh_local "slice"
-                code ..= nil_guard list_reg, slice, ->
+                code ..= nil_guard list_reg, slice, t, ->
                     "#{slice} =l call $bl_list_slice_range(l #{list_reg}, l #{index_reg})\n"
                 return slice,code
             else
@@ -1170,7 +1170,7 @@ expr_compilers =
         elseif t\is_a(Types.TableType)
             tab_reg, index_reg, code = env\to_regs @value, @index
             value_reg = env\fresh_local "value"
-            code ..= nil_guard tab_reg, value_reg, ->
+            code ..= nil_guard tab_reg, value_reg, t.key_type, ->
                 code = ""
                 key_getter = env\fresh_local "key.getter"
                 if t.key_type\is_a(Types.Int) or t.key_type\is_a(Types.Bool)
@@ -1208,7 +1208,7 @@ expr_compilers =
                 node_error @index, "Structs can only be indexed by a field name or Int literal"
             struct_reg,code = env\to_reg @value
             ret = env\fresh_local "member"
-            code ..= nil_guard struct_reg, ret, ->
+            code ..= nil_guard struct_reg, ret, member_type, ->
                 loc = env\fresh_local "member.loc"
                 code = "#{loc} =l add #{struct_reg}, #{8*(i-1)}\n"
                 return code.."#{ret} =#{member_type.base_type} load#{member_type.base_type} #{loc}\n"
@@ -1219,7 +1219,7 @@ expr_compilers =
             node_assert index_type\is_a(Types.Int), @index, "Index is #{index_type} instead of Int"
             range_reg, index_reg, code = env\to_regs @value, @index
             ret = env\fresh_local "range.nth"
-            code ..= nil_guard range_reg, ret, ->
+            code ..= nil_guard range_reg, ret, Types.Int, ->
                 "#{ret} =l call $range_nth(l #{range_reg}, l #{index_reg})\n"
             return ret, code
         elseif t\is_a(Types.String)
@@ -1227,11 +1227,11 @@ expr_compilers =
             str, index_reg, code = env\to_regs @value, @index
             if index_type\is_a(Types.Int) -- Get nth character as an Int
                 char = env\fresh_local "char"
-                code ..= nil_guard str, char, -> "#{char} =l call $bl_string_nth_char(l #{str}, l #{index_reg})\n"
+                code ..= nil_guard str, char, Types.Int, -> "#{char} =l call $bl_string_nth_char(l #{str}, l #{index_reg})\n"
                 return char, code
             elseif index_type\is_a(Types.Range) -- Get a slice of the string
                 slice = env\fresh_local "slice"
-                code ..= nil_guard str, slice, -> "#{slice} =l call $bl_string_slice(l #{str}, l #{index_reg})\n"
+                code ..= nil_guard str, slice, t, -> "#{slice} =l call $bl_string_slice(l #{str}, l #{index_reg})\n"
                 return slice, code
             else
                 node_error @index, "Index is #{index_type} instead of Int or Range"
