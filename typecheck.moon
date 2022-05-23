@@ -97,6 +97,12 @@ class OptionalType extends Type
     id_str: => "Optional.#{@nonnil\id_str!}"
     __eq: Type.__eq
 
+class EnumType extends Type
+    new: (@name, @fields)=>
+    __tostring: => @name
+    id_str: => @name
+    __eq: Type.__eq
+
 -- Primitive Types:
 Num = NamedType("Num")
 Num.base_type = 'd'
@@ -206,6 +212,8 @@ find_type_alias = (scope, name)->
                         return DerivedType(stmt.name[0], parse_type(stmt.derivesFrom))
                     elseif stmt.__tag == "StructDeclaration" and stmt[1].name[0] == name
                         return parse_type stmt[1]
+                    elseif stmt.__tag == "EnumDeclaration" and stmt.name[0] == name
+                        return parse_type stmt
         scope = scope.__parent
 
 derived_types = {}
@@ -243,6 +251,8 @@ parse_type = memoize (type_node)->
             type_node.__type = t
             t\set_members [{name: m.name[0], type: parse_type(m.type)} for m in *type_node.members]
             return t
+        when "EnumDeclaration"
+            return EnumType(type_node.name[0], [f[0] for f in *type_node])
         when "OptionalType"
             t = parse_type(type_node.nonnil, override_names)
             return OptionalType(t)
@@ -302,6 +312,7 @@ get_type = memoize (node)->
         when "Measure"
             m = Measure(1, node.units[0]\gsub("[<>]",""))
             return MeasureType(m.str)\normalized!
+        when "EnumDeclaration" then return parse_type(node)
         when "Bool" then return Bool
         when "Nil" then return Nil
         when "String","Escape","Newline" then return String
@@ -388,6 +399,14 @@ get_type = memoize (node)->
         when "TableComprehension"
             return TableType(get_type(node.entry.key), get_type(node.entry.value))
         when "IndexedTerm"
+            if node.value.__tag == "Var"
+                enum = find_type_alias node, node.value[0]
+                if enum and enum\is_a(EnumType)
+                    for f in *enum.fields
+                        if f == node.index[0]
+                            return enum
+                    node_error node.index, "Not a valid enum field for #{enum.name}"
+
             t = get_type node.value
             is_optional = t\is_a(OptionalType) and t != Nil
             t = t.nonnil if is_optional
@@ -581,6 +600,7 @@ get_type = memoize (node)->
             var_type = node.__type or find_declared_type(node.__parent, node[0])
             if not var_type
                 return ListType(String) if node[0] == "args"
+            assert(var_type, "OH NO")
             node_assert var_type, node, "Cannot determine type for undefined variable"
             return var_type
         when "Global"
@@ -625,5 +645,5 @@ get_type = memoize (node)->
 
 return {
     :parse_type, :get_type, :Type, :NamedType, :ListType, :TableType, :FnType, :StructType,
-    :Int, :Num, :Percent, :String, :Bool, :Void, :Nil, :Range, :OptionalType, :MeasureType, :TypeString
+    :Int, :Num, :Percent, :String, :Bool, :Void, :Nil, :Range, :OptionalType, :MeasureType, :TypeString, :EnumType,
 }

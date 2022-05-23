@@ -257,6 +257,25 @@ class Environment
             code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("nil", "nil")})\n"
         elseif t\is_a(Types.Void)
             code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("Void", "void")})\n"
+        elseif t\is_a(Types.EnumType)
+            init_fields,fields_exist = @fresh_labels "make_fields", "fields_exist"
+            tmp = @fresh_local "fieldname"
+            code ..= "#{tmp} =l loadl $#{t\id_str!}.fields\n"
+            code ..= "jnz #{tmp}, #{fields_exist}, #{init_fields}\n"
+            code ..= @block init_fields, ->
+                code = ""
+                for i,field in ipairs(t.fields)
+                    str = @fresh_local "str"
+                    code ..= "#{str} =l call $bl_string(l #{@get_string_reg "#{t.name}.#{field}", "#{t.name}.#{field}"})\n"
+                    code ..= "#{tmp} =l add $#{t\id_str!}.fields, #{8*(i-1)}\n"
+                    code ..= "storel #{str}, #{tmp}\n"
+                code ..= "jmp #{fields_exist}\n"
+                return code
+
+            code ..= "#{fields_exist}\n"
+            code ..= "#{reg} =l mul #{reg}, 8\n"
+            code ..= "#{tmp} =l add $#{t\id_str!}.fields, #{reg}\n"
+            code ..= "#{dest} =l loadl #{tmp}\n"
         elseif t\is_a(Types.ListType)
             len = @fresh_local "len"
             code ..= "#{len} =l call $bl_list_len(l #{reg})\n"
@@ -552,6 +571,13 @@ class Environment
             n = tonumber((u.measure.amount[0]\gsub("_","")))
             m = Measure(n, u.measure.units[0]\gsub("[<>]",""))
             register_unit_alias(u.name[0], m)
+
+        -- Enum field names
+        for e in coroutine.wrap(-> each_tag(ast, "EnumDeclaration"))
+            t = get_type(e)
+            assert t\is_a(Types.EnumType), "#{t}"
+            fieldnames = "$#{t\id_str!}.fields"
+            @type_code ..= "data #{fieldnames} = {#{("l 0,")\rep(#t.fields)}}\n"
 
         @used_names["args"] = true
         for v in coroutine.wrap(-> each_tag(ast, "Var"))
@@ -1121,6 +1147,13 @@ expr_compilers =
             code ..= "#{ret} =l ceql #{b}, 0\n"
         return ret, code
     IndexedTerm: (env)=>
+        t0 = get_type @
+        if t0\is_a(Types.EnumType)
+            for i,field in ipairs(t0.fields)
+                if field == @index[0]
+                    return "#{i-1}",""
+            error("Couldn't find enum field #{@index[0]}")
+
         t = get_type @value
         is_optional = t\is_a(Types.OptionalType) and t != Types.Nil
         t = t.nonnil if is_optional
@@ -1873,6 +1906,7 @@ stmt_compilers =
             return "call $errx(l 1, l #{env\get_string_reg(get_node_pos(@)..': Unexpected failure!', "failure.message")})\n"
     TypeDeclaration: (env)=> ""
     StructDeclaration: (env)=> ""
+    EnumDeclaration: (env)=> ""
     UnitDeclaration: (env)=> ""
     Export: (env)=> ""
     FnCall: (env)=>

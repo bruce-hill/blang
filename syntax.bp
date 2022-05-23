@@ -99,7 +99,8 @@ statements: @curdent:\C +(
   / !$ @:ParseError=(@dent:\C ..$ *(\n dent (` /\t)..$) =>"Invalid statement")) % (nl curdent !(` /\t))
 indentedBlock: @:Block=([comment] nl curdent +(` /\t) statements)
 statement: (
-    Declaration / FnDecl / If / When / For / While / Repeat / TypeDeclaration / StructDeclaration / UnitDeclaration
+    Declaration / FnDecl / If / When / For / While / Repeat
+  / TypeDeclaration / StructDeclaration / UnitDeclaration / EnumDeclaration
   / PostfixIf / PostfixFor / PostfixWhile
   / Return / Skip / Stop / Export / Use
   / line-statement
@@ -114,7 +115,8 @@ Fail:: \b"fail"\b _ [@message=extended-expr]
 Declaration:: @var=Var _`: _[@type=type_] `= _ @value=required-extended-expr
 TypeDeclaration:: \b"deftype"\b _ @name=@:NamedType=(id) _ `: _ @derivesFrom=(type / @:ParseError=(..$ =>"Not a valid type"))
 UnitDeclaration:: \b"unit"\b _ @name=@:NamedType=(id) _ `= _ @measure=Measure
-StructDeclaration:: \b"struct"\b _ (StructType / @:ParseError=((braces /..$) =>"Not a valid struct type"))
+StructDeclaration:: \b"struct"\b _ (StructType / @:ParseError=((braces /..$) =>"Not a valid struct declaration"))
+EnumDeclaration:: \b"enum"\b _ @name=Var _ (`{__+(@Var) % (__`,__) __ [`,__] `} / @:ParseError=((braces /..$) =>"Not a valid enum declaration"))
 FnDecl:: @curdent:\C "def"\b _ (@name=Var _
   `( __ @args=@(*((@:FnArg=(@arg=Var_`:_@type=type) / @:ParseError=(Var =>"This argument doesn't have a type")))%(__`,__))__[`,__]`)_
   (`: / @:ParseError=(=>"Expected a colon here"))_[@return=type]_ [comment]
