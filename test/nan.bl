@@ -6,10 +6,10 @@ if x
 else
     $puts("$x is falsey")
 
-if x == nil
-    $puts("$x is nil")
-else
-    $puts("$x is not nil")
+// if x == nil
+//     $puts("$x is nil")
+// else
+//     $puts("$x is not nil")
 
 if x == x
     $puts("$x is equal to itself")

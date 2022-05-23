@@ -258,28 +258,28 @@ get_op_type = (t1, op, t2)=>
     if t1\is_a(MeasureType) and t2\is_a(Num)
         switch op
             when "Mul","Div"
-                return OptionalType(t1)
+                return t1
     elseif t1\is_a(Num) and t2\is_a(MeasureType)
         if op == "Mul"
-            return OptionalType(t1)
+            return t1
         elseif op == "Div"
             m2 = Measure(1,t1.units)\invert!
-            return OptionalType(MeasureType(m2.str)\normalized!)
+            return MeasureType(m2.str)\normalized!
     elseif t1\is_a(MeasureType) and t2\is_a(MeasureType)
         switch op
             when "Add","Sub"
                 return t1 if t1 == t2
             when "Mul"
                 m2 = Measure(1,t1.units)*Measure(1,t2.units)
-                return OptionalType(MeasureType(m2.str)\normalized!)
+                return MeasureType(m2.str)\normalized!
             when "Div"
                 m2 = Measure(1,t1.units)/Measure(1,t2.units)
-                return OptionalType(MeasureType(m2.str)\normalized!)
+                return MeasureType(m2.str)\normalized!
 
     if (t1.nonnil or t1) == (t2.nonnil or t2) and (t1.nonnil or t1)\is_a(Num) and t1.base_type == "d"
         switch op
             when "Add","Sub","Mul","Div","Mod","Pow"
-                return OptionalType(t1)
+                return t1
 
     if t1 == t2
         if t1\is_a(Int)

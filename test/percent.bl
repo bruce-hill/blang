@@ -1,5 +1,5 @@
-def multiply(x:Num,y:Percent):Num? = x*(y:Num)
-def multiply(x:Percent,y:Num):Num? = (x:Num)*y
+def multiply(x:Num,y:Percent):Num = x*(y:Num)
+def multiply(x:Percent,y:Num):Num = (x:Num)*y
 x := 23.5
 y := 10%
 $puts("$x*$y = $(x*y)")
