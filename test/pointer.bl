@@ -1,0 +1,7 @@
+def try_file(path:String):Bool
+    f := $fopen(path, "r"):Pointer? or return no
+    return no unless $fclose(f):Int == 0
+    return yes
+
+try_file("test/pointer.bl") or fail
+try_file("asdfasdfasdf") and fail

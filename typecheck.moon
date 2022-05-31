@@ -104,6 +104,7 @@ class EnumType extends Type
     __eq: Type.__eq
 
 -- Primitive Types:
+Pointer = NamedType("Pointer")
 Num = NamedType("Num")
 Num.base_type = 'd'
 Num.abi_type = 'd'
@@ -117,7 +118,7 @@ Bool = NamedType("Bool")
 String = NamedType("String")
 TypeString = DerivedType("TypeString", String)
 Range = StructType("Range", {{name:"first",type:Int},{name:"next",type:Int},{name:"last",type:Int}})
-primitive_types = {:Int, :Num, :Void, :Nil, :Bool, :String, :Range, :OptionalType, :Percent, :TypeString}
+primitive_types = {:Pointer, :Int, :Num, :Void, :Nil, :Bool, :String, :Range, :OptionalType, :Percent, :TypeString}
 
 tuples = {}
 tuple_index = 1
@@ -645,5 +646,5 @@ get_type = memoize (node)->
 
 return {
     :parse_type, :get_type, :Type, :NamedType, :ListType, :TableType, :FnType, :StructType,
-    :Int, :Num, :Percent, :String, :Bool, :Void, :Nil, :Range, :OptionalType, :MeasureType, :TypeString, :EnumType,
+    :Pointer, :Int, :Num, :Percent, :String, :Bool, :Void, :Nil, :Range, :OptionalType, :MeasureType, :TypeString, :EnumType,
 }
