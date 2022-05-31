@@ -110,7 +110,7 @@ Stop:: \b"stop"\b [_ @target=(\b"for"\b / \b"while"\b / \b"repeat"\b / Var)]
 line-statement: (
     @:Pass=(\b"pass"\b _ [comment]) / Fail
   / Assignment / AddUpdate / SubUpdate / MulUpdate / DivUpdate / AndUpdate / OrUpdate / XorUpdate / ButWithUpdate / MethodCallUpdate
-  / FnCall / methodCall) _ [comment]
+  / extended-expr) _ [comment]
 Fail:: \b"fail"\b _ [@message=extended-expr]
 Declaration:: @var=Var _`: _[@type=type_] `= _ @value=required-extended-expr
 TypeDeclaration:: \b"deftype"\b _ @name=@:NamedType=(id) _ `: _ @derivesFrom=(type / @:ParseError=(..$ =>"Not a valid type"))

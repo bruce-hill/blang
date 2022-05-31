@@ -550,6 +550,11 @@ class Environment
         if not node.__tag
             error "WTF: #{viz node}"
             return @compile_stmt node[1]
+
+        if not stmt_compilers[node.__tag] and expr_compilers[node.__tag]
+            _,code = expr_compilers[node.__tag](node, @)
+            return code
+
         node_assert stmt_compilers[node.__tag], node, "Not implemented: #{node.__tag}"
         return stmt_compilers[node.__tag](node, @)
 
