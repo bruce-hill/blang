@@ -1,26 +1,26 @@
-def fail_test(msg:String):Bool
-    $errx(1, "Test failed: $msg")
+def fail_bool(msg:String):Bool
+    fail "Test failed: $msg"
     return no
 
-if no or yes or fail_test("or failed to short circuit")
+if no or yes or fail_bool("or failed to short circuit")
     $puts("or pass")
-else fail_test("or gave wrong result")
+else fail "'or' gave wrong result"
 
-if yes and no and fail_test("and failed to short circuit")
-    fail_test("and gave wrong result")
+if yes and no and fail_bool("and failed to short circuit")
+    fail "and gave wrong result"
 else $puts("and pass")
 
 tmp := no
 tmp or= yes
-tmp or= fail_test("or= failed to short circuit")
+tmp or= fail_bool("or= failed to short circuit")
 $puts("or= pass")
-fail_test("or= gave wrong result") unless tmp
+fail "or= gave wrong result" unless tmp
 
 tmp = yes
 tmp and= no
-tmp and= fail_test("and= failed to short circuit")
+tmp and= fail_bool("and= failed to short circuit")
 $puts("and= pass")
-fail_test("and= gave wrong result") if tmp
+fail "and= gave wrong result" if tmp
 
 def doop():String
     maybe_str := yes ? nil; "ok"

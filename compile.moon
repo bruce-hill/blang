@@ -1531,7 +1531,6 @@ expr_compilers =
 
     FnCall: (env, skip_ret=false)=>
         call_sig = "(#{concat [tostring(get_type(a)) for a in *@], ","})"
-        local fn_type, fn_reg
         fn_type = get_type @fn
         fn_reg,code = env\to_reg @fn
 
@@ -1910,10 +1909,16 @@ stmt_compilers =
     UnitDeclaration: (env)=> ""
     Export: (env)=> ""
     FnCall: (env)=>
+        ret_type = get_type(@)
+        if ret_type
+            node_assert ret_type == Types.Void, @, "Return value (#{ret_type}) is not being used"
         _, code = env\to_reg @, true
         code = code\gsub("[^\n]- (call [^\n]*\n)$", "%1")
         return code
     MethodCall: (env)=>
+        ret_type = get_type(@)
+        if ret_type
+            node_assert ret_type == Types.Void, @, "Return value (#{ret_type}) is not being used"
         _, code = env\to_reg @, true
         code = code\gsub("[^\n]- (call [^\n]*\n)$", "%1")
         return code
