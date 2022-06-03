@@ -134,7 +134,7 @@ find_returns = (node)->
     switch node.__tag
         when "Return"
             coroutine.yield(node)
-        when "Lambda","FnDecl","Declaration"
+        when "Lambda","FnDecl"
             return
         else
             for k,child in pairs node
@@ -250,7 +250,7 @@ parse_type = memoize (type_node)->
         when "StructType"
             t = StructType(type_node.name[0])
             type_node.__type = t
-            t\set_members [{name: m.name[0], type: parse_type(m.type)} for m in *type_node.members]
+            t\set_members [{name: m.name[0], type: parse_type(m.type)} for m in *type_node.members when m.name]
             return t
         when "EnumDeclaration"
             return EnumType(type_node.name[0], [f[0] for f in *type_node])
@@ -601,7 +601,6 @@ get_type = memoize (node)->
             var_type = node.__type or find_declared_type(node.__parent, node[0])
             if not var_type
                 return ListType(String) if node[0] == "args"
-            assert(var_type, "OH NO")
             node_assert var_type, node, "Cannot determine type for undefined variable"
             return var_type
         when "Global"

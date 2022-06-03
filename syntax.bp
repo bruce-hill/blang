@@ -156,7 +156,7 @@ nonoptional-type: (
   / @:ListType=(`[@itemtype=type`])
   / @:FnType=(`(__ @args=@(*type % (__`,__)) __ `) _ "=>" __ @return=type)
 )
-StructType:: @name=id _ `{__ @members=@(*@:StructField=(@name=FieldName_`:_@type=type) % ((__`,__/__)~(`,/\n))) [__`,] __`}
+StructType:: @name=[id] _ `{__ @members=@(*@:StructField=([@name=FieldName_`:]_@type=type) % ((__`,__/__)~(`,/\n))) [__`,] __`}
 If:: \b"if"\b @curdent:\C _ (
     @:Clause=(@condition=required-extended-expr [comment] @body=indentedBlock)
     *@:Clause=(nl curdent \b"elseif"\b _ @condition=required-extended-expr [comment] @body=indentedBlock)

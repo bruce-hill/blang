@@ -18,6 +18,7 @@ static const int64_t INT_NIL = 0x7FFFFFFFFFFFFFFF;
 
 char *bl_string(char *s) { return intern_str(s); }
 char *bl_tostring_int(int64_t i) { RETURN_FMT("%ld", i); }
+char *bl_tostring_hex(int64_t i) { RETURN_FMT("0x%lX", i); }
 char *bl_tostring_char(int64_t c) { RETURN_FMT("%c", (char)c); }
 char *bl_tostring_float(double f) { RETURN_FMT("%g", f); }
 char *bl_tostring_percent(double f) { RETURN_FMT("%g%%", f*100.0); }

@@ -520,8 +520,10 @@ class Environment
         elseif t\is_a(Types.MeasureType)
             code ..= "#{dest} =l call $bl_tostring_float(d #{reg})\n"
             code ..= "#{dest} =l call $bl_string_append_string(l #{dest}, l #{@get_string_reg("<"..t.units..">", "units")})\n"
+        elseif t\is_a(Types.Pointer)
+            code ..= "#{dest} =l call $bl_tostring_hex(l #{reg})\n"
         else
-            error "Unsupported concat type: #{t}"
+            error "Unsupported tostring type: #{t}"
 
         code ..= "ret #{dest}\n"
         code ..= "}\n"
@@ -1571,8 +1573,13 @@ expr_compilers =
         code = "#{ret} =l call $gc_alloc(l #{struct_size})\n"
         named_members = {m.name[0],m.value for m in *@ when m.name}
         unnamed_members = [m.value for m in *@ when not m.name]
+        node_assert #unnamed_members <= #t.members, @, "Too many values provided for #{t} (expected #{#t.members} but got #{#unnamed_members})"
+        for name,val in pairs(named_members)
+            node_assert t.members_by_name[name], val, "Struct #{t\verbose_type!} doesn't have this as a member"
+        used = {}
         for i,m in ipairs t.members
             val = if named_members[m.name]
+                used[m.name] = true
                 named_members[m.name]
             elseif #unnamed_members > 0
                 table.remove unnamed_members, 1
@@ -1586,6 +1593,8 @@ expr_compilers =
                 code ..= val_code
                 m_t = get_type val
                 code ..= "store#{m_t.base_type} #{val_reg}, #{loc}\n"
+            elseif not m.type\is_a(Types.OptionalType)
+                node_error @, "#{t} field '#{m.name}' is required but no value was provided for it"
         -- code ..= "#{ret} =l call $intern_bytes(l #{ret}, l #{struct_size})\n"
         return ret, code
 
@@ -1642,6 +1651,7 @@ stmt_compilers =
             decl_type = Types.parse_type @type
             node_assert value_type, @value, "Can't infer the type of this value"
             node_assert value_type\is_a(decl_type) or decl_type\is_a(value_type), @value, "Value is type #{value_type}, not declared type #{decl_type}"
+        node_assert decl_type, @, "Cannot infer type"
         val_reg,code = env\to_reg @value
         if @var.__register
             code ..= "#{@var.__register} =#{decl_type.base_type} copy #{val_reg}\n"
