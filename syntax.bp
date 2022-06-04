@@ -97,7 +97,7 @@ statements: @curdent:\C +(
     comment
   / @statement _ [comment] [@:ParseError=(+. => "Cannot parse this code")]
   / !$ @:ParseError=(@dent:\C ..$ *(\n dent (` /\t)..$) =>"Invalid statement")) % (nl curdent !(` /\t))
-indentedBlock: @:Block=([comment] nl curdent +(` /\t) statements)
+indentedBlock: @:Block=([_comment] nl curdent +(` /\t) statements)
 statement: (
     Declaration / FnDecl / If / When / For / While / Repeat
   / TypeDeclaration / StructDeclaration / UnitDeclaration / EnumDeclaration
@@ -121,14 +121,14 @@ FnDecl:: @curdent:\C "def"\b _ (@name=Var _
   `( __ @args=@(*((@:FnArg=(@arg=Var_`:_@type=type) / @:ParseError=(Var =>"This argument doesn't have a type")))%(__`,__))__[`,__]`)_
   (`: / @:ParseError=(=>"Expected a colon here"))_[@return=type]_ [comment]
   ((`= _ @body=(@:Block=(
-      [comment] nl curdent +(` /\t) @curdent:\C @:Return=(@value=required-extended-expr)
+      [_comment] nl curdent +(` /\t) @curdent:\C @:Return=(@value=required-extended-expr)
       / @:Return=(@value=required-extended-expr) _ [comment])))
    / @body=maybeIndentedBlock))
 Lambda:: (@curdent:\C
   @args=@[`(__*@:FnArg=(@arg=Var__`:__@type=type)%(__`,__)__[`,__]`)]
   [_`:_@return=type]_
   (("=>" _ [comment] __ @body=@:Block=(
-      [comment] nl curdent +(` /\t) @curdent:\C @:Return=(@value=required-extended-expr)
+      [_comment] nl curdent +(` /\t) @curdent:\C @:Return=(@value=required-extended-expr)
       / @:Return=(@value=required-extended-expr)_ [comment]))
    / ("->"_ [comment] (@body=maybeIndentedBlock / @:ParseError=(..$ =>"Invalid lambda body"))))
 )
