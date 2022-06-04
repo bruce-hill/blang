@@ -617,7 +617,7 @@ class Environment
                 switch node.__tag
                     when "Var"
                         if node[0] == var[0]
-                            -- node_assert not node.__register, var, "Variable shadows earlier declaration #{node.__decl}"
+                            -- node_assert not node.__register and not node.__location, var, "Variable shadows earlier declaration #{node.__decl}"
                             node.__register = var.__register
                             node.__location = var.__location
                             node.__decl = var
@@ -633,36 +633,6 @@ class Environment
 
         for glob in coroutine.wrap(-> each_tag(ast, "Global"))
             glob.__register = glob[0]
-
-        -- Set up function names (global):
-        for fndec in coroutine.wrap(-> each_tag(ast, "FnDecl", "Lambda"))
-            fndec.__register = @fresh_global(fndec.name and fndec.name[0] or "lambda")
-            fndec.__decl = fndec
-            if fndec.name
-                fndec.name.__register = fndec.__register
-                fndec.name.__decl = fndec
-                hook_up_refs fndec.name, fndec.__parent, get_type(fndec)\arg_signature!
-                    
-        for fn in coroutine.wrap(-> each_tag(ast, "FnDecl", "Lambda"))
-            for a in *fn.args
-                hook_up_refs a.arg, fn.body
-
-        for vardec in coroutine.wrap(-> each_tag(ast, "Declaration"))
-            scope = if vardec.__parent.__tag == "Block"
-                i = 1
-                while vardec.__parent[i] != vardec
-                    i += 1
-                {table.unpack(vardec.__parent, i+1)}
-            else vardec.__parent
-            hook_up_refs vardec.var, scope
-
-            block = vardec.__parent
-            loop = block and block.__parent
-            while loop and not loop.__tag
-                loop = loop.__parent
-            if loop and (loop.__tag == "For" or loop.__tag == "While" or loop.__tag == "Repeat")
-                if block == loop.body and loop.between
-                    hook_up_refs vardec.var, loop.between
 
         naked_imports = {}
         -- Hook up naked imports
@@ -683,22 +653,59 @@ class Environment
                     hook_up_refs pseudo_var, scope, sig
                     table.insert naked_imports, pseudo_var
 
+        for vardec in coroutine.wrap(-> each_tag(ast, "Declaration"))
+            scope = if vardec.__parent.__tag == "Block"
+                i = 1
+                while vardec.__parent[i] != vardec
+                    i += 1
+                {table.unpack(vardec.__parent, i+1)}
+            else vardec.__parent
+            hook_up_refs vardec.var, scope
+
+            block = vardec.__parent
+            loop = block and block.__parent
+            while loop and not loop.__tag
+                loop = loop.__parent
+            if loop and (loop.__tag == "For" or loop.__tag == "While" or loop.__tag == "Repeat")
+                if block == loop.body and loop.between
+                    hook_up_refs vardec.var, loop.between
+
+        -- Set up function names (global):
+        for fndec in coroutine.wrap(-> each_tag(ast, "FnDecl", "Lambda"))
+            fndec.__register = @fresh_global(fndec.name and fndec.name[0] or "lambda")
+            fndec.__decl = fndec
+            if fndec.name
+                fndec.name.__register = fndec.__register
+                fndec.name.__decl = fndec
+                hook_up_refs fndec.name, fndec.__parent, get_type(fndec)\arg_signature!
+                    
+        for fn in coroutine.wrap(-> each_tag(ast, "FnDecl", "Lambda"))
+            for a in *fn.args
+                a.arg.__register,a.arg.__location = nil,nil
+                hook_up_refs a.arg, fn.body
+
         for for_block in coroutine.wrap(-> each_tag(ast, "For"))
             if for_block.val
+                for_block.val.__register,for_block.val.__location = nil,nil
                 hook_up_refs for_block.val, for_block.body
                 hook_up_refs for_block.val, for_block.between if for_block.between
             if for_block.index
+                for_block.index.__register,for_block.index.__location = nil,nil
                 hook_up_refs for_block.index, for_block.body
                 hook_up_refs for_block.index, for_block.between if for_block.between
 
         for comp in coroutine.wrap(-> each_tag(ast, "ListComprehension", "TableComprehension"))
             if comp.index
+                comp.index.__register,comp.index.__location = nil,nil
                 hook_up_refs comp.index, {comp.expression or comp.entry}
                 hook_up_refs comp.index, {comp.condition} if comp.condition
             if comp.val
+                comp.val.__register,comp.val.__location = nil,nil
                 hook_up_refs comp.val, {comp.expression or comp.entry}
                 hook_up_refs comp.val, {comp.condition} if comp.condition
 
+
+        -- Look up which function to use for each callsite:
         for call in coroutine.wrap(-> each_tag(ast, "FnCall","MethodCall","MethodCallUpdate"))
             if call.fn.__tag == "Var" and not (call.fn.__register or call.fn.__location)
                 call_sig = "(#{concat [tostring(get_type(a)) for a in *call], ","})"
@@ -2127,7 +2134,7 @@ stmt_compilers =
         code ..= env\block body_label, ->
             code = ""
             if @index
-                index_reg = @index.__register
+                index_reg = assert @index.__register, "Index variable isn't hooked up"
                 if iter_type\is_a(Types.TableType) and (iter_type.key_type\is_a(Types.Int) or iter_type.key_type\is_a(Types.Bool))
                     code ..= "#{index_reg} =l xor #{i}, #{INT_NIL}\n"
                 elseif iter_type\is_a(Types.TableType) and iter_type.key_type\is_a(Types.Num)
@@ -2138,7 +2145,7 @@ stmt_compilers =
                     code ..= "#{index_reg} =l copy #{i}\n"
 
             if @val
-                var_reg = @val.__register
+                var_reg = assert @val.__register, "Iterator value variable isn't hooked up"
                 if iter_type\is_a(Types.TableType)
                     if @index
                         if iter_type.value_type\is_a(Types.Int) or iter_type.value_type\is_a(Types.Bool)
