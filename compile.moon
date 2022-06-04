@@ -1378,45 +1378,42 @@ expr_compilers =
         for val in *@
             node_assert get_type(val)\is_a(Types.Bool), val, "Expected Bool here, but got #{get_type val}"
         return infixop @, env, "xor"
-    Add: (env)=>
+    AddSub: (env)=>
         t_lhs,t_rhs = get_type(@lhs),get_type(@rhs)
         tl_nn, tr_nn = (t_lhs.nonnil or t_lhs), (t_rhs.nonnil or t_rhs)
-        if tl_nn == tr_nn and (tl_nn\is_a(Types.Int) or tl_nn\is_a(Types.Num) or tl_nn\is_a(Types.MeasureType))
-            return infixop @, env, "add"
-        elseif t_lhs == t_rhs and t_lhs\is_a(Types.String)
-            return infixop @, env, (ret,lhs,rhs)->
-                "#{ret} =l call $bl_string_append_string(l #{lhs}, l #{rhs})\n"
-        elseif t_lhs == t_rhs and t_lhs\is_a(Types.ListType)
-            return infixop @, env, (ret,lhs,rhs)->
-                "#{ret} =l call $bl_list_concat(l #{lhs}, l #{rhs})\n"
-        else
-            return overload_infix @, env, "add", "sum"
-
-    Sub: (env)=>
+        if @op[0] == "+"
+            if tl_nn == tr_nn and (tl_nn\is_a(Types.Int) or tl_nn\is_a(Types.Num) or tl_nn\is_a(Types.MeasureType))
+                return infixop @, env, "add"
+            elseif t_lhs == t_rhs and t_lhs\is_a(Types.String)
+                return infixop @, env, (ret,lhs,rhs)->
+                    "#{ret} =l call $bl_string_append_string(l #{lhs}, l #{rhs})\n"
+            elseif t_lhs == t_rhs and t_lhs\is_a(Types.ListType)
+                return infixop @, env, (ret,lhs,rhs)->
+                    "#{ret} =l call $bl_list_concat(l #{lhs}, l #{rhs})\n"
+            else
+                return overload_infix @, env, "add", "sum"
+        else -- "-"
+            if tl_nn == tr_nn and (tl_nn\is_a(Types.Int) or tl_nn\is_a(Types.Num) or tl_nn\is_a(Types.MeasureType))
+                return infixop @, env, "sub"
+            else
+                return overload_infix @, env, "subtract", "difference"
+    MulDiv: (env)=>
         t_lhs,t_rhs = get_type(@lhs),get_type(@rhs)
         tl_nn, tr_nn = (t_lhs.nonnil or t_lhs), (t_rhs.nonnil or t_rhs)
-        if tl_nn == tr_nn and (tl_nn\is_a(Types.Int) or tl_nn\is_a(Types.Num) or tl_nn\is_a(Types.MeasureType))
-            return infixop @, env, "sub"
-        else
-            return overload_infix @, env, "subtract", "difference"
-    Mul: (env)=>
-        t_lhs,t_rhs = get_type(@lhs),get_type(@rhs)
-        tl_nn, tr_nn = (t_lhs.nonnil or t_lhs), (t_rhs.nonnil or t_rhs)
-        if tl_nn == tr_nn and (tl_nn\is_a(Types.Int) or tl_nn\is_a(Types.Num))
-            return infixop @, env, "mul"
-        elseif (tl_nn\is_a(Types.MeasureType) and tr_nn\is_a(Types.Num)) or (tl_nn\is_a(Types.Num) and tr_nn\is_a(Types.MeasureType)) or (tl_nn\is_a(Types.MeasureType) and tr_nn\is_a(Types.MeasureType))
-            return infixop @, env, "mul"
-        else
-            return overload_infix @, env, "multiply", "product"
-    Div: (env)=>
-        t_lhs,t_rhs = get_type(@lhs),get_type(@rhs)
-        tl_nn, tr_nn = (t_lhs.nonnil or t_lhs), (t_rhs.nonnil or t_rhs)
-        if tl_nn == tr_nn and (tl_nn\is_a(Types.Int) or tl_nn\is_a(Types.Num))
-            return infixop @, env, "div"
-        elseif (tl_nn\is_a(Types.MeasureType) and tr_nn\is_a(Types.Num)) or (tl_nn\is_a(Types.Num) and tr_nn\is_a(Types.MeasureType)) or (tl_nn\is_a(Types.MeasureType) and tr_nn\is_a(Types.MeasureType))
-            return infixop @, env, "div"
-        else
-            return overload_infix @, env, "divide", "quotient"
+        if @op[0] == "*"
+            if tl_nn == tr_nn and (tl_nn\is_a(Types.Int) or tl_nn\is_a(Types.Num))
+                return infixop @, env, "mul"
+            elseif (tl_nn\is_a(Types.MeasureType) and tr_nn\is_a(Types.Num)) or (tl_nn\is_a(Types.Num) and tr_nn\is_a(Types.MeasureType)) or (tl_nn\is_a(Types.MeasureType) and tr_nn\is_a(Types.MeasureType))
+                return infixop @, env, "mul"
+            else
+                return overload_infix @, env, "multiply", "product"
+        else -- "/"
+            if tl_nn == tr_nn and (tl_nn\is_a(Types.Int) or tl_nn\is_a(Types.Num))
+                return infixop @, env, "div"
+            elseif (tl_nn\is_a(Types.MeasureType) and tr_nn\is_a(Types.Num)) or (tl_nn\is_a(Types.Num) and tr_nn\is_a(Types.MeasureType)) or (tl_nn\is_a(Types.MeasureType) and tr_nn\is_a(Types.MeasureType))
+                return infixop @, env, "div"
+            else
+                return overload_infix @, env, "divide", "quotient"
     Mod: (env)=>
         t = get_type(@)
         if (t.nonnil or t)\is_a(Types.Int) or (t.nonnil or t)\is_a(Types.Num)
@@ -1643,7 +1640,7 @@ stmt_compilers =
         return code
     Declaration: (env)=>
         varname = "%#{@var[0]}"
-        node_assert not env.used_names[varname], @var, "Variable being shadowed: #{varname}"
+        -- node_assert not env.used_names[varname], @var, "Variable being shadowed: #{varname}"
         env.used_names[varname] = true
         value_type = get_type @value
         decl_type = value_type

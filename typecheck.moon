@@ -493,11 +493,17 @@ get_type = memoize (node)->
                 return OptionalType(true_type)
             else
                 node_error node, "Values for true/false branches are different: #{true_type} vs #{false_type}"
-        when "Add","Sub","Mul","Div","Mod"
+        when "AddSub","MulDiv","Mod"
             lhs_type = get_type node.lhs
             rhs_type = get_type node.rhs
-            ret_type = get_op_type(node, lhs_type, node.__tag, rhs_type)
-            node_assert ret_type, node, "Invalid #{node.__tag} types: #{lhs_type} and #{rhs_type}"
+            op = if node.__tag == "AddSub"
+                node.op[0] == "+" and "Add" or "Sub"
+            elseif node.__tag == "MulDiv"
+                node.op[0] == "*" and "Mul" or "Div"
+            else
+                node.__tag
+            ret_type = get_op_type(node, lhs_type, op, rhs_type)
+            node_assert ret_type, node, "Invalid #{op} types: #{lhs_type} and #{rhs_type}"
             return ret_type
         when "ButWith"
             base_type = get_type node.base

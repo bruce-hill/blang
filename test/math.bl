@@ -11,6 +11,10 @@ $puts("Negative num modulus: -$a mod $b=$(-a mod b) -$x mod 1=$(-x mod 1.)")
 $puts("Negative modulus: $a mod -$b=$(a mod -b) $x mod -1=$(x mod -1.)")
 $puts("Exponentiation: $a^$b=$(a^b) $x^2.5=$(x^2.5)")
 
+long := 1 + 2 - 3 - 4 + 5 - 6 * 7 * 8 / 2
+fail unless long == -167
+$puts("Long chain: $long")
+
 f := 23.5
 $puts("$f casts to int: $(f:Int)")
 $puts("$f rounds to int: $($float_to_int(f):Int)")

@@ -16,17 +16,15 @@ term: (
 IndexedTerm:: (!`0-9 @value=(methodCall / IndexedTerm / term)
   @index=(`. FieldName / `[ __ required-extended-expr __ `] / @:ParseError=(`[ => "Unclosed bracket")))
 maybe-index-term: methodCall / IndexedTerm / term
-expr: Range / ButWith / Mod / Add / Sub / Mul / Div / Pow / methodCall / IndexedTerm / term
+expr: Range / ButWith / Mod / AddSub / MulDiv / Pow / methodCall / IndexedTerm / term
 extended-expr: TernaryOp / And / Or / Xor / comparison / expr
 unaryOp: Negative / Len / Not
 Negative:: `- !`0-9,. _ @value=maybe-index-term
 Len:: `# _ @value=maybe-index-term
 Not:: \b"not"\b _ @value=(comparison / expr)
-Mod:: @lhs=(Add / Sub / Mul / Div / Pow / maybe-index-term) _ \b"mod"\b _ @rhs=(Add / Sub / Mul / Div / Pow / maybe-index-term)
-Add:: @lhs=(Add / Sub / Mul / Div / Pow / maybe-index-term) _ `+ _ @rhs=(Mul / Div / Pow / maybe-index-term)
-Sub:: @lhs=(Add / Sub / Mul / Div / Pow / maybe-index-term) _ `- _ @rhs=(Mul / Div / Pow / maybe-index-term)
-Mul:: @lhs=(Mul / Div / Pow / maybe-index-term) _ `* _ @rhs=(Pow / maybe-index-term)
-Div:: @lhs=(Mul / Div / Pow / maybe-index-term) _ `/ _ @rhs=(Pow / maybe-index-term)
+Mod:: @lhs=(AddSub / MulDiv / Pow / maybe-index-term) _ \b"mod"\b _ @rhs=(AddSub / MulDiv / Pow / maybe-index-term)
+AddSub:: @lhs=(AddSub / MulDiv / Pow / maybe-index-term) _ @op=`+,- _ @rhs=(MulDiv / Pow / maybe-index-term)
+MulDiv:: @lhs=(MulDiv / Pow / maybe-index-term) _ @op=`*,/ _ @rhs=(Pow / maybe-index-term)
 Pow:: @base=maybe-index-term _ `^ _ @exponent=maybe-index-term
 ButWith:: (@base=maybe-index-term _ `& _
   *@:ButWithAssign=((`. @field=FieldName / `[__@index=required-extended-expr__`])
