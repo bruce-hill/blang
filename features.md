@@ -316,13 +316,13 @@ say("$query")
 // prints: SELECT * FROM users WHERE name = 'xxx''; drop table users; --'
 ```
 
-DSL strings also allow escaping values besides strings, which can be useful
+DSL strings also allow escaping values besides strings, which can be useful in
 cases like escaping lists of filenames for shell code:
 
 ```python
 deftype Shell:String
 def escape(str:String):Shell
-    return ("'$(str | replace("'", "'\"'\"'"))'"):Shell
+    return ("'" + (str | replace("'", "'\"'\"'")) + "'"):Shell
 
 def escape(strings:[String]):Shell
     ret := %Shell[]
