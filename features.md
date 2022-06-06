@@ -280,7 +280,7 @@ def escape(str:String):SQL
     return ("'$(str|replace("'", "''"))'"):SQL
 
 symbol:String = get_requested_symbol()
-query := %SQL[SELECT * FROM stocks WHERE symbol = $symbol]
+query := %SQL"SELECT * FROM stocks WHERE symbol = $symbol"
 sql_execute(query)
 ```
 
@@ -311,7 +311,7 @@ the easy and automatic thing to do.
 
 ```python
 malicious:String = "xxx'; drop table users; --"
-query := %SQL[SELECT * FROM users WHERE name = $malicious]
+query := %SQL"SELECT * FROM users WHERE name = $malicious"
 say("$query")
 // prints: SELECT * FROM users WHERE name = 'xxx''; drop table users; --'
 ```
