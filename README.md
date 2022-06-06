@@ -1,14 +1,14 @@
 # Blang
 
-Blang is a small, statically typed, compile imperative language with ergonomic
-syntax that uses [QBE](https://c9x.me/compile/) as a backend to compile from
-there to assembly code and then to a binary.
+Blang is a small, statically typed, compiled imperative language with ergonomic
+syntax. It uses [QBE](https://c9x.me/compile/) as a backend IR, and compiles
+from there to assembly code and then to a binary.
 
 ## Dependencies
 
 The Blang compiler is written in [Moonscript](https://moonscript.org), uses
 [QBE](https://c9x.me/compile/) as a backend, before being compiled from
-assembly with your C compiler of choice. Blang uses the following libraries:
+assembly with your assembler of choice. Blang uses the following libraries:
 
 - Garbage collection: [Boehm garbage collector](https://www.hboehm.info/gc/)
     - Available from your package manager of choice: `pacman -S gc`
