@@ -299,6 +299,8 @@ get_op_type = (t1, op, t2)=>
                     return t1
         elseif t1\is_a(ListType) and op == "Add"
             return t1
+        elseif t1\is_a(String) and op == "Add"
+            return t1
 
     overload_names = Add:"add", Sub:"subtract", Mul:"multiply", Div:"divide", Mod:"modulus", Pow:"raise"
     return unless overload_names[op]
