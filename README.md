@@ -37,6 +37,10 @@ sing_bottles_song(99)
 
 See [test/\*.bl](test/) for more examples.
 
+## Language Features
+
+[See features.md for writeups of some of the features in blang.](features.md)
+
 ## License
 
 Blang is released under the MIT license with the Commons Clause, see
