@@ -413,7 +413,7 @@ get_type = memoize (node)->
             t = t.nonnil if is_optional
             if t\is_a(ListType)
                 index_type = get_type(node.index, vars)
-                if index_type == Int
+                if index_type == Int or index_type == OptionalType(Int)
                     return OptionalType(t.item_type)
                 elseif index_type == Range
                     return is_optional and OptionalType(t) or t

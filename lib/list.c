@@ -6,6 +6,8 @@
 #include "types.h"
 #include "gc.h"
 
+#define NIL 0x7FFFFFFFFFFFFFFF
+
 list_t *bl_list_new(int64_t nitems, int64_t *items) {
     list_t *list = gc_alloc(sizeof(list_t));
     if (nitems > 0) {
@@ -44,8 +46,8 @@ int64_t bl_list_len(list_t *list) {
     return list->len;
 }
 
-int64_t bl_list_nth(list_t *list, int64_t i) {
-    if (i < 1 || i > list->len) return 0;
+int64_t bl_list_nth(list_t *list, int64_t i, int64_t fallback) {
+    if (i < 1 || i > list->len) return fallback;
     return list->items[i-1];
 }
 

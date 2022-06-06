@@ -302,7 +302,7 @@ class Environment
                 code ..= "#{i} =l add #{i}, 1\n"
             
                 item = @fresh_local "list.item"
-                code ..= "#{item} =l call $bl_list_nth(l #{reg}, l #{i})\n"
+                code ..= "#{item} =l call $bl_list_nth(l #{reg}, l #{i}, l #{t.item_type\is_a(Types.Num) and INT_NIL or "0"})\n"
                 if t.item_type.base_type == "d"
                     item2 = @fresh_local "list.item.float"
                     code ..= "#{item2} =d cast #{item}\n"
@@ -893,10 +893,10 @@ compile_comprehension = (env)=>
             else
                 if iter_type.item_type.base_type == "d"
                     tmp = env\fresh_local "item.int"
-                    code ..= "#{tmp} =l call $bl_list_nth(l #{iter_reg}, l #{i})\n"
+                    code ..= "#{tmp} =l call $bl_list_nth(l #{iter_reg}, l #{i}, l #{FLOAT_NIL})\n"
                     code ..= "#{var_reg} =#{iter_type.item_type.base_type} cast #{tmp}\n"
                 else
-                    code ..= "#{var_reg} =#{iter_type.item_type.base_type} call $bl_list_nth(l #{iter_reg}, l #{i})\n"
+                    code ..= "#{var_reg} =#{iter_type.item_type.base_type} call $bl_list_nth(l #{iter_reg}, l #{i}, l #{iter_type.item_type\is_a(Types.Num) and INT_NIL or "0"})\n"
 
         if @condition
             cond_reg,cond_code = env\to_reg @condition
@@ -1197,15 +1197,15 @@ expr_compilers =
             item_type = t.item_type
             index_type = get_type(@index)
             list_reg, index_reg, code = env\to_regs @value, @index
-            if index_type\is_a(Types.Int)
+            if index_type\is_a(Types.Int) or index_type == Types.OptionalType(Types.Int)
                 item = env\fresh_local "list.item"
                 code ..= nil_guard list_reg, item, t.item_type, ->
                     if t.item_type.base_type == "d"
                         tmp = env\fresh_local "list.item.as_int"
-                        code = "#{tmp} =l call $bl_list_nth(l #{list_reg}, l #{index_reg})\n"
+                        code = "#{tmp} =l call $bl_list_nth(l #{list_reg}, l #{index_reg}, l #{FLOAT_NIL})\n"
                         return code.."#{item} =d cast #{tmp}\n"
                     else
-                        return "#{item} =l call $bl_list_nth(l #{list_reg}, l #{index_reg})\n"
+                        return "#{item} =l call $bl_list_nth(l #{list_reg}, l #{index_reg}, l #{item_type\is_a(Types.Num) and INT_NIL or "0"})\n"
                 return item,code
             elseif index_type\is_a(Types.Range)
                 slice = env\fresh_local "slice"
@@ -1263,7 +1263,7 @@ expr_compilers =
         elseif t\is_a(Types.Range)
             index_type = get_type(@index)
             -- TODO: Slice ranges
-            node_assert index_type\is_a(Types.Int), @index, "Index is #{index_type} instead of Int"
+            node_assert index_type\is_a(Types.Int) or index_type == Types.OptionalType(Types.Int), @index, "Index is #{index_type} instead of Int"
             range_reg, index_reg, code = env\to_regs @value, @index
             ret = env\fresh_local "range.nth"
             code ..= nil_guard range_reg, ret, Types.Int, ->
@@ -1272,7 +1272,7 @@ expr_compilers =
         elseif t\is_a(Types.String)
             index_type = get_type(@index)
             str, index_reg, code = env\to_regs @value, @index
-            if index_type\is_a(Types.Int) -- Get nth character as an Int
+            if index_type\is_a(Types.Int) or index_type == Types.OptionalType(Types.Int) -- Get nth character as an Int
                 char = env\fresh_local "char"
                 code ..= nil_guard str, char, Types.Int, -> "#{char} =l call $bl_string_nth_char(l #{str}, l #{index_reg})\n"
                 return char, code
@@ -1682,7 +1682,7 @@ stmt_compilers =
         if t\is_a(Types.ListType)
             index_type = get_type(@lhs.index)
             list_reg,index_reg,rhs_reg,code = env\to_regs @lhs.value, @lhs.index, @rhs
-            if index_type\is_a(Types.Int)
+            if index_type\is_a(Types.Int) or index_type == Types.OptionalType(Types.Int)
                 if rhs_type.base_type == "d"
                     rhs_casted = env\fresh_local "list.item.float"
                     code ..= "#{rhs_casted} =d cast #{rhs_reg}\n"
@@ -2173,10 +2173,11 @@ stmt_compilers =
                 else
                     if iter_type.item_type.base_type == "d"
                         tmp = env\fresh_local "item.int"
-                        code ..= "#{tmp} =l call $bl_list_nth(l #{iter_reg}, l #{i})\n"
+                        code ..= "#{tmp} =l call $bl_list_nth(l #{iter_reg}, l #{i}, l #{FLOAT_NIL})\n"
                         code ..= "#{var_reg} =#{iter_type.item_type.base_type} cast #{tmp}\n"
                     else
-                        code ..= "#{var_reg} =#{iter_type.item_type.base_type} call $bl_list_nth(l #{iter_reg}, l #{i})\n"
+                        nil_val = iter_type.item_type\is_a(Types.Num) and INT_NIL or "0"
+                        code ..= "#{var_reg} =#{iter_type.item_type.base_type} call $bl_list_nth(l #{iter_reg}, l #{i}, l #{nil_val})\n"
 
             code ..= env\compile_stmt @body
 
