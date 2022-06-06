@@ -19,7 +19,10 @@ so_file = nil
 i = 1
 while i <= #arg
     a = arg[i]
-    if a == "-v" or a == "--verbose"
+    if a == "-h" or a == "--help"
+        print "blangc - compile blang programs\nUsage: blangc [-v|--verbose] [-c|--compile] [-o output_binary_file] [-a output_asm_file] [-q output_qbe_file] file"
+        os.exit!
+    elseif a == "-v" or a == "--verbose"
         verbose = true
     elseif a == "-c" or a == "--compile"
         compile = true

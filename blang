@@ -14,6 +14,9 @@ files, args = {}, {}
 for i,a in ipairs arg
     if a == "-v" or a == "--verbose"
         verbose = true
+    elseif a == "-h" or a == "--help"
+        print "blang - run blang programs\nUsage: blang [-v|--verbose] files... [-- arguments...]"
+        os.exit!
     elseif a == "--"
         args = {table.unpack(arg, i+1, #arg)}
         break
