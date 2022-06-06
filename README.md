@@ -1,8 +1,8 @@
 # Blang
 
-Blang is a small, statically typed, compiled imperative language with ergonomic
-syntax. It uses [QBE](https://c9x.me/compile/) as a backend IR, and compiles
-from there to assembly code and then to a binary.
+Blang is a small, statically typed, garbage-collected, compiled imperative
+language with ergonomic syntax. It uses [QBE](https://c9x.me/compile/) as a
+backend IR, and compiles from there to assembly code and then to a binary.
 
 ## Example
 
@@ -26,7 +26,14 @@ See [test/\*.bl](test/) for more examples.
 
 ## Language Features
 
-[See features.md for writeups of some of the features in blang.](features.md)
+[See features.md for writeups of some of the features in blang.](features.md) These include:
+
+- Type-safe DSL strings
+- Units of measure
+- Better loops
+- Ergonomic optional typing
+- Memory safety (GC and automatic array bounds checking)
+- Percentages
 
 ## Dependencies
 

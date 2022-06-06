@@ -393,3 +393,23 @@ Programming Language?](https://www.youtube.com/watch?v=dhoP-dyIr54) In the
 talk, Cifuentes points out that roughly half of all exploited vulnerabilities
 discovered in the National Vulnerability Database come down to buffer errors,
 code injection, or accidental data leaks.
+
+## Percentages
+
+Blang allows you to use percentages as a form of number. Percentages are a
+commonly used way to express and think about fractions of a whole, but nearly
+all mainstream languages force programmers to use fractional real numbers (e.g.
+`.02` instead of `2%`) and then multiply by 100 every time they need to be
+represented visually as a percent. This is serviceable, but somewhat tedious
+and unintuitive, and occasionally leads to mistakes. Blang allows for
+percentage literals like `2%`, which internally compiles to the floating point
+representation equivalent to `.02` but comes with two added advantages: it
+automatically prints as "2%" rather than "0.02", and it comes with a few type
+safety guarantees. The compiler allows normal math operations between
+percentages (adding, multiplying, etc.) but treats addition and subtraction
+between percentages and non-percentages as a type error (e.g. `5% + 10.0`).
+Multiplying percentages by numbers or units of measure produces something of
+the same type, as you would expect, so `50%*10.0<km> + 2.0<km> == 7.0<km>"`
+
+To be frank, percentages are a bit of a gimmicky language feature, but they
+were easy to add and interesting as an experiment.
