@@ -45,19 +45,29 @@ TernaryOp:: (@condition=(And/Or/Xor/comparison/expr) _
 Bool:: \b("yes"/"no")\b
 Nil:: \b"nil"\b
 String:: (
-  '"""' @curdent:\C $ \n @strdent:\C strdent @content=@..%(@:Newline=(\n strdent) / \n$ / Escape / Interp) (\n curdent '"""')
-  / @:ParseError=('"""' .. % \n $$ => "Failed to find closing triple quote with the right indentation")
-  / "'''" @curdent:\C $ \n @strdent:\C strdent @content=@..%(@:Newline=(\n strdent) / \n$) (\n curdent '"""')
-  / @:ParseError=("'''" .. % \n $$ => "Failed to find closing triple quote with the right indentation")
+  `" @curdent:\C $ \n @strdent:\C strdent @content=@..%(@:Newline=(\n strdent) / \n$ / Escape / Interp) (\n curdent `")
+  / @:ParseError=(`"$ .. % \n $$ => "Failed to find closing quote with the right indentation")
+  / `' @curdent:\C $ \n @strdent:\C strdent @content=@..%(@:Newline=(\n strdent) / \n$) (\n curdent `')
+  / @:ParseError=(`'$ .. % \n $$ => "Failed to find closing quote with the right indentation")
+  / `` @curdent:\C $ \n @strdent:\C strdent @content=@..%(@:Newline=(\n strdent) / \n$) (\n curdent ``)
+  / @:ParseError=(``$ .. % \n $$ => "Failed to find closing backtick with the right indentation")
   / `" @content=@..%(Escape/Interp) `"
+  / `` @content=@..%Interp ``
   / `' @content=@.. `'
   / @:ParseError=(`",'..$ => "Missing closing quote")
   )
 DSL:: `% @name=id @string=(
   String
   / @:String=(`[ @content=@..%(Escape/Interp) `]) / @:ParseError=(`[..$ =>"Missing closing ]")
+  / @:String=(`< @content=@..%(Escape/Interp) `>) / @:ParseError=(`<..$ =>"Missing closing >")
+  / @:String=(`( @content=@..%Interp `)) / @:ParseError=(`(..$ =>"Missing closing )")
   / @:String=(`{ @content=@.. `}) / @:ParseError=(`{..$ =>"Missing closing }")
-  / @:String=(@delm:`|,/,;,,,` @content=@..%(Escape/Interp) delim) / @:ParseError=(`|,/,;,,..$ =>"This string has no closing delimiter"))
+  / @:String=(`: _ @curdent:\C $ \n @strdent:\C strdent @content=@..%(@:Newline=(\n strdent) / \n$ / Escape / Interp) >(+\n !strdent . / $$$))
+  / @:String=(`> _ @curdent:\C $ \n @strdent:\C strdent @content=@..%(@:Newline=(\n strdent) / \n$ / AtInterp) >(+\n !strdent . / $$$))
+  / @:String=(`:,  _ @content=@..%(Escape/Interp) $)
+  / @:String=(`> _ @content=@..%AtInterp $)
+  / @:String=(@delim:. @curdent:\C $ \n @strdent:\C strdent @content=@..%(@:Newline=(\n strdent) / \n$ / Escape / Interp) (\n curdent delim))
+  / @:String=(@delm:. @content=@..%(Escape/Interp) delim) / @:ParseError=(..$ =>"This string has no closing delimiter"))
 List:: `[__*extended-expr %(__`,__) __ [`,__] `] [_`:_@type=type] / `[__`:__@type=@:ListType=(@itemtype=type)__`]
 ListComprehension:: (`[ __
   @expression=extended-expr __ \b"for"\b __
@@ -66,7 +76,8 @@ ListComprehension:: (`[ __
    / PostfixConditional] __`])
 PostfixConditional: \b"if"\b _ @condition=required-extended-expr / \b"unless"\b_ @condition=@:Not=(@value=required-extended-expr)
 Cast:: @expr=(methodCall / Measure / Float / Percent / Int / Global / Var / `(__extended-expr__`))_`:_@type=type
-Interp:: `$ @value=(Var / `(__ required-extended-expr __`))
+Interp:: `$ @value=(Var / `(__ required-extended-expr __`) / @:String=@content=`$)
+AtInterp: @:Interp=(`@ @value=(Var / `(__ required-extended-expr __`) / @:String=@content=`@))
 Escape:: `\ (`x 2 hex / `a,b,t,n,r,v / 3 `0-8 / .)
 Float:: [`-,+] (`0-9 *`0-9,_ (`. !`. *`0-9,_ / >`e) / `. `0-9 *`0-9,_) [`e [`+,-] `0-9 *`0-9,_]
 Measure:: @amount=(Float/Int) @units=MeasureType

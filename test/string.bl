@@ -29,14 +29,15 @@ $puts("string" + " + " + "concatenation")
 $puts("string * repeating: $(5 * "Ha")")
 
 if yes
-    multiline := """
+    multiline := ("
         Hello world
             (indented x4 here)
         i is $i escape: \x41
 
+        "quotes"
 
         ^^^^ 2x blank line ^^^^^^
         expression: $(1 + 2)
         the end (no trailing newline)
-    """
+    ")
     $puts("Multliline:\n<START>$multiline<END>")

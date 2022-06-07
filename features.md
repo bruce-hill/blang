@@ -247,12 +247,55 @@ say("Hi, my name is $my_name and my favorite number is $(random())")
 
 ## DSLs
 
-Blang supports safe-by-design strings representing different language syntax.
-An extremely common source of security vulnerabilities occurs when intermixing
-code (e.g. SQL code or HTML code) with user-controlled inputs. The result is
-code injection attacks. Blang addresses this problem by providing two features:
-compile-time type safety for different types of strings, and automatic string
+Blang supports safe-by-design strings representing non-blang code. An extremely
+common source of security vulnerabilities occurs when intermixing code (e.g.
+SQL code or HTML code) with user-controlled inputs. The result is code
+injection attacks. Blang addresses this problem by providing DSL strings (DSL =
+Domain Specific Language). DSL strings come with compile-time type safety to
+prevent accidentally mixing up different types of strings and automatic string
 escaping when performing string interpolations.
+
+### Easy Language Embedding
+
+Blang allows for writing strings that contain code using DSL strings, which
+self-document which domain-specific language the string uses, as well as
+providing multiple different string delimiters to make it easy to avoid
+[leaning toothpick
+syndrome](https://en.wikipedia.org/wiki/Leaning_toothpick_syndrome). DSL
+strings are prefixed by `%` and an identifier, followed by a pair of
+delimiters, like `%Foo"quotes"`, `%Foo[brackets]`, `%Foo/slashes/`,
+`%Foo;semicolons;`, `%Foo{braces}`, and so on. Additionally, `>` and `:` can be
+used to indicate the string continues till the end of the line. Different
+domain-specific languages have different values that need to be escaped, so
+it's important to have options for how to most conveniently represent whatever
+you need to.
+
+```
+pat := %Regex/[0-9]+|['"]+/
+json := %JSON!{"key"=[1,2,3]}!
+blang := %Blang`foo := %DSL[...]`
+shell := %Shell> ls $HOME
+```
+
+Blang's multi-line strings use indentation to delimit string boundaries, and
+DSL strings can have the same format. Strings end where indented regions end
+(discarding trailing blank lines). Custom quotation marks are not needed to
+avoid ambiguity:
+
+```
+json := %JSON:
+    {
+        "key"="value",
+        "foo"=99
+    }
+
+html := %HTML:
+    <ul>
+        <li>...</li>
+    </ul>
+```
+
+### Sanitizing Inputs
 
 As an example, let's consider SQL injection. A common security vulnerability in
 web application occurs when a programmer naively attempts to compose an SQL query
@@ -284,8 +327,8 @@ query := %SQL"SELECT * FROM stocks WHERE symbol = $symbol"
 sql_execute(query)
 ```
 
-DSL strings offer three important benefits: firstly, DSL strings are readable
-code. The `%Name` prefix clearly documents what type of string you're dealing
+DSL strings offer three important benefits: firstly, DSL strings are an easy way
+to write code within code. The `%Name` prefix clearly documents what type of string you're dealing
 with, and there is support for multiple different delimiters, whichever is most
 convenient for your domain. Nobody wants to sort through code with [leaning
 toothpick syndrome](https://en.wikipedia.org/wiki/Leaning_toothpick_syndrome),
@@ -325,18 +368,20 @@ def escape(str:String):Shell
     return ("'" + (str | replace("'", "'\"'\"'")) + "'"):Shell
 
 def escape(strings:[String]):Shell
-    ret := %Shell[]
+    ret := %Shell""
     for str in strings
-        ret += %Shell[$str]
-    between ret += %Shell[ ]
+        ret += %Shell"$str"
+    between ret += %Shell" "
     return ret
 
 files := ["file.txt", "`rm -f $HOME`", "isn't safe"]
 dest := "/tmp"
-cmd := %Shell[cp $files $dest]
+cmd := %Shell> cp $files $dest
 say("$cmd")
 // prints: cp 'file.txt' '`rm -f $HOME`' 'isn'"'"'t safe' /tmp
 ```
+
+### Preventing Data Leaks
 
 DSLs can also be used to guard against sensitive information being revealed
 accidentally.

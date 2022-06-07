@@ -25,7 +25,7 @@ $puts("\x1b[1mSQL Query:\x1b[m $query")
 
 deftype Shell:String
 def escape(str:String):Shell
-    return ("'$(str | replace("'", "'\"'\"'") | hl)'"):Shell
+    return ("'" + (str | replace("'", "'\"'\"'") | hl) + "'"):Shell
 
 def escape(strings:[String]):Shell
     ret := %Shell""
@@ -35,8 +35,8 @@ def escape(strings:[String]):Shell
     return ret
 
 files := ['one', 'file space', 'malicious `rm -f $HOME`', "don't screw up"]
-dest := "/tmp"
-cmd := %Shell[cp $files $dest]
+dest := "tmp"
+cmd := %Shell> cp @files $HOME/@dest
 $puts("\x1b[1mShell command:\x1b[m $cmd")
 
 deftype HTML:String
@@ -45,12 +45,12 @@ def escape(str:String):HTML
     return (str | replace("&","&amp;") | replace("<","&lt;") | replace(">","&gt;") | replace('"',"&quot;") | replace("'","&#39;")|hl):HTML
 
 message := "I <3 things and don't care"
-html := %HTML"""
+html := %HTML:
     <html>
         <body>
         $message
         </body>
-"""
+
 html += %HTML[\n</html>]
 
 $puts("\x1b[1mHTML:\x1b[m\n$html")
