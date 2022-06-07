@@ -320,7 +320,7 @@ In Blang, there is a much better solution for this problem: DSL strings.
 ```python
 deftype SQL:String
 def escape(str:String):SQL
-    return ("'$(str|replace("'", "''"))'"):SQL
+    return ("'" + (str|replace("'", "''")) + "'"):SQL
 
 symbol:String = get_requested_symbol()
 query := %SQL"SELECT * FROM stocks WHERE symbol = $symbol"
