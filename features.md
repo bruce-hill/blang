@@ -20,26 +20,26 @@ And `for` loops iterate over values in an iterable container or numeric range:
 
 ```python
 for item in list
-    say("$item")
+    say "$item"
 
 for key in table
-    say("$key: $(table[key])")
+    say "$key: $(table[key])"
 
 for i in 1..5
-    say("$i")
+    say "$i"
 ```
 
 `for` loops also have an optional extra parameter used for an index:
 
 ```python
 for i,item in list
-    say("$i: $item")
+    say "$i: $item"
 
 for key,value in table
-    say("$key: $value")
+    say "$key: $value"
 
 for i,n in 99..150
-    say("#$i = $n")
+    say "#$i = $n"
 ```
 
 Most languages with loops also offer a `continue` and `break` statement for
@@ -242,7 +242,7 @@ Like many modern programming languages, Blang supports string interpolation,
 which makes it easy to insert values into strings:
 
 ```python
-say("Hi, my name is $my_name and my favorite number is $(random())")
+say "Hi, my name is $my_name and my favorite number is $(random())"
 ```
 
 ## DSLs
@@ -355,7 +355,7 @@ the easy and automatic thing to do.
 ```python
 malicious:String = "xxx'; drop table users; --"
 query := %SQL"SELECT * FROM users WHERE name = $malicious"
-say("$query")
+say "$query"
 // prints: SELECT * FROM users WHERE name = 'xxx''; drop table users; --'
 ```
 
@@ -377,7 +377,7 @@ def escape(strings:[String]):Shell
 files := ["file.txt", "`rm -f $HOME`", "isn't safe"]
 dest := "/tmp"
 cmd := %Shell> cp @files @dest
-say("$cmd")
+say "$cmd"
 // prints: cp 'file.txt' '`rm -f $HOME`' 'isn'"'"'t safe' /tmp
 ```
 
