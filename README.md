@@ -10,16 +10,16 @@ backend IR, and compiles from there to assembly code and then to a binary.
 def sing_bottles_song(n:Int):
     for i in n..0
         when i is 0
-            "No more bottles of beer on the wall! :(" | $puts
+            $puts "No more bottles of beer on the wall! :("
         is 1
-            "One last bottle of beer on the wall" | $puts
+            $puts "One last bottle of beer on the wall"
         else
-            "$i bottles of beer on the wall" | $puts
+            $puts "$i bottles of beer on the wall"
     between
-        "Take one down, pass it around... " | $puts
+        $puts "Take one down, pass it around... "
 
 
-sing_bottles_song(99)
+sing_bottles_song 99
 ```
 
 See [test/\*.bl](test/) for more examples.

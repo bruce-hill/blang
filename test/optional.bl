@@ -1,11 +1,11 @@
 should_nil := yes
 int:Int? = should_nil ? nil; 123
-$puts("$int (Optional(Int) $(int ? "wasn't"; "was") nil)")
+$puts "$int (Optional(Int) $(int ? "wasn't"; "was") nil)"
 float:Num? = should_nil ? nil; 5.5
-$puts("$float (Optional(Num) $(float ? "wasn't"; "was") nil)")
+$puts "$float (Optional(Num) $(float ? "wasn't"; "was") nil)"
 
 s:String? = should_nil ? nil; "Not nil"
-$puts("$s (Optional(String) $(s? "wasn't"; "was") nil)")
+$puts "$s (Optional(String) $(s? "wasn't"; "was") nil)"
 $puts(s or "Nah")
 
 fn := should_nil ? nil; (s:String)-> $puts(s)
@@ -25,18 +25,18 @@ boolno:Bool? = no
 
 t := "truthy"
 f := "falsey"
-$puts("OptionalBool truthiness: nil=$(boolnil?t;f) yes=$(boolyes?t;f) no=$(boolno?t;f)")
-$puts("OptionalBool equality: nil==nil?$(boolnil==nil?yes;no) yes==nil?$(boolyes==nil?yes;no) no==nil?$(boolno==nil?yes;no)")
-$puts("OptionalBool equality: nil==no?$(boolnil==no?yes;no) yes==nil?$(boolyes==no?yes;no) no==nil?$(boolno==no?yes;no)")
-$puts("OptionalBool equality: nil==yes?$(boolnil==yes?yes;no) yes==yes?$(boolyes==yes?yes;no) no==yes?$(boolno==yes?yes;no)")
+$puts "OptionalBool truthiness: nil=$(boolnil?t;f) yes=$(boolyes?t;f) no=$(boolno?t;f)"
+$puts "OptionalBool equality: nil==nil?$(boolnil==nil?yes;no) yes==nil?$(boolyes==nil?yes;no) no==nil?$(boolno==nil?yes;no)"
+$puts "OptionalBool equality: nil==no?$(boolnil==no?yes;no) yes==nil?$(boolyes==no?yes;no) no==nil?$(boolno==no?yes;no)"
+$puts "OptionalBool equality: nil==yes?$(boolnil==yes?yes;no) yes==yes?$(boolyes==yes?yes;no) no==yes?$(boolno==yes?yes;no)"
 
 nums := [2,3,4]
-$puts("nums: $nums")
-$puts("nums[1] = $(nums[1]); nums[-234] = $(nums[-234]); nums[999] = $(nums[999])")
-$puts("nums[nums[1]] = $(nums[nums[1]])")
-$puts("nums[nums[999]] = $(nums[nums[999]])")
+$puts "nums: $nums"
+$puts "nums[1] = $(nums[1]); nums[-234] = $(nums[-234]); nums[999] = $(nums[999])"
+$puts "nums[nums[1]] = $(nums[nums[1]])"
+$puts "nums[nums[999]] = $(nums[nums[999]])"
 
 strs := ["A","B","C"]
-$puts("strs: $strs")
-$puts("strs[1] = $(strs[1]); strs[-234] = $(strs[-234]); strs[999] = $(strs[999])")
-$puts("strs[nums[999]] = $(strs[nums[999]])")
+$puts "strs: $strs"
+$puts "strs[1] = $(strs[1]); strs[-234] = $(strs[-234]); strs[999] = $(strs[999])"
+$puts "strs[nums[999]] = $(strs[nums[999]])"

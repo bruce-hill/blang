@@ -2,26 +2,26 @@ a := 3_000 // Underscores can separate chunks
 b := 2
 x := 3.5
 y := 2e3 // Scientific notation
-$puts("Addition: $a+$b=$(a+b) $x+$y=$(x+y)")
-$puts("Subtraction: $a-$b=$(a-b) $x-$y=$(x-y)")
-$puts("Multiplication: $a*$b=$(a*b) $x*$y=$(x*y)")
-$puts("Division: $a/$b=$(a/b) $x/$y=$(x/y)")
-$puts("Modulus: $a mod $b=$(a mod b) $x mod 1=$(x mod 1.)")
-$puts("Negative num modulus: -$a mod $b=$(-a mod b) -$x mod 1=$(-x mod 1.)")
-$puts("Negative modulus: $a mod -$b=$(a mod -b) $x mod -1=$(x mod -1.)")
-$puts("Exponentiation: $a^$b=$(a^b) $x^2.5=$(x^2.5)")
+$puts "Addition: $a+$b=$(a+b) $x+$y=$(x+y)"
+$puts "Subtraction: $a-$b=$(a-b) $x-$y=$(x-y)"
+$puts "Multiplication: $a*$b=$(a*b) $x*$y=$(x*y)"
+$puts "Division: $a/$b=$(a/b) $x/$y=$(x/y)"
+$puts "Modulus: $a mod $b=$(a mod b) $x mod 1=$(x mod 1.)"
+$puts "Negative num modulus: -$a mod $b=$(-a mod b) -$x mod 1=$(-x mod 1.)"
+$puts "Negative modulus: $a mod -$b=$(a mod -b) $x mod -1=$(x mod -1.)"
+$puts "Exponentiation: $a^$b=$(a^b) $x^2.5=$(x^2.5)"
 
 long := 1 + 2 - 3 - 4 + 5 - 6 * 7 * 8 / 2
 fail unless long == -167
-$puts("Long chain: $long")
+$puts "Long chain: $long"
 
 f := 23.5
-$puts("$f casts to int: $(f:Int)")
-$puts("$f rounds to int: $($float_to_int(f):Int)")
+$puts "$f casts to int: $(f:Int)"
+$puts "$f rounds to int: $($float_to_int(f):Int)"
 
 i := 123
-$puts("$i casts to float: $(i:Num)")
-$puts("$f rounds to float: $($int_to_float(i):Num)")
+$puts "$i casts to float: $(i:Num)"
+$puts "$f rounds to float: $($int_to_float(i):Num)"
 
 def fast_inverse_sqrt(number:Num):Num
     threehalfs := 1.5
@@ -36,4 +36,4 @@ def fast_inverse_sqrt(number:Num):Num
     return y
 
 test := 16.
-$puts("fast_inverse_sqrt($test) = $(fast_inverse_sqrt(test))")
+$puts "fast_inverse_sqrt($test) = $(fast_inverse_sqrt test)"

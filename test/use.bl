@@ -1,9 +1,9 @@
-$puts("Loading wip...")
+$puts "Loading wip..."
 x := use "modules/testmod" or fail
-$puts("Fully loaded: $(x.rand)")
-$puts("Loading wip again...")
+$puts "Fully loaded: $(x.rand)"
+$puts "Loading wip again..."
 y := use "modules/testmod" or fail
-$puts("Fully loaded: $(y.rand)")
+$puts "Fully loaded: $(y.rand)"
 fail "Module idempotency failed" unless x.rand == y.rand
 
 fail "Module string equality check failed" unless x.str == "string"
@@ -12,8 +12,8 @@ fail "Module string equality check failed" unless x.str == "string"
 
 use "modules/testothermod" or fail
 
-$puts("$from_othermod")
-$puts("Call: $(othermod_foo(5))")
+$puts "$from_othermod"
+$puts "Call: $(othermod_foo(5))"
 
 emp := use "modules/emptymod"
-$puts("$emp")
+$puts "$emp"

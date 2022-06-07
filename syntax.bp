@@ -17,9 +17,9 @@ IndexedTerm:: (!`0-9 @value=(methodCall / IndexedTerm / term)
   @index=(`. FieldName / `[ __ required-extended-expr __ `] / @:ParseError=(`[ => "Unclosed bracket")))
 maybe-index-term: methodCall / IndexedTerm / term
 expr: Range / ButWith / Mod / AddSub / MulDiv / Pow / methodCall / IndexedTerm / term
-extended-expr: TernaryOp / And / Or / Xor / comparison / expr
+extended-expr: TernaryOp / And / Or / Xor / comparison / splatFnCall / splatMethodCall / expr
 unaryOp: Negative / Len / Not
-Negative:: `- !`0-9,. _ @value=maybe-index-term
+Negative:: `- !`0-9,. @value=maybe-index-term
 Len:: `# _ @value=maybe-index-term
 Not:: \b"not"\b _ @value=(comparison / expr)
 Mod:: @lhs=(AddSub / MulDiv / Pow / maybe-index-term) _ \b"mod"\b _ @rhs=(AddSub / MulDiv / Pow / maybe-index-term)
@@ -98,8 +98,11 @@ FnCall:: @fn=(FnCall / IndexedTerm / Global / Var / `(__required-extended-expr__
 methodCall: @:FnCall=((methodCall / IndexedTerm / term) _ `| _
   (@fn=(Global / Var / `(__required-extended-expr__`)) _
    [`( __ *expr % (__`,__) __ [`,__] `)] / @:ParseError=(=>"Not a valid method call")) [_`:_@type=type])
-Var:: id !~ (^^keyword$$)
-FieldName:: id !~ (^^keyword$$)
+splatFnCall: @:FnCall=(@fn=(FnCall / IndexedTerm / Global / Var / `(__required-extended-expr__`)) +(` /\t) +extended-expr % +(` ,,/\t))
+splatMethodCall: @:FnCall=((methodCall / IndexedTerm / term) _ `| _
+  (@fn=(Global / Var / `(__required-extended-expr__`)) +(` /\t) +expr % +(` ,,/\t) / @:ParseError=(=>"Not a valid method call")))
+Var:: id !~ keyword
+FieldName:: id !~ keyword
 Global:: `$ id
 id: \b(\I *\i)
 statements: @curdent:\C +(
@@ -151,7 +154,7 @@ OrUpdate:: @lhs=Var _ "or=" _ @rhs=required-extended-expr
 XorUpdate:: @lhs=Var _ "xor=" _ @rhs=required-extended-expr
 MethodCallUpdate:: (Var _ "|=" _
   (@fn=(Global / Var / `(__required-extended-expr__`)) _
-   [`( __ *expr % (__`,__) __ [`,__] `)] / @:ParseError=(=>"Not a valid method call")) [_`:_@type=type])
+   [`( __ *expr % (__`,__) __ [`,__] `) / +expr % +(` ,,/\t)] / @:ParseError=(=>"Not a valid method call")) [_`:_@type=type])
 ButWithUpdate:: (@base=Var _ "&=" _
   *@:ButWithField=((`. @field=FieldName / `[__@index=required-extended-expr__`]) _`=_ @value=required-extended-expr) % (_`,,|_) [_`,])
 required-extended-expr: extended-expr / @:ParseError=(..$ =>"Invalid expression")
@@ -203,8 +206,9 @@ Range:: (
   / ".." [@last=maybe-index-term]) # ..5 ..
 comment: "//" *.
 
-keyword: ("nil"/"yes"/"no"/"for"/"while"/"between"/"if"/"elseif"/"else"/"with"/"and"/"or"/"xor"/"pass"/"not"
-  /"skip"/"stop"/"unless"/"repeat"/"as"/"fail"/"return"/"deftype"/"unit"/"use"/"export"/"typeof")
+# Keep keywords reverse-alphabetically sorted so you don't get spurious prefix matches (e.g. "no" instead of "not")
+keyword: \b("yes"/"xor"/"with"/"while"/"when"/"use"/"unless"/"unit"/"typeof"/"stop"/"skip"/"return"/"repeat"/"pass"/"or"
+  /"not"/"no"/"nil"/"mod"/"is"/"if"/"for"/"fail"/"export"/"elseif"/"else"/"deftype"/"between"/"as"/"and")\b
 hex: `0-9,a-f,A-F
 nl: +\n % (*(` /\t) [comment])
 __: *(` /\t/\n/\r/comment)

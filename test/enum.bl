@@ -1,13 +1,13 @@
 enum Color{Red, Green, Blue}
 
 x := Color.Red
-$puts("x = $x")
+$puts "x = $x"
 
 for c in [Color.Red, Color.Green, Color.Blue]
     when c is Color.Blue
-        $puts("Blue: $c")
+        $puts "Blue: $c"
     is Color.Red
-        $puts("Red: $c")
+        $puts "Red: $c"
     else
-        $puts("Other: $c")
-    $puts("$c == $x? $(c == x)")
+        $puts "Other: $c"
+    $puts "$c == $x? $(c == x)"

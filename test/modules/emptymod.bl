@@ -1,1 +1,1 @@
-$puts("Loaded empty mod")
+$puts "Loaded empty mod"

@@ -3,11 +3,11 @@ addTwo := (x:Int)=> x + 2
 addThree := (x:Int)->
     return x + 3
 
-$puts("Lambda returns: $(addOne(1)) $(addTwo(1)) $(addThree(1))")
+$puts "Lambda returns: $(addOne(1)) $(addTwo(1)) $(addThree(1))"
 
-$puts("Method call syntax: $(1|addOne)")
+$puts "Method call syntax: $(1|addOne)"
 
 thunk := => "Double arrow thunks work"
-$puts(thunk())
+$puts thunk()
 thunk2 := -> $puts("Single arrow thunks work")
 thunk2()

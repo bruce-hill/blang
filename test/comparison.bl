@@ -1,12 +1,12 @@
 if 1 < 5 and 1 == 1
-    $puts("Int comparison working")
+    $puts "Int comparison working"
 else
-    $puts("Int comparison broken")
+    $puts "Int comparison broken"
 
 if "a" < "bcde" and "a" == "a"
-    $puts("String comparison working")
+    $puts "String comparison working"
 else
-    $puts("String comparison broken")
+    $puts "String comparison broken"
 
 if yes xor no xor no
-    $puts("xor works!")
+    $puts "xor works!"

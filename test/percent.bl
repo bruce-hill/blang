@@ -2,7 +2,7 @@ def multiply(x:Num,y:Percent):Num = x*(y:Num)
 def multiply(x:Percent,y:Num):Num = (x:Num)*y
 x := 23.5
 y := 10%
-$puts("$x*$y = $(x*y)")
+$puts "$x*$y = $(x*y)"
 
 z := 5%
-$puts("$y+$z = $(y+z)")
+$puts "$y+$z = $(y+z)"

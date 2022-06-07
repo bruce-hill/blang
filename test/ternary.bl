@@ -1,4 +1,4 @@
 x := 1 < 2 ? "yes" ; "no"
 y := 1 > 2 ? "yes" ; "no"
 
-$printf("x: %s y: %s\n", x, y)
+$puts "x: $x y: $y"

@@ -1,13 +1,12 @@
-def say(s:String):
-    $printf("%s\n", s)
+def say(s:String): $puts(s)
 
 x := 5
 if not x > 10
-    say("x is small")
+    say "x is small"
 elseif x > 100
-    say("x is HUGE")
+    say "x is HUGE"
 else
-    say("x is big")
+    say "x is big"
 
-say("Done") if x == 5
-say("Done2") unless x < 5
+say "Done" if x == 5
+say "Done2" unless x < 5

@@ -7,11 +7,11 @@ def max(x:Num,y:Num):Num
 
 def say_max(x:Int,y:Int):
     m := max(x, y)
-    $puts("$m")
+    $puts "$m"
 
 def say_max(x:Num,y:Num):
     m := max(x, y)
-    $puts("$m")
+    $puts "$m"
 
 say_max(2.3, 3.4)
 say_max(99, 100)
@@ -23,4 +23,4 @@ def map(list:[Int], fn:(Int)=>Int):[Int]
 to_map := ["hello","world"]
 def bye(s:String):= s == "hello" ? "bye" ; s
 mapped := map(to_map:[Int], bye:(Int)=>Int):[String]
-$puts("map($to_map, bye) => $mapped")
+$puts "map($to_map, bye) => $mapped"

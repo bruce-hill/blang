@@ -1,36 +1,36 @@
 t :{String=Int}= {k=123, v=456}
-$puts("t = $t")
-$puts("t['k'] = $(t["k"])")
-$puts("t['missing'] = $(t["missing"])")
+$puts "t = $t"
+$puts "t['k'] = $(t["k"])"
+$puts "t['missing'] = $(t["missing"])"
 
 fail unless #t == 2
 
 if t["k"]
-    $puts("Yep 'k' is there")
+    $puts "Yep 'k' is there"
 else
-    $puts("Nope 'k' isn't there")
+    $puts "Nope 'k' isn't there"
 
 if t["gone"]
-    $puts("Yep 'gone' is there")
+    $puts "Yep 'gone' is there"
 else
-    $puts("Nope 'gone' isn't there")
+    $puts "Nope 'gone' isn't there"
 
-$puts("Setting t['new']=1337")
+$puts "Setting t['new']=1337"
 t["new"] = 1337
-$puts("t = $t")
+$puts "t = $t"
 
 for k,v in t
-    $puts("Entry: t[$k] = $v")
+    $puts "Entry: t[$k] = $v"
 
 for val in t
-    $puts("Just the value: $val")
+    $puts "Just the value: $val"
 
 t_int :{Int=Int}= {[123]=456, [0]=345, [567]=0}
-$puts("t_int = $t_int")
-$puts("t_int[0] = $(t_int[0])")
-$puts("t_int[123] = $(t_int[123])")
-$puts("t_int[567] = $(t_int[567])")
-$puts("t_int[4] = $(t_int[4])")
+$puts "t_int = $t_int"
+$puts "t_int[0] = $(t_int[0])"
+$puts "t_int[123] = $(t_int[123])"
+$puts "t_int[567] = $(t_int[567])"
+$puts "t_int[4] = $(t_int[4])"
 
 for k,v in t_int
-    $puts("Entry: t_int[$k] = $v")
+    $puts "Entry: t_int[$k] = $v"

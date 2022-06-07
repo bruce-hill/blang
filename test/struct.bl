@@ -11,21 +11,21 @@ def multiply(v:Vec, k:Num):= Vec{k*v.x, k*v.y}
 def tostring(v:Vec):String = "Vec<$(v.x),$(v.y)>"
 
 v := Vec{2.3, 4.5}
-$puts("v = $v")
-$puts("v.x = $(v.x)")
-$puts("v[1] = $(v[1])")
-$puts("v[2] = $(v[2])")
-$puts("v + v = $(v + v)")
-$puts("100. * v = $(100. * v)")
-$puts("v * v = $(v * v)")
+$puts "v = $v"
+$puts "v.x = $(v.x)"
+$puts "v[1] = $(v[1])"
+$puts "v[2] = $(v[2])"
+$puts "v + v = $(v + v)"
+$puts "100. * v = $(100. * v)"
+$puts "v * v = $(v * v)"
 butwith := v & .x=999.999
-$puts("v&.x=999.999 = $butwith")
+$puts "v&.x=999.999 = $butwith"
 
 // Anonymous structs (tuples)
 x := Tuple{1, 2.3, "hello"}
-$puts("Tuple: $x")
+$puts "Tuple: $x"
 x &= [2]=5.5
-$puts("Tuple: $x")
+$puts "Tuple: $x"
 
 // Return values
 def foo(n:Int):
@@ -36,9 +36,9 @@ def foo(n:Int):
 
 result := foo(4)
 if result.ok
-    $puts(result.msg)
+    $puts result.msg
 
-$puts("Equality: $(Vec{1,1} == Vec{1,1})")
+$puts "Equality: $(Vec{1,1} == Vec{1,1})"
 
 // Recursive struct
 struct Tree {
@@ -49,4 +49,4 @@ struct Tree {
 
 t := Tree{5, Tree{0, nil, nil}, nil}
 t.right = t
-$puts("Recursive struct with cyclical references: $t")
+$puts "Recursive struct with cyclical references: $t"

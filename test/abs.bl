@@ -5,6 +5,6 @@ def abs(x:Int):Int
         return x
 
 x := -5
-$printf("Abs(%ld) = %ld\n", x, abs(x))
+$puts "Abs($x) = $(abs x)"
 x = 15
-$printf("Abs(%ld) = %ld\n", x, abs(x))
+$puts "Abs($x) = $(abs x)"

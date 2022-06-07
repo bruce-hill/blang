@@ -1,36 +1,36 @@
 L := [10, 20, 30, 40, 50]
-$puts("L: $L")
-$puts("#L: $(#L)")
+$puts "L: $L"
+$puts "#L: $(#L)"
 x := L[3]
-$puts("L[3]: $x")
+$puts "L[3]: $x"
 L[1] = 999
-$puts("L after setting index 1: $L")
+$puts "L after setting index 1: $L"
 
 L2 := [1.5, 2.5, 3.5, 4.5]
-$puts("L2: $L2")
+$puts "L2: $L2"
 x2 := L2[3]
-$puts("L2[3]: $x2")
+$puts "L2[3]: $x2"
 L2 | $bl_list_append((99.5):Int)
-$puts("After append: $L2")
+$puts "After append: $L2"
 
 L3 := [[10],[20]]
-$puts("Nested: $L3")
-$puts("Inner [2][1]: $((L3[2] or fail)[1])")
+$puts "Nested: $L3"
+$puts "Inner [2][1]: $((L3[2] or fail)[1])"
 (L3[2] or fail)[1] = 999
-$puts("After setting [2][1]: $L3")
+$puts "After setting [2][1]: $L3"
 // (L3[99] or fail)[1] = 999
-// $puts("Unreachable: $L3")
+// $puts "Unreachable: $L3"
 
 L4 := []:Int
-$puts("Empty: $L4")
+$puts "Empty: $L4"
 
-$puts("L: $L sliced[2..4]: $(L[2..4])")
+$puts "L: $L sliced[2..4]: $(L[2..4])"
 L | $bl_list_append(9999)
-$puts("After append: $L")
+$puts "After append: $L"
 
 a := [1,2,3,4]
 b := [1,2,3,4]
-$puts("Full slice: a[..] = $(a[..])")
-$puts("$a == $b? $(a == b)")
-$puts("$a == ($a)[..]? $(a == a[..])")
-$puts("($a)[..] == ($b)[..]? $(a[..] == b[..])")
+$puts "Full slice: a[..] = $(a[..])"
+$puts "$a == $b? $(a == b)"
+$puts "$a == ($a)[..]? $(a == a[..])"
+$puts "($a)[..] == ($b)[..]? $(a[..] == b[..])"

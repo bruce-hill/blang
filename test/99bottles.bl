@@ -1,14 +1,14 @@
 // 99 Bottles of beer
 def sing_bottles(n:Int):
   def verse(n:Int):
-    $printf("%ld bottles of beer on the wall\n", n)
+    $puts "$n bottles of beer on the wall"
 
   def dec(x:Int):= x - 1
 
   while n > 0
-    verse(n)
-    n = dec(n)
+    verse n
+    n = dec n
 
-  $printf("No more bottles of beer on the wall\n")
+  $puts "No more bottles of beer on the wall"
 
-sing_bottles(5)
+sing_bottles 5

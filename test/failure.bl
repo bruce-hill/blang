@@ -1,13 +1,12 @@
-def say(s:String):
-    $puts(s)
+def say(s:String): $puts(s)
 
 maybe_nil := yes ? "safe"; nil
-$puts("maybe: $maybe_nil")
+say "maybe: $maybe_nil"
 x := maybe_nil or fail "Oh no!"
-say(x)
+say x
 
-say("or: $(yes or fail "Whoops")")
-say("or: $(nil or maybe_nil or fail "Whoops")")
-say("and: $(no and fail "Drat")")
+say "or: $(yes or fail "Whoops")"
+say "or: $(nil or maybe_nil or fail "Whoops")"
+say "and: $(no and fail "Drat")"
 maybe_nil = nil
-say("and: $(maybe_nil and "unsafe" and fail "Drat")")
+say "and: $(maybe_nil and "unsafe" and fail "Drat")"

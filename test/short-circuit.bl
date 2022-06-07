@@ -3,23 +3,23 @@ def fail_bool(msg:String):Bool
     return no
 
 if no or yes or fail_bool("or failed to short circuit")
-    $puts("or pass")
+    $puts "or pass"
 else fail "'or' gave wrong result"
 
 if yes and no and fail_bool("and failed to short circuit")
     fail "and gave wrong result"
-else $puts("and pass")
+else $puts "and pass"
 
 tmp := no
 tmp or= yes
 tmp or= fail_bool("or= failed to short circuit")
-$puts("or= pass")
+$puts "or= pass"
 fail "or= gave wrong result" unless tmp
 
 tmp = yes
 tmp and= no
 tmp and= fail_bool("and= failed to short circuit")
-$puts("and= pass")
+$puts "and= pass"
 fail "and= gave wrong result" if tmp
 
 def doop():String
@@ -28,14 +28,14 @@ def doop():String
     fail "Failed to short circuit"
     return "x"
 
-$puts(doop())
+$puts doop()
 
 for i in 1..5
     maybe_str := yes ? nil; "ok"
     x:String = maybe_str or stop
     fail "Failed to short circuit"
 
-$puts("Successfully short circuited with stop")
+$puts "Successfully short circuited with stop"
 
 opt:String? = nil
 opt or= "optstring"

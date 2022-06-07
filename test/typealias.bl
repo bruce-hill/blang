@@ -3,7 +3,7 @@ x:Foo= 5
 
 deftype MyString:String
 s := ("Hello"):MyString
-$puts("$x $s")
+$puts "$x $s"
 
 deftype ShellCode:String
 
@@ -22,4 +22,4 @@ def add(sh1:ShellCode,sh2:ShellCode):ShellCode
 
 file := "`rm -rf \$HOME`" 
 cmd := ("cp "):ShellCode + file + (" /tmp"):ShellCode
-$puts("> $cmd")
+$puts "> $cmd"

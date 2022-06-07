@@ -1,20 +1,20 @@
 x := [i*100 for i in 1..10]
-"$x" | $puts
+$puts "$x"
 
 y := [i*100 for i in 1..999 stop if i > 5]
-"$y" | $puts
+$puts "$y"
 
 z := [i*100 for i in 1..10 skip if i mod 2 == 0]
-"$z" | $puts
+$puts "$z"
 
 w := [i*100 for i in 1..10 if i mod 2 == 0]
-"$w" | $puts
+$puts "$w"
 
 p := [s for i,s in ["a","b","c","d"] if i mod 2 == 0]
-"$p" | $puts
+$puts "$p"
 
 t := {i,i*i for i in 1.. stop if i > 6}
-"$t" | $puts
+$puts "$t"
 
 t2 := {v,k for k,v in t}
-"$t2" | $puts
+$puts "$t2"
