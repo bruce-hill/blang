@@ -560,7 +560,50 @@ class Environment
         node_assert stmt_compilers[node.__tag], node, "Not implemented: #{node.__tag}"
         return stmt_compilers[node.__tag](node, @)
 
+    apply_macros: (ast)=>
+        substitute = (ast, replacements)->
+            return ast unless type(ast) == 'table'
+
+            if ast.__tag == "Var" and replacements[ast[0]]
+                return replacements[ast[0]]
+
+            return {k,(if type(k) == 'string' and k\match("^__") then v else substitute(v, replacements)) for k,v in pairs ast}
+
+        macros = {}
+        h = 0
+        for m in coroutine.wrap(-> each_tag(ast, "Macro"))
+            macro_vars = {}
+            for dec in coroutine.wrap(-> each_tag(m.body, "Declaration"))
+                macro_vars[dec.var[0]] = dec.var
+                h += 1
+                dec.var[0] ..= ".hygienic.#{h}"
+            macros[m.name[0]] = substitute(m, macro_vars)
+
+        apply_macros = (ast)->
+            return ast unless type(ast) == 'table'
+
+            if ast.__tag == "FnCall"
+                mac = macros[ast.fn[0]]
+                if mac
+                    body = mac.body
+                    while body.__tag == "Block" and #body == 1
+                        body = body[1]
+                    return apply_macros(substitute(body, {mac.args[i][0], apply_macros(ast[i]) for i=1,#ast}))
+
+            return {k,(if type(k) == 'string' and k\match("^__") then v else apply_macros(v)) for k,v in pairs ast}
+                
+        ast = apply_macros(ast)
+        add_parenting = (ast)->
+            for k,node in pairs ast
+                if type(node) == 'table' and not (type(k) == 'string' and k\match("^__"))
+                    node.__parent = ast
+                    add_parenting node
+        add_parenting(ast)
+        log "Post macro: #{viz ast}"
+        return ast
+
     compile_program: (ast, filename)=>
+        ast = @apply_macros(ast)
         @type_code = "type :Range = {l,l,l}\n"
         declared_structs = {}
         for s in coroutine.wrap(-> each_tag(ast, "StructType", "Struct"))
@@ -595,7 +638,7 @@ class Environment
             while scope
                 return true if scope == ast
                 switch scope.__tag
-                    when "FnDecl","Lambda"
+                    when "FnDecl","Lambda","Macro"
                         return false
                 scope = scope.__parent
             error("Unexpectedly reached a node not parented to top-level AST")
@@ -1911,6 +1954,7 @@ stmt_compilers =
         return code
 
     FnDecl: (env)=> ""
+    Macro: (env)=> ""
     Pass: (env)=> ""
     Fail: (env)=>
         if @message
@@ -1955,6 +1999,8 @@ stmt_compilers =
     Skip: (env)=>
         node_assert @jump_label, @, "'skip' statement should only be used inside a loop"
         return "jmp #{@jump_label}\n"
+    Do: (env)=>
+        return env\compile_stmt(@body)
     If: (env)=>
         code = ""
         end_label,false_label = env\fresh_labels "if.end", "if.else"

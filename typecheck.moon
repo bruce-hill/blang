@@ -134,7 +134,7 @@ find_returns = (node)->
     switch node.__tag
         when "Return"
             coroutine.yield(node)
-        when "Lambda","FnDecl"
+        when "Lambda","FnDecl","Macro"
             return
         else
             for k,child in pairs node
@@ -161,6 +161,8 @@ find_declared_type = (scope, name, arg_signature=nil)->
                                 return mem.type
                             else
                                 return OptionalType(mem.type)
+        when "Macro"
+            return nil
         when "FnDecl","Lambda"
             for a in *scope.args
                 if a.arg[0] == name
@@ -588,6 +590,7 @@ get_type = memoize (node)->
                     switch last.__tag
                         when "Return" then return false
                         when "Block" then last = last[#last]
+                        when "Do" then last = last.body[#last.body]
                         when "If","When"
                             for clause in *last
                                 return true if has_fallthrough(clause.body)

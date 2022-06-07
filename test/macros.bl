@@ -1,0 +1,15 @@
+macro swap(x,y)
+    tmp := x
+    x = y
+    y = tmp
+
+// Check macros are hygienic by using the same var as the macro:
+tmp := "tmp"
+baz := "baz"
+swap tmp baz
+fail unless tmp == "baz" and baz == "tmp"
+$puts "After swapping: tmp=$tmp baz=$baz"
+
+macro doubled(expr) expr + expr
+
+$puts "Doubles: $(doubled "hello") $(doubled 4)"
