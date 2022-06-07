@@ -376,7 +376,7 @@ def escape(strings:[String]):Shell
 
 files := ["file.txt", "`rm -f $HOME`", "isn't safe"]
 dest := "/tmp"
-cmd := %Shell> cp $files $dest
+cmd := %Shell> cp @files @dest
 say("$cmd")
 // prints: cp 'file.txt' '`rm -f $HOME`' 'isn'"'"'t safe' /tmp
 ```
