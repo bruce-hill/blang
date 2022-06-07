@@ -13,3 +13,24 @@ $puts "After swapping: tmp=$tmp baz=$baz"
 macro doubled(expr) expr + expr
 
 $puts "Doubles: $(doubled "hello") $(doubled 4)"
+
+macro let(name, val)
+    name := val
+
+let myvar 5
+fail unless myvar == 5
+$puts "myvar: $myvar"
+
+CONST := "CONST:"
+macro withconst(x) CONST + x
+fail unless withconst("hi") == "CONST:hi"
+$puts "$(withconst "hi")"
+
+macro usefn(x)
+    def foo(y:String):Void
+        $puts "$y"
+    foo(x)
+
+def foo(y:String):Void
+    fail "Check fndec hygiene"
+usefn "asdf"

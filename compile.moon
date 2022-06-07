@@ -574,13 +574,18 @@ class Environment
         for m in coroutine.wrap(-> each_tag(ast, "Macro"))
             macro_vars = {}
             for dec in coroutine.wrap(-> each_tag(m.body, "Declaration"))
-                macro_vars[dec.var[0]] = dec.var
+                macro_vars[dec.var[0]] = {[0]:"#{dec.var[0]}.hygienic.#{h}", __tag:"Var"}
                 h += 1
-                dec.var[0] ..= ".hygienic.#{h}"
+            for dec in coroutine.wrap(-> each_tag(m.body, "FnDecl"))
+                macro_vars[dec.name[0]] = {[0]:"#{dec.name[0]}.hygienic.#{h}", __tag:"Var"}
+                h += 1
+
             macros[m.name[0]] = substitute(m, macro_vars)
 
         apply_macros = (ast)->
             return ast unless type(ast) == 'table'
+            if ast.__tag == "Macro"
+                return {[0]:"pass", __tag:"Pass"}
 
             if ast.__tag == "FnCall"
                 mac = macros[ast.fn[0]]
