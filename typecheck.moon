@@ -321,6 +321,7 @@ get_type = memoize (node)->
         when "String","Escape","Newline" then return String
         when "TypeOf" then return TypeString
         when "DSL"
+            return String unless node.name
             name = node.name[0]
             unless derived_types[name]
                 derived_types[name] = DerivedType name, String

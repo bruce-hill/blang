@@ -56,7 +56,7 @@ String:: (
   / `' @content=@.. `'
   / @:ParseError=(`",'..$ => "Missing closing quote")
   )
-DSL:: `% @name=id @string=(
+DSL:: `% [@name=id] @string=(
   String
   / @:String=(`[ @content=@..%(Escape/Interp) `]) / @:ParseError=(`[..$ =>"Missing closing ]")
   / @:String=(`< @content=@..%(Escape/Interp) `>) / @:ParseError=(`<..$ =>"Missing closing >")
