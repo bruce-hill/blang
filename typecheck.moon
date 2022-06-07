@@ -146,7 +146,7 @@ find_declared_type = (scope, name, arg_signature=nil)->
         when "Block"
             for i=#scope,1,-1
                 stmt = scope[i]
-                if stmt.__tag == "FnDecl" and stmt.name[0] == name and (not arg_signature or arg_signature == get_type(stmt)\arg_signature!)
+                if stmt.__tag == "FnDecl" and stmt.name[0] == name and (not arg_signature or arg_signature == (get_type(stmt) or {arg_signature:->})\arg_signature!)
                     return get_type(stmt)
                 elseif stmt.__tag == "Declaration" and stmt.var[0] == name
                     return parse_type(stmt.type) if stmt.type
@@ -564,6 +564,9 @@ get_type = memoize (node)->
             return base_type
         when "Lambda","FnDecl"
             decl_ret_type = node.return and parse_type(node.return)
+            if node.__pending == true
+                return decl_ret_type and FnType([parse_type a.type for a in *node.args], decl_ret_type) or nil
+            node.__pending = true
             node_assert node.body.__tag == "Block", node.body, "Expected function body to be a block, not #{node.body.__tag or '<untagged>'}"
             ret_type = nil
             for ret in coroutine.wrap ->find_returns(node.body)
@@ -603,6 +606,7 @@ get_type = memoize (node)->
             -- ret_type = ret_type or Void
             if decl_ret_type
                 node_assert decl_ret_type == ret_type, node, "Conflicting return types: #{decl_ret_type} vs #{ret_type}"
+            node.__pending = nil
             return FnType([parse_type a.type for a in *node.args], ret_type)
         when "Var"
             if node.__decl
