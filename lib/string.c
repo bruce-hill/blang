@@ -1,10 +1,11 @@
 #include <assert.h>
-#include <bhash.h>
 #include <bp/match.h>
 #include <bp/pattern.h>
 #include <bp/printmatch.h>
 #include <ctype.h>
 #include <err.h>
+#include <gc.h>
+#include <gc/cord.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,17 +15,136 @@
 
 static const int64_t INT_NIL = 0x7FFFFFFFFFFFFFFF;
 
-#define RETURN_FMT(fmt, ...) do { char *ret = NULL; int status = asprintf(&ret, fmt, __VA_ARGS__); if (status < 0) err(1, "string formatting failed"); return intern_str_transfer(ret); } while(0)
+#define RETURN_FMT(fmt, ...) do { char *ret = NULL; int status = asprintf(&ret, fmt, __VA_ARGS__); if (status < 0) err(1, "string formatting failed"); const char *tmp = intern_str(ret); free(ret); return tmp; } while(0)
 
-char *bl_string(char *s) { return intern_str(s); }
-char *bl_tostring_int(int64_t i) { RETURN_FMT("%ld", i); }
-char *bl_tostring_hex(int64_t i) { RETURN_FMT("0x%lX", i); }
-char *bl_tostring_char(int64_t c) { RETURN_FMT("%c", (char)c); }
-char *bl_tostring_float(double f) { RETURN_FMT("%g", f); }
-char *bl_tostring_percent(double f) { RETURN_FMT("%g%%", f*100.0); }
-char *bl_tostring_bool(int64_t b) { return intern_str(b ? "yes" : "no"); }
-char *bl_tostring_nil(void) { return intern_str("nil"); }
-char *bl_tostring_range(range_t *r) {
+typedef struct intern_entry_s {
+    char *mem;
+    size_t len;
+    struct intern_entry_s *next;
+} intern_entry_t;
+
+static intern_entry_t *interned = NULL, *lastfree = NULL;
+static size_t intern_capacity = 0, intern_count = 0;
+
+static void intern_insert(char *mem, size_t len);
+
+static size_t hash_mem(const char *mem, size_t len)
+{
+    if (__builtin_expect(len == 0, 0)) return 0;
+    register unsigned char *p = (unsigned char *)mem;
+    register size_t h = (size_t)(*p << 7) ^ len;
+    register size_t i = len > 128 ? 128 : len;
+    while (i--)
+        h = (1000003*h) ^ *p++;
+    if (h == 0) h = 1234567;
+    return h;
+}
+
+static void rehash()
+{
+    // Calculate new size to be min(16, next_highest_power_of_2(2 * num_entries))
+    size_t new_size = 0;
+    for (size_t i = 0; i < intern_capacity; i++)
+        if (interned[i].mem)
+            new_size += 2;
+    if (new_size < 16) new_size = 16;
+    size_t pow2 = 1;
+    while (pow2 < new_size) pow2 <<= 1;
+    new_size = pow2;
+
+    intern_entry_t *old = interned;
+    size_t old_capacity = intern_capacity;
+    interned = calloc(new_size,sizeof(intern_entry_t));
+    intern_capacity = new_size;
+    intern_count = 0;
+    lastfree = &interned[new_size - 1];
+    // Rehash:
+    if (old) {
+        for (size_t i = 0; i < old_capacity; i++) {
+            if (old[i].mem)
+                GC_unregister_disappearing_link((void**)&old[i].mem);
+            if (old[i].mem && old[i].len)
+                intern_insert(GC_REVEAL_POINTER(old[i].mem), old[i].len);
+        }
+        free(old);
+    }
+}
+
+static char *lookup(const char *mem, size_t len)
+{
+    if (intern_capacity == 0 || !mem) return NULL;
+    int i = (int)(hash_mem(mem, len) & (size_t)(intern_capacity-1));
+    for (intern_entry_t *e = &interned[i]; e; e = e->next) {
+        if (e->mem && e->len == len && memcmp(mem, GC_REVEAL_POINTER(e->mem), len) == 0)
+            return GC_REVEAL_POINTER(e->mem);
+    }
+    return NULL;
+}
+
+static void intern_insert(char *mem, size_t len)
+{
+    if (!mem || len == 0) return;
+
+    // Grow the storage if necessary
+    if ((intern_count + 1) >= intern_capacity)
+        rehash();
+
+    int i = (int)(hash_mem(mem, len) & (size_t)(intern_capacity-1));
+    intern_entry_t *collision = &interned[i];
+    if (!collision->mem) { // No collision
+        collision->mem = (char*)GC_HIDE_POINTER(mem);
+        assert(!GC_general_register_disappearing_link((void**)&collision->mem, mem));
+        collision->len = len;
+        ++intern_count;
+        return;
+    }
+
+    while (lastfree >= interned && lastfree->len)
+        --lastfree;
+
+    int i2 = (int)(hash_mem(GC_REVEAL_POINTER(collision->mem), collision->len) & (size_t)(intern_capacity-1));
+    if (i2 == i) { // Collision with element in its main position
+        lastfree->mem = (char*)GC_HIDE_POINTER(mem);
+        assert(!GC_general_register_disappearing_link((void**)&lastfree->mem, mem));
+        lastfree->len = len;
+        lastfree->next = collision->next;
+        collision->next = lastfree;
+    } else {
+        intern_entry_t *prev = &interned[i2];
+        while (prev->next != collision)
+            prev = prev->next;
+        memcpy(lastfree, collision, sizeof(intern_entry_t));
+        assert(!GC_move_disappearing_link((void**)&collision->mem, (void**)&lastfree->mem));
+        prev->next = lastfree;
+        collision->mem = (char*)GC_HIDE_POINTER(mem);
+        assert(!GC_general_register_disappearing_link((void**)&collision->mem, mem));
+        collision->len = len;
+        collision->next = NULL;
+    }
+    ++intern_count;
+}
+
+const char *intern_str(const char *str)
+{
+    if (!str) return NULL;
+    size_t len = strlen(str) + 1;
+    char *dup = lookup(str, len);
+    if (dup) return dup;
+    char *copy = GC_MALLOC_ATOMIC(len);
+    memcpy(copy, str, len);
+    intern_insert(copy, len);
+    return copy;
+}
+
+const char *bl_string(const char *s) { return intern_str(s); }
+const char *bl_tostring_int(int64_t i) { RETURN_FMT("%ld", i); }
+const char *bl_tostring_hex(int64_t i) { RETURN_FMT("0x%lX", i); }
+const char *bl_tostring_char(int64_t c) { RETURN_FMT("%c", (char)c); }
+const char *bl_tostring_float(double f) { RETURN_FMT("%g", f); }
+const char *bl_tostring_percent(double f) { RETURN_FMT("%g%%", f*100.0); }
+const char *bl_tostring_bool(int64_t b) { return intern_str(b ? "yes" : "no"); }
+const char *bl_tostring_nil(void) { return intern_str("nil"); }
+const char *bl_tostring_range(range_t *r) {
     if (r->first < 99999999 && r->last > 99999999)
         return intern_str("..");
     else if (r->first < 99999999)
@@ -39,45 +159,25 @@ char *bl_tostring_range(range_t *r) {
         RETURN_FMT("%ld,%ld..%ld", r->first, r->next, r->last);
 }
 
-char *bl_string_join(int64_t count, char **strings, char *sep) {
+const char *bl_string_join(int64_t count, char **strings, char *sep) {
     if (!strings) return NULL;
-    size_t maxlen = 0, len = 0;
-    char *buf = NULL;
+    CORD buf = CORD_EMPTY;
     size_t seplen = sep ? strlen(sep) : 0;
     for (int64_t i = 0; i < count; i++) {
         char *str = strings[i];
         if (!str) str = "(nil)";
-        size_t chunklen = strlen(str);
-        if (len + chunklen > maxlen) {
-            buf = realloc(buf, 1+(maxlen += MAX(chunklen, 10)));
-            assert(buf);
-        }
-        memcpy(&buf[len], str, chunklen);
-        len += chunklen;
-        buf[len] = '\0';
-        if (sep && i < count - 1) {
-            if (len + seplen > maxlen) {
-                buf = realloc(buf, 1+(maxlen += MAX(seplen, 10)));
-                assert(buf);
-            }
-            memcpy(&buf[len], sep, seplen);
-            len += seplen;
-        }
+        buf = CORD_cat(buf, str);
+        if (sep && i < count - 1)
+            buf = CORD_cat_char_star(buf, sep, seplen);
     }
-    if (buf) {
-        buf[len++] = '\0';
-        return intern_str_transfer(buf);
-    } else {
-        return intern_str("");
-
-    }
+    return bl_string(CORD_to_const_char_star(buf));
 }
 
-char *bl_string_append_int(char *s, int64_t i) { RETURN_FMT("%s%ld", s, i); }
-char *bl_string_append_float(char *s, double f) { RETURN_FMT("%s%g", s, f); }
-char *bl_string_append_char(char *s, int64_t c) { RETURN_FMT("%s%c", s, (char)c); }
-char *bl_string_append_bool(char *s, int64_t b) { RETURN_FMT("%s%s", s, b ? "yes" : "no"); }
-char *bl_string_append_range(char *s, range_t *r) {
+const char *bl_string_append_int(char *s, int64_t i) { RETURN_FMT("%s%ld", s, i); }
+const char *bl_string_append_float(char *s, double f) { RETURN_FMT("%s%g", s, f); }
+const char *bl_string_append_char(char *s, int64_t c) { RETURN_FMT("%s%c", s, (char)c); }
+const char *bl_string_append_bool(char *s, int64_t b) { RETURN_FMT("%s%s", s, b ? "yes" : "no"); }
+const char *bl_string_append_range(char *s, range_t *r) {
     if (r->first < 99999999 && r->last > 99999999)
         RETURN_FMT("%s..", s);
     else if (r->first < 99999999)
@@ -91,9 +191,9 @@ char *bl_string_append_range(char *s, range_t *r) {
     else
         RETURN_FMT("%s%ld,%ld..%ld", s, r->first, r->next, r->last);
 }
-char *bl_string_append_string(char *a, char *b) { RETURN_FMT("%s%s", a, b); }
+const char *bl_string_append_string(char *a, char *b) { RETURN_FMT("%s%s", a, b); }
 
-char *bl_string_slice(char *s, range_t *r) {
+const char *bl_string_slice(char *s, range_t *r) {
     int64_t step = r->next - r->first;
     if (step == 0) return intern_str("");
 
@@ -106,21 +206,27 @@ char *bl_string_slice(char *s, range_t *r) {
     assert(buf);
     for (int64_t i = first, b_i = 0; step > 0 ? i <= last : i >= last; i += step)
         buf[b_i++] = s[i];
-    return intern_str_transfer(buf);
+    const char *ret = intern_str(buf);
+    free(buf);
+    return ret;
 }
 
-char *bl_string_upper(char *s) {
+const char *bl_string_upper(char *s) {
     char *s2 = strdup(s);
     for (int i = 0; s2[i]; i++)
         s2[i] = toupper(s2[i]);
-    return intern_str_transfer(s2);
+    const char *ret = intern_str(s2);
+    free(s2);
+    return ret;
 }
 
-char *bl_string_lower(char *s) {
+const char *bl_string_lower(char *s) {
     char *s2 = strdup(s);
     for (int i = 0; s2[i]; i++)
         s2[i] = tolower(s2[i]);
-    return intern_str_transfer(s2);
+    const char *ret = intern_str(s2);
+    free(s2);
+    return ret;
 }
 
 int64_t bl_string_nth_char(char *s, int64_t n) {
@@ -131,7 +237,7 @@ int64_t bl_string_nth_char(char *s, int64_t n) {
     return (int64_t)s[n];
 }
 
-char *bl_string_repeat(char *s, int64_t count) {
+const char *bl_string_repeat(char *s, int64_t count) {
     if (count <= 0) return intern_str("");
     size_t len = strlen(s);
     char *buf = calloc(len*count + 1, 1);
@@ -141,10 +247,12 @@ char *bl_string_repeat(char *s, int64_t count) {
         memcpy(p, s, len);
         p += len;
     }
-    return intern_str_transfer(buf);
+    const char *ret = intern_str(buf);
+    free(buf);
+    return ret;
 }
 
-char *bl_string_replace(char *text, char *pat_text, char *rep_text) {
+const char *bl_string_replace(char *text, char *pat_text, char *rep_text) {
     maybe_pat_t maybe_pat = bp_pattern(pat_text, pat_text + strlen(pat_text));
     if (!maybe_pat.success) {
         return text;
@@ -169,12 +277,12 @@ char *bl_string_replace(char *text, char *pat_text, char *rep_text) {
     }
     fwrite(prev, sizeof(char), (size_t)(&text[textlen] - prev) + 1, out);
     fflush(out);
-    char *replaced = buf ? intern_str(buf) : intern_str("");
+    const char *replaced = buf ? intern_str(buf) : intern_str("");
     fclose(out);
     return replaced;
 }
 
-char *bl_string_match(char *text, char *pat_text) {
+const char *bl_string_match(char *text, char *pat_text) {
     maybe_pat_t maybe_pat = bp_pattern(pat_text, pat_text + strlen(pat_text));
     if (!maybe_pat.success) {
         return intern_str("");
@@ -191,12 +299,12 @@ char *bl_string_match(char *text, char *pat_text) {
         break;
     }
     fflush(out);
-    char *match = buf ? intern_str(buf) : intern_str("");
+    const char *match = buf ? intern_str(buf) : intern_str("");
     fclose(out);
     return match;
 }
 
-char *bl_ask(char *prompt) {
+const char *bl_ask(char *prompt) {
     printf("%s", prompt);
     char *line = NULL;
     size_t capacity = 0;
@@ -205,10 +313,12 @@ char *bl_ask(char *prompt) {
         return NULL;
     if (len > 1 && line[len-1] == '\n')
         line[--len] = '\0';
-    return intern_str_transfer(line);
+    const char *ret = intern_str(line);
+    free(line);
+    return ret;
 }
 
-char *bl_system(char *cmd) {
+const char *bl_system(char *cmd) {
     FILE *f = popen(cmd, "r");
     char buffer[256];
     size_t chread;
@@ -228,7 +338,7 @@ char *bl_system(char *cmd) {
     }
  
     comout[strlen(comout)-1] = '\0';
-    char *ret = bl_string(comout);
+    const char *ret = bl_string(comout);
     free(comout);
     pclose(f);
     return ret;

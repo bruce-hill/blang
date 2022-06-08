@@ -1080,28 +1080,28 @@ expr_compilers =
             chunk = @content[0]\sub(1+(i-@content.start), @content.after-@content.start)
             table.insert chunks, chunk unless chunk == ""
 
-        chunks_reg = env\fresh_local "string.chunks"
-        code = "#{chunks_reg} =l alloc8 #{8*#chunks}\n"
-        chunk_loc = env\fresh_local "string.chunk.loc"
+        cord_reg = env\fresh_local "cord.buf"
+        code = "#{cord_reg} =l copy 0\n"
+        chunk_reg = env\fresh_local "string.chunk"
         for i,chunk in ipairs chunks
-            code ..= "#{chunk_loc} =l add #{chunks_reg}, #{(i-1)*8}\n"
             if type(chunk) == 'string'
-                code ..= "storel #{env\get_string_reg chunk, "str"}, #{chunk_loc}\n"
+                code ..= "#{chunk_reg} =l copy #{env\get_string_reg chunk, "str.literal"}\n"
             else
                 t = get_type(chunk)
                 val_reg,val_code = env\to_reg chunk
                 code ..= val_code
-                interp_reg = if t == Types.String
-                    val_reg
+                if t == Types.String
+                    code ..= "#{chunk_reg} =l copy #{val_reg}\n"
                 else
                     fn,needs_loading = env\get_tostring_fn t, scope
                     code ..= "#{fn} =l loadl #{fn}\n" if needs_loading
-                    interp_reg = env\fresh_local "string.interp"
-                    code ..= "#{interp_reg} =l call #{fn}(#{t.base_type} #{val_reg}, l 0)\n"
-                    interp_reg
-                code ..= "storel #{interp_reg}, #{chunk_loc}\n"
+                    code ..= "#{chunk_reg} =l call #{fn}(#{t.base_type} #{val_reg}, l 0)\n"
+
+            -- code ..= "#{cord_reg} =l call $printf(l #{env\get_string_reg "Catting: %s + %s\n"}, l #{cord_reg}, l #{chunk_reg})\n"
+            code ..= "#{cord_reg} =l call $CORD_cat(l #{cord_reg}, l #{chunk_reg})\n"
                 
-        code ..= "#{str} =l call $bl_string_join(l #{#chunks}, l #{chunks_reg}, l 0)\n"
+        code ..= "#{cord_reg} =l call $CORD_to_const_char_star(l #{cord_reg})\n"
+        code ..= "#{str} =l call $bl_string(l #{cord_reg})\n"
         return str,code
 
     DSL: (env)=>
@@ -1338,8 +1338,14 @@ expr_compilers =
             code = "#{list} =l call $bl_list_new(l 0, l 0)\n"
             return list, code
 
-        buf = env\fresh_local "list.buf"
-        code = "#{buf} =l alloc8 #{8*#@}\n"
+        list = env\fresh_local "list"
+        code = "#{list} =l call $gc_alloc(l #{2*8})\n"
+        code ..= "storel #{#@}, #{list}\n"
+        items = env\fresh_local "list.items"
+        code ..= "#{items} =l call $gc_alloc(l #{#@*8})\n"
+        loc = env\fresh_local "list.items.loc"
+        code ..= "#{loc} =l add #{list}, 8\n"
+        code ..= "storel #{items}, #{loc}\n"
         for i,val in ipairs @
             val_reg,val_code = env\to_reg val
             code ..= val_code
@@ -1348,11 +1354,9 @@ expr_compilers =
                 val_i = env\fresh_local "item.int"
                 code ..= "#{val_i} =l cast #{val_reg}\n"
                 val_reg = val_i
-            ptr = env\fresh_local "list.item.ptr"
-            code ..= "#{ptr} =l add #{buf}, #{8*(i-1)}\n"
-            code ..= "storel #{val_reg}, #{ptr}\n"
-        list = env\fresh_local "list"
-        code ..= "#{list} =l call $bl_list_new(l #{#@}, l #{buf})\n"
+            code ..= "storel #{val_reg}, #{items}\n"
+            if i < #@
+                code ..= "#{items} =l add #{items}, #{8}\n"
         return list, code
     ListComprehension: (env)=> compile_comprehension(@, env)
     TableComprehension: (env)=> compile_comprehension(@, env)
@@ -1502,7 +1506,6 @@ expr_compilers =
             lhs_reg,code = env\to_reg @base
             ret = env\fresh_local "#{t.name\lower!}.butwith"
             struct_size = 8*#t.members
-            -- code ..= "#{ret} =l alloc8 #{struct_size}\n"
             code ..= "#{ret} =l call $gc_alloc(l #{struct_size})\n"
             code ..= "call $memcpy(l #{ret}, l #{lhs_reg}, l #{struct_size})\n"
             p = env\fresh_local "#{t.name\lower!}.butwith.member.loc"
@@ -1621,7 +1624,6 @@ expr_compilers =
         t = get_type @
         struct_size = 8*#t.members
         ret = env\fresh_local "#{t.name\lower!}"
-        -- code = "#{ret} =l alloc8 #{struct_size}\n"
         code = "#{ret} =l call $gc_alloc(l #{struct_size})\n"
         named_members = {m.name[0],m.value for m in *@ when m.name}
         unnamed_members = [m.value for m in *@ when not m.name]
@@ -1903,7 +1905,7 @@ stmt_compilers =
             base_reg,code = env\to_reg @base
             struct_size = 8*#t.members
             ret = env\fresh_local "#{t.name\lower!}.butwith"
-            code ..= "#{ret} =l alloc8 #{struct_size}\n"
+            code ..= "#{ret} =l call $gc_alloc(l #{struct_size})\n"
             code ..= "call $memcpy(l #{ret}, l #{base_reg}, l #{struct_size})\n"
             p = env\fresh_local "#{t.name\lower!}.butwith.member.loc"
             used = {}
@@ -1925,7 +1927,6 @@ stmt_compilers =
                 code ..= "#{p} =l add #{ret}, #{8*(i-1)}\n"
                 code ..= "store#{t.members[i].type.base_type} #{val_reg}, #{p}\n"
 
-            code ..= "#{base_reg} =l call $intern_bytes(l #{ret}, l #{struct_size})\n"
             code ..= "store#{t.base_type} #{base_reg}, #{@base.__location}\n" if @base.__location
             return code
         else
