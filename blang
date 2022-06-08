@@ -39,10 +39,10 @@ run = (cmd)->
 run_file = (filename)->
     log "\x1b[1;4mFile #{filename}\x1b[m"
     qbe_file,asm_file,bin_file = mktemp(".qbe"), mktemp(".s"), mktemp(".o")
-    run "./blangc #{verbose and "-v" or ""} -q #{qbe_file} -a #{asm_file} -o #{bin_file} #{filename}"
+    run "LD_LIBRARY_PATH=.:$LD_LIBRARY_PATH ./blangc #{verbose and "-v" or ""} -q #{qbe_file} -a #{asm_file} -o #{bin_file} #{filename}"
     log "\x1b[2mRunning program:\x1b[m"
     exec_path = bin_file\match("^/") and bin_file or "./"..bin_file
-    run "#{exec_path} #{table.concat args, " "}"
+    run "LD_LIBRARY_PATH=.:$LD_LIBRARY_PATH #{exec_path} #{table.concat args, " "}"
     os.execute "rm -f \"#{qbe_file}\" \"#{asm_file}\" \"#{bin_file}\""
 
 if #files == 0

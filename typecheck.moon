@@ -358,7 +358,7 @@ get_type = memoize (node)->
                         continue
                     src_file\close!
 
-                    cmd = io.popen("./getsym #{tmpfile} source")
+                    cmd = io.popen("LD_LIBRARY_PATH=.:$LD_LIBRARY_PATH ./getsym #{tmpfile} source")
                     source = cmd\read("a")
                     unless cmd\close!
                         log "Getsym #{tmpfile} failed!"

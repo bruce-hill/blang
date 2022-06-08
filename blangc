@@ -97,13 +97,13 @@ with file
     output_file or= dirname..base_name..".o"
     run "rm -f #{output_file}"
     if compile
-        run "cc -O3 #{asm_file} -c -fPIC -ggdb -o #{output_file} -lm -lbhash -lbp -lgc -lcord"
+        run "cc -O3 #{asm_file} -c -fPIC -ggdb -o #{output_file} -lm -lbhash -lbp -lgc -L . -lintern -lcord"
         so_file or= dirname.."lib"..base_name..".so"
         run "rm -f #{so_file}"
-        run "cc -O3 lib/*.o -shared -Wl,-soname,lib#{base_name}.so.1 -o #{so_file} #{output_file} -lc -lm -lbhash -lbp -lgc -lcord"
+        run "cc -O3 lib/*.o -shared -Wl,-soname,lib#{base_name}.so.1 -o #{so_file} #{output_file} -lc -lm -lbhash -lbp -lgc -L . -lintern -lcord"
         log "Compiled to #{so_file}"
     else
-        run "cc -O3 #{asm_file} -ggdb -o #{output_file} lib/*.o -lc -lm -lbhash -lbp -lgc -lcord"
+        run "cc -O3 #{asm_file} -ggdb -o #{output_file} lib/*.o -lc -lm -lbhash -lbp -lgc -L . -lintern -lcord"
         log "Compiled to #{output_file}"
 
     \close!
