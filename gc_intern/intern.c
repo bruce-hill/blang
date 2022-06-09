@@ -1,11 +1,8 @@
+// Code for interning chunks of data in a way compatible with the Boehm garbage collector
 #include <assert.h>
-#include <ctype.h>
 #include <gc.h>
-#include <gc/cord.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/param.h>
 
 typedef struct intern_entry_s {
     char *mem;
@@ -49,6 +46,9 @@ static void rehash()
 
     intern_entry_t *old = interned;
     size_t old_capacity = intern_capacity;
+    // Use calloc() instead of GC_malloc() here so these references are
+    // invisible to the GC and won't stop it from collecting unused strings.
+    // Also, this memory should never be freed by a GC sweep.
     interned = calloc(new_size,sizeof(intern_entry_t));
     intern_capacity = new_size;
     intern_count = 0;
@@ -58,7 +58,7 @@ static void rehash()
         for (size_t i = 0; i < old_capacity; i++) {
             if (old[i].mem)
                 GC_unregister_disappearing_link((void**)&old[i].mem);
-            if (old[i].mem && old[i].len)
+            if (old[i].mem)
                 intern_insert(GC_REVEAL_POINTER(old[i].mem), old[i].len);
         }
         free(old);
@@ -119,12 +119,30 @@ static void intern_insert(char *mem, size_t len)
     ++intern_count;
 }
 
+const void *intern_bytes(const char *bytes, size_t len)
+{
+    if (!bytes) return NULL;
+    const char *intern = lookup(bytes, len);
+    if (!intern) {
+        // GC_MALLOC() means this may contain pointers to other stuff to keep alive in GC
+        char *tmp = GC_MALLOC(len);
+        memcpy(tmp, bytes, len);
+        intern_insert(tmp, len);
+        intern = tmp;
+    }
+    if (!recently_used) recently_used = GC_MALLOC(sizeof(char*)*N_RECENTLY_USED);
+    recently_used[recently_used_i] = intern;
+    recently_used_i = (recently_used_i + 1) & (N_RECENTLY_USED-1);
+    return intern;
+}
+
 const char *intern_str(const char *str)
 {
     if (!str) return NULL;
     size_t len = strlen(str) + 1;
     const char *intern = lookup(str, len);
     if (!intern) {
+        // GC_MALLOC_ATOMIC() means this memory doesn't need to be scanned by the GC
         char *tmp = GC_MALLOC_ATOMIC(len);
         memcpy(tmp, str, len);
         intern_insert(tmp, len);
@@ -135,3 +153,4 @@ const char *intern_str(const char *str)
     recently_used_i = (recently_used_i + 1) & (N_RECENTLY_USED-1);
     return intern;
 }
+

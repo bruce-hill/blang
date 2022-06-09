@@ -6,13 +6,13 @@
 #include <err.h>
 #include <gc.h>
 #include <gc/cord.h>
+#include <intern.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/param.h>
 
 #include "types.h"
-#include "../gc_intern/stringintern.h"
 
 static const int64_t INT_NIL = 0x7FFFFFFFFFFFFFFF;
 
