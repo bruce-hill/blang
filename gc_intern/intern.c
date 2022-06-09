@@ -46,10 +46,7 @@ static void rehash()
 
     intern_entry_t *old = interned;
     size_t old_capacity = intern_capacity;
-    // Use calloc() instead of GC_malloc() here so these references are
-    // invisible to the GC and won't stop it from collecting unused strings.
-    // Also, this memory should never be freed by a GC sweep.
-    interned = calloc(new_size,sizeof(intern_entry_t));
+    interned = GC_MALLOC_UNCOLLECTABLE(new_size*sizeof(intern_entry_t));
     intern_capacity = new_size;
     intern_count = 0;
     lastfree = &interned[new_size - 1];
@@ -61,7 +58,7 @@ static void rehash()
             if (old[i].mem)
                 intern_insert(GC_REVEAL_POINTER(old[i].mem), old[i].len);
         }
-        free(old);
+        GC_FREE(old);
     }
 }
 
@@ -148,7 +145,8 @@ const char *intern_str(const char *str)
         intern_insert(tmp, len);
         intern = tmp;
     }
-    if (!recently_used) recently_used = GC_MALLOC(sizeof(char*)*N_RECENTLY_USED);
+    if (!recently_used)
+        recently_used = GC_MALLOC_UNCOLLECTABLE(sizeof(char*)*N_RECENTLY_USED);
     recently_used[recently_used_i] = intern;
     recently_used_i = (recently_used_i + 1) & (N_RECENTLY_USED-1);
     return intern;
