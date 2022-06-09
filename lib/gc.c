@@ -5,6 +5,7 @@
 
 void gc_init(void) {
     GC_INIT();
+    hashmap_set_allocator(GC_malloc, GC_free);
 }
 
 void *gc_alloc(size_t size) {
@@ -34,8 +35,4 @@ void *gc_realloc(void *ptr, size_t size) {
 
 void gc_free(void *ptr) {
     GC_FREE(ptr);
-}
-
-hashmap_t *gc_hashmap_new(hashmap_t *fallback) {
-    return hashmap_new_alloc(gc_calloc, gc_free, fallback);
 }

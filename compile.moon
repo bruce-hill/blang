@@ -867,7 +867,7 @@ compile_comprehension = (env)=>
     code = if @__tag == "ListComprehension"
         "#{comprehension} =l call $bl_list_new(l 0, l 0)\n"
     elseif @__tag == "TableComprehension"
-        "#{comprehension} =l call $gc_hashmap_new(l 0)\n"
+        "#{comprehension} =l call $hashmap_new()\n"
     else
         node_error @, "Unsupported comprehension type: #{@__tag}"
 
@@ -1366,7 +1366,7 @@ expr_compilers =
             "Nil cannot be stored in a table, but this table is #{t}"
 
         tab = env\fresh_local "table.empty"
-        code = "#{tab} =l call $gc_hashmap_new(l 0)\n"
+        code = "#{tab} =l call $hashmap_new(l 0)\n"
 
         if #@ == 0
             return tab, code

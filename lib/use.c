@@ -15,12 +15,10 @@ typedef void* (*bl_module_load)(void);
 
 static hashmap_t *loaded = NULL;
 
-static void *gc_calloc(size_t a, size_t b) { return GC_malloc(a*b); }
-
 void *bl_use(const char *from_file, const char *module_path) {
-    if (!loaded) loaded = hashmap_new_alloc(gc_calloc, GC_free, NULL);
-    void *cached = hashmap_get(loaded, (void*)module_path);
-    if (cached) return cached;
+    if (!loaded) loaded = hashmap_new();
+    const void *cached = hashmap_get(loaded, module_path);
+    if (cached) return (void*)cached;
 
     const char *paths = getenv("BLANG_MODULE_PATHS");
     if (!paths) paths = ".";
