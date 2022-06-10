@@ -280,57 +280,39 @@ class Environment
             len = @fresh_local "len"
             code ..= "#{len} =l call $bl_list_len(l #{reg})\n"
 
-            item_strs = @fresh_local "item.strings"
-            code ..= "#{item_strs} =l call $gc_calloc(l 8, l #{len})\n"
+            buf = @fresh_local "buf"
+            code ..= "#{buf} =l copy #{@get_string_reg "[", "lsq"}\n"
 
-            i = @fresh_local "i"
-            code ..= "#{i} =l copy 0\n"
+            item_loc = @fresh_local "item.loc"
+            code ..= "#{item_loc} =l add #{reg}, 8\n"
+            code ..= "#{item_loc} =l loadl #{item_loc}\n"
 
-            loop_label,body_label,end_label = @fresh_labels "list.loop", "list.loop.body", "list.loop.end"
+            body_label,after_comma,end_label = @fresh_labels "list.loop.body", "list.loop.item", "list.loop.end"
 
-            code ..= "jmp #{loop_label}\n"
-            code ..= @block loop_label, ->
-                finished = @fresh_local "list.finished"
-                code = "#{finished} =l csgel #{i}, #{len}\n"
-                code ..= "jnz #{finished}, #{end_label}, #{body_label}\n"
-                return code
+            code ..= "jnz #{len}, #{after_comma}, #{end_label}\n"
 
             code ..= @block body_label, ->
-                item_strloc = @fresh_local "item.str.loc"
-                code = "#{item_strloc} =l mul 8, #{i}\n"
-                code ..= "#{item_strloc} =l add #{item_strs}, #{item_strloc}\n"
-                code ..= "#{i} =l add #{i}, 1\n"
-            
-                item = @fresh_local "list.item"
-                code ..= "#{item} =l call $bl_list_nth(l #{reg}, l #{i}, l #{t.item_type\is_a(Types.Num) and INT_NIL or "0"})\n"
-                if t.item_type.base_type == "d"
-                    item2 = @fresh_local "list.item.float"
-                    code ..= "#{item2} =d cast #{item}\n"
-                    item = item2
+                code = "#{buf} =l call $CORD_cat(l #{buf}, l #{@get_string_reg ", ", "comma.space"})\n"
+                code ..= "jmp #{after_comma}\n"
+                return code
 
+            code ..= @block after_comma, ->
+                item = @fresh_local "list.item"
+                code = "#{item} =#{t.item_type.base_type} load#{t.item_type.base_type} #{item_loc}\n"
                 item_str = @fresh_local "item.string"
                 fn,needs_loading = @get_tostring_fn t.item_type, scope
                 code ..= "#{fn} =l loadl #{fn}\n" if needs_loading
                 code ..= "#{item_str} =l call #{fn}(#{t.item_type.base_type} #{item}, l #{callstack})\n"
-
-                code ..= "storel #{item_str}, #{item_strloc}\n"
-                code ..= "jmp #{loop_label}\n"
+                code ..= "#{buf} =l call $CORD_cat(l #{buf}, l #{item_str})\n"
+                code ..= "#{len} =l sub #{len}, 1\n"
+                code ..= "#{item_loc} =l add #{item_loc}, 8\n"
+                code ..= "jnz #{len}, #{body_label}, #{end_label}\n"
                 return code
 
             code ..= @block end_label, ->
-                chunks = @fresh_local "chunks"
-                chunk = @fresh_local "chunk"
-                code = "#{chunks} =l alloc8 #{8*3}\n"
-                code ..= "#{chunk} =l add #{chunks}, #{0*8}\n"
-                code ..= "storel #{@get_string_reg("[","sqbracket.open")}, #{chunk}\n"
-                content_str = @fresh_local "list.content.str"
-                code ..= "#{content_str} =l call $bl_string_join(l #{len}, l #{item_strs}, l #{@get_string_reg(", ", "comma.space")})\n"
-                code ..= "call $gc_free(l #{item_strs})\n"
-                code ..= "#{chunk} =l add #{chunks}, #{1*8}\n"
-                code ..= "storel #{content_str}, #{chunk}\n"
-                code ..= "#{chunk} =l add #{chunks}, #{2*8}\n"
-                code ..= "storel #{@get_string_reg("]","sqbracket.close")}, #{chunk}\n"
-                code ..= "#{dest} =l call $bl_string_join(l 3, l #{chunks}, l 0)\n"
+                code = "#{buf} =l call $CORD_cat(l #{buf}, l #{@get_string_reg "]", "rsq"})\n"
+                code ..= "#{buf} =l call $CORD_to_const_char_star(l #{buf})\n"
+                code ..= "#{dest} =l call $bl_string(l #{buf})\n"
                 return code
 
         elseif t\is_a(Types.TableType)
@@ -2162,10 +2144,14 @@ stmt_compilers =
 
         iter_reg,code = env\to_reg @iterable
         code ..= "#{i} =l copy 0\n"
+        local list_item
         if iter_type\is_a(Types.Range)
             code ..= "#{len} =l call $range_len(l #{iter_reg})\n"
         elseif iter_type\is_a(Types.ListType)
             code ..= "#{len} =l call $bl_list_len(l #{iter_reg})\n"
+            list_item = env\fresh_local "list.item"
+            code ..= "#{list_item} =l add #{iter_reg}, 8\n"
+            code ..= "#{list_item} =l loadl #{list_item}\n"
         elseif iter_type\is_a(Types.TableType)
             _=nil -- Len is not used for tables
             -- code ..= "#{len} =l call $hashmap_len(l #{iter_reg})\n"
@@ -2223,13 +2209,8 @@ stmt_compilers =
                 elseif iter_type\is_a(Types.Range)
                     code ..= "#{var_reg} =l call $range_nth(l #{iter_reg}, l #{i})\n"
                 else
-                    if iter_type.item_type.base_type == "d"
-                        tmp = env\fresh_local "item.int"
-                        code ..= "#{tmp} =l call $bl_list_nth(l #{iter_reg}, l #{i}, l #{FLOAT_NIL})\n"
-                        code ..= "#{var_reg} =#{iter_type.item_type.base_type} cast #{tmp}\n"
-                    else
-                        nil_val = iter_type.item_type\is_a(Types.Num) and INT_NIL or "0"
-                        code ..= "#{var_reg} =#{iter_type.item_type.base_type} call $bl_list_nth(l #{iter_reg}, l #{i}, l #{nil_val})\n"
+                    code ..= "#{var_reg} =#{iter_type.item_type.base_type} load#{iter_type.item_type.base_type} #{list_item}\n"
+                    code ..= "#{list_item} =l add #{list_item}, 8\n"
 
             code ..= env\compile_stmt @body
 
