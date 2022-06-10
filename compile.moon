@@ -801,7 +801,7 @@ convert_nils = (t, src_reg, dest_reg)->
     if t\is_a(Types.Int) or t\is_a(Types.Bool)
         return "#{dest_reg} =l xor #{src_reg}, #{INT_NIL}\n"
     elseif t\is_a(Types.Num)
-        code = "#{dest_reg} =d cast #{src_reg}\n"
+        code = "#{dest_reg} =l cast #{src_reg}\n"
         code ..= "#{dest_reg} =l xor #{dest_reg}, #{FLOAT_NIL}\n"
         return code
     else
@@ -860,14 +860,19 @@ compile_comprehension = (env)=>
     iter_reg,iter_code = env\to_reg @iterable
     code ..= iter_code
     code ..= "#{i} =l copy 0\n"
+    local item_loc
     if iter_type\is_a(Types.Range)
         code ..= "#{len} =l call $range_len(l #{iter_reg})\n"
     elseif iter_type\is_a(Types.ListType)
         code ..= "#{len} =l call $bl_list_len(l #{iter_reg})\n"
+        item_loc = env\fresh_local "item.loc"
+        code ..= "#{item_loc} =l add #{iter_reg}, 8\n"
+        code ..= "#{item_loc} =l loadl #{item_loc}\n"
     elseif iter_type\is_a(Types.TableType)
         len = nil -- Len is not used for tables
     else
         node_error @iterable, "Expected an iterable type, not #{iter_type}"
+
     code ..= "jmp #{next_label}\n"
 
     code ..= env\block next_label, ->
@@ -921,12 +926,9 @@ compile_comprehension = (env)=>
             elseif iter_type\is_a(Types.Range)
                 code ..= "#{var_reg} =l call $range_nth(l #{iter_reg}, l #{i})\n"
             else
-                if iter_type.item_type.base_type == "d"
-                    tmp = env\fresh_local "item.int"
-                    code ..= "#{tmp} =l call $bl_list_nth(l #{iter_reg}, l #{i}, l #{FLOAT_NIL})\n"
-                    code ..= "#{var_reg} =#{iter_type.item_type.base_type} cast #{tmp}\n"
-                else
-                    code ..= "#{var_reg} =#{iter_type.item_type.base_type} call $bl_list_nth(l #{iter_reg}, l #{i}, l #{iter_type.item_type\is_a(Types.Num) and INT_NIL or "0"})\n"
+                basety = iter_type.item_type.base_type
+                code ..= "#{var_reg} =#{basety} load#{basety} #{item_loc}\n"
+                code ..= "#{item_loc} =l add #{item_loc}, 8\n"
 
         if @condition
             cond_reg,cond_code = env\to_reg @condition
