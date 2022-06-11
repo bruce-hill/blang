@@ -2044,6 +2044,9 @@ stmt_compilers =
             code ..= env\compile_stmt @elseBody
             unless has_jump\match(code)
                 code ..= "jmp #{end_label}\n"
+        else
+            code ..= "#{next_case}\n"
+            code ..= "jmp #{end_label}\n"
         code ..= "#{end_label}\n"
         return code
     Repeat: (env)=>
