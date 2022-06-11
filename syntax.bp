@@ -29,9 +29,9 @@ Pow:: @base=maybe-index-term _ `^ _ @exponent=maybe-index-term
 ButWith:: (@base=maybe-index-term _ `& _
   *@:ButWithAssign=((`. @field=FieldName / `[__@index=required-extended-expr__`])
      _`=_ @value=required-extended-expr) % (_`,,|_) [_`,])
-And:: 2+(comparison / expr) % (_\b"and"\b_)
-Or:: 2+(comparison / expr) % (_\b"or"\b_)
-Xor:: @lhs=(comparison / expr) _\b"xor"\b_ @rhs=(Xor / comparison / expr)
+And:: 2+(comparison / expr) % (__\b"and"\b_)
+Or:: 2+(comparison / expr) % (__\b"or"\b_)
+Xor:: @lhs=(comparison / expr) __\b"xor"\b_ @rhs=(Xor / comparison / expr)
 Less:: @lhs=expr _ "<" _ @rhs=expr
 LessEq:: @lhs=expr _ "<=" _ @rhs=expr
 Greater:: @lhs=expr _ ">" _ @rhs=expr
@@ -84,10 +84,10 @@ Measure:: @amount=(Float/Int) @units=MeasureType
 MeasureType:: `< +@(@unit=id [`^ @power=([`-] +`0-9)]) % (`*,/) `>
 Percent:: (`0-9 *`0-9,_ [`. *`0-9] / `. +`0-9) `%
 Int:: "0x" +`0-9,a-f,A-F,_ / [`-,+] `0-9 *`0-9,_
-Struct:: [@name=Var] _ `{ __ *@:StructField=([`. @name=FieldName __`=__] @value=required-extended-expr) % (__`,__) [__`,] __ `}
+Struct:: [@name=Var] _ `{ __ *@:StructField=([`. @name=FieldName __`=__] @value=extended-expr) % (__`,__) __[`, __] `}
 Table:: `{ __ (
   (`:__ @type=@:TableType=(@keyType=type __ `= __ @valueType=type))
-  / (*@:TableEntry=((`[__@key=required-extended-expr__`] / @key=@:String=(@content=id)) __`= __ @value=required-extended-expr)%(__`,__) [__`,])
+  / (*@:TableEntry=((`[__@key=required-extended-expr__`] / @key=@:String=(@content=id) / @key=String) __`= __ @value=required-extended-expr)%(__`,__) [__`,])
   ) __ `}
 TableComprehension:: (`{ __
   @entry=@:TableEntry=(@key=required-extended-expr__`, __ @value=required-extended-expr) __ \b"for"\b __
@@ -117,8 +117,8 @@ statement: (
   / Return / Skip / Stop / Export / Use
   / line-statement
   ) _ [comment]
-Skip:: \b"skip"\b [_ @target=(\b"for"\b / \b"while"\b / \b"repeat"\b / Var)]
-Stop:: \b"stop"\b [_ @target=(\b"for"\b / \b"while"\b / \b"repeat"\b / Var)]
+Skip:: \b"skip"\b [_ @target=(\b"for"\b / \b"while"\b / \b"repeat"\b / \b"do"\b / Var)]
+Stop:: \b"stop"\b [_ @target=(\b"for"\b / \b"while"\b / \b"repeat"\b / \b"do"\b / Var)]
 line-statement: (
     @:Pass=(\b"pass"\b _ [comment]) / Fail
   / Assignment / AddUpdate / SubUpdate / MulUpdate / DivUpdate / AndUpdate / OrUpdate / XorUpdate / ButWithUpdate / MethodCallUpdate

@@ -467,6 +467,7 @@ get_type = memoize (node)->
                 continue if t == Nil
                 if t == Void
                     if node.__tag == "Or"
+                        node_assert optional, node, "WTF: #{concat types, ","}"
                         return optional.nonnil
                     elseif node.__tag == "And"
                         return optional
@@ -607,11 +608,15 @@ get_type = memoize (node)->
             else
                 ret_type = Void
             -- ret_type = ret_type or Void
-            if decl_ret_type
+            if decl_ret_type and decl_ret_type\is_a(OptionalType) and ret_type == Nil
+                ret_type = decl_ret_type
+            elseif decl_ret_type
                 node_assert decl_ret_type == ret_type, node, "Conflicting return types: #{decl_ret_type} vs #{ret_type}"
             node.__pending = nil
             return FnType([parse_type a.type for a in *node.args], ret_type)
         when "Var"
+            if find_type_alias node, node[0]
+                return TypeString
             if node.__decl
                 return get_type(node.__decl)
             var_type = node.__type or find_declared_type(node.__parent, node[0])

@@ -1193,14 +1193,15 @@ expr_compilers =
             code ..= "#{ret} =l ceql #{b}, 0\n"
         return ret, code
     IndexedTerm: (env)=>
+        t = get_type @value
         t0 = get_type @
-        if t0\is_a(Types.EnumType)
+        if t0\is_a(Types.EnumType) and t == Types.TypeString
             for i,field in ipairs(t0.fields)
                 if field == @index[0]
-                    return "#{i-1}",""
-            error("Couldn't find enum field #{@index[0]}")
+                    -- Enum values start with 1, so nil is 0
+                    return "#{i}",""
+            node_error @, "Couldn't find enum field: .#{@index[0]} on type #{t0}"
 
-        t = get_type @value
         is_optional = t\is_a(Types.OptionalType) and t != Types.Nil
         t = t.nonnil if is_optional
         nil_guard = (check_reg, output_reg, output_type, get_nonnil_code)->
@@ -1990,7 +1991,15 @@ stmt_compilers =
         node_assert @jump_label, @, "'skip' statement should only be used inside a loop"
         return "jmp #{@jump_label}\n"
     Do: (env)=>
-        return env\compile_stmt(@body)
+        end_label = env\fresh_label "do.end"
+        for jmp in coroutine.wrap(-> each_tag(@, "Stop", "Skip"))
+            if not jmp.target or jmp.target[0] == "do"
+                jmp.jump_label = end_label
+        code = env\compile_stmt(@body)
+        unless has_jump\match(code)
+            code ..= "jmp #{end_label}\n"
+        code ..= "#{end_label}\n"
+        return code
     If: (env)=>
         code = ""
         end_label,false_label = env\fresh_labels "if.end", "if.else"
