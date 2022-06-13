@@ -1,4 +1,10 @@
-hybrid_list := [1,2,3,i for i in 4..10 if i mod 2 == 0, 11,12,13,99 if no,100 if yes]
+
+remaining := 1000
+def next_remaining():Int
+    remaining -= 1
+    return remaining
+
+hybrid_list := [1,2,3,i for i in 4..10 if i mod 2 == 0, 11,12,13,99 if no,100 if yes, next_remaining() while remaining > 997]
 $puts "$hybrid_list"
 hybrid_table := {[1]=yes,[2]=yes,[3]=yes,[i]=yes for i in 4..10 if i mod 2 == 0, [11]=yes,[12]=yes,[13]=yes,[99]=yes if no,[100]=yes if yes}
 $puts "$hybrid_table"
