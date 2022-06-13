@@ -1991,13 +1991,24 @@ stmt_compilers =
         node_assert @jump_label, @, "'skip' statement should only be used inside a loop"
         return "jmp #{@jump_label}\n"
     Do: (env)=>
-        end_label = env\fresh_label "do.end"
-        for jmp in coroutine.wrap(-> each_tag(@, "Stop", "Skip"))
-            if not jmp.target or jmp.target[0] == "do"
-                jmp.jump_label = end_label
-        code = env\compile_stmt(@body)
-        unless has_jump\match(code)
-            code ..= "jmp #{end_label}\n"
+        end_label,next_label = env\fresh_labels "do.end", "do.else"
+        code = ""
+        for i,block in ipairs @
+            for jmp in coroutine.wrap(-> each_tag(block, "Stop"))
+                if not jmp.target or jmp.target[0] == "do"
+                    jmp.jump_label = end_label
+            for jmp in coroutine.wrap(-> each_tag(block, "Skip"))
+                if not jmp.target or jmp.target[0] == "do"
+                    jmp.jump_label = next_label
+
+            code ..= env\compile_stmt(block)
+            unless has_jump\match(code)
+                code ..= "jmp #{end_label}\n"
+            if i < #@
+                code ..= "#{next_label}\n"
+                next_label = env\fresh_label "do.else"
+        code ..= "#{next_label}\n"
+        code ..= "jmp #{end_label}\n"
         code ..= "#{end_label}\n"
         return code
     If: (env)=>

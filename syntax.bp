@@ -175,7 +175,7 @@ If:: \b"if"\b @curdent:\C _ (
     *@:Clause=(nl curdent \b"elseif"\b _ @condition=required-extended-expr [_comment] @body=indentedBlock)
     [nl curdent \b"else"\b [_comment] @elseBody=maybeIndentedBlock]
 )
-Do:: \b"do"\b @curdent:\C _ [_comment] @body=maybeIndentedBlock
+Do:: \b"do"\b @curdent:\C _ [_comment] maybeIndentedBlock *(nl curdent \b"else"\b [_comment] maybeIndentedBlock)
 PostfixIf: @:If=(@:Clause=(@body=@:Block=@(Return / Skip / Stop / line-statement) _ PostfixConditional _ [comment]))
 PostfixFor: @:For=(@body=@:Block=@(line-statement) _
   \b"for"\b _ [@index=Var_`,_] @val=Var _ "in" _ @iterable=required-extended-expr _ [comment])
