@@ -2,7 +2,7 @@
 def sqrt(n:Num):Num?
     return n < 0. ? nil; $sqrt(n):Num
 
-for x in [9.,-1.,-2.,-3.,-4.]
+for x in [9.,-1.,-2.,-3.,-999.,4.]
     $puts "x = $x"
     do
         x = sqrt(x) or skip
@@ -14,4 +14,5 @@ for x in [9.,-1.,-2.,-3.,-4.]
         x = sqrt(x+2.) or skip
         $puts "Third: $x"
     else
+        stop if x < -5.
         $puts "I give up: $x"
