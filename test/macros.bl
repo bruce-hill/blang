@@ -27,10 +27,10 @@ fail unless withconst("hi") == "CONST:hi"
 $puts "$(withconst "hi")"
 
 macro usefn(x)
-    def foo(y:String):Void
+    def foo(y:String):
         $puts "$y"
     foo(x)
 
-def foo(y:String):Void
+def foo(y:String):
     fail "Check fndec hygiene"
 usefn "asdf"

@@ -329,8 +329,10 @@ get_type = memoize (node)->
                 derived_types[name] = DerivedType name, String
             return derived_types[name]
         when "Range" then return Range
-        when "Stop","Skip","Return","Fail","Export"
+        when "Stop","Skip","Return","Fail"
             return Void
+        when "Export"
+            return Nil
         when "Use"
             name = node.name[0]
             tmp = node.__parent
@@ -588,9 +590,9 @@ get_type = memoize (node)->
             ret_type = nil
             for ret in coroutine.wrap ->find_returns(node.body)
                 if ret_type == nil
-                    ret_type = ret.value and get_type(ret.value) or Void
+                    ret_type = ret.value and get_type(ret.value) or Nil
                 else
-                    t2 = ret.value and get_type(ret.value) or Void
+                    t2 = ret.value and get_type(ret.value) or Nil
                     continue if t2\is_a(ret_type)
                     if t2 == Nil
                         ret_type = OptionalType(ret_type)
@@ -618,10 +620,10 @@ get_type = memoize (node)->
                     break if last.__tag == "Return"
 
             if ret_type
-                node_assert ret_type == Void or not has_fallthrough(node.body), node, "Function is not guaranteed to return a value"
+                node_assert ret_type == Nil or not has_fallthrough(node.body), node, "Function is not guaranteed to return a value"
             else
-                ret_type = Void
-            -- ret_type = ret_type or Void
+                ret_type = Nil
+            -- ret_type = ret_type or Nil
             if decl_ret_type and decl_ret_type\is_a(OptionalType) and ret_type == Nil
                 ret_type = decl_ret_type
             elseif decl_ret_type
@@ -648,12 +650,12 @@ get_type = memoize (node)->
             else
                 get_type node.fn
             node_assert fn_type or node.__parent.__tag == "Block", node, "This function's return type cannot be inferred. It must be specified manually using a type annotation"
-            return Void unless fn_type
+            return Nil unless fn_type
             node_assert fn_type\is_a(FnType), node.fn, "This is not a function, it's a #{fn_type or "???"}"
             return fn_type.return_type
         when "Block"
             -- error "Blocks have no type"
-            return Void
+            return Nil
             -- return get_type(node[#node])
         when "Struct"
             if node.name
@@ -671,12 +673,16 @@ get_type = memoize (node)->
         when "Interp"
             return get_type(node.value)
         else
-            return Void
-            -- node_assert not node.__tag, node, "Cannot infer type for: #{node.__tag}"
+            error("Cannot infer type for #{viz node}")
+            -- node_error node, "Cannot infer type for: #{node.__tag}"
+
     if #node > 0
         error "Getting a node without a tag: #{viz node}"
         return get_type(node[#node])
-    return Void
+
+    error("Cannot infer type for #{viz node}")
+    -- assert(node.__tag, "Cannot infer type for #{viz node}")
+    -- node_error node, "Cannot infer type for: #{node.__tag}"
 
 return {
     :parse_type, :get_type, :Type, :NamedType, :ListType, :TableType, :FnType, :StructType,

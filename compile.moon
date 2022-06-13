@@ -1049,6 +1049,10 @@ expr_compilers =
         child = @
         parent = @__parent
         while parent
+            if not parent.__tag
+                parent = parent.__parent
+                continue
+
             if parent.__tag == "Return"
                 while parent and not (parent.__tag == "FnDecl" or parent.__tag == "Lambda")
                     parent,child = parent.__parent,parent
@@ -1063,6 +1067,29 @@ expr_compilers =
 
             t = if parent.__tag == "Declaration" and parent.type
                 parse_type parent.type
+            elseif parent.__tag == "Assignment"
+                get_type parent.lhs
+            elseif parent.__tag == "StructField"
+                field = parent
+                while parent.__tag != "Struct"
+                    parent = parent.__parent
+                struct_type = get_type parent
+                if field.name
+                    struct_type.members_by_name[field.name].type
+                else
+                    field_type = nil
+                    for i,f in ipairs field.__parent
+                        if f == field
+                            field_type = struct_type.members[i].type
+                            break
+                    field_type
+            elseif parent.__tag == "TableEntry"
+                entry = parent
+                tab = parent.__parent
+                while tab.__tag != "Table"
+                    tab = tab.__parent
+                table_type = get_type(tab)
+                child == entry.key and table_type.key_type or table_type.value_type
             elseif parent.__tag == "FnDecl" or parent.__tag == "Lambda" or parent.__tag == "Declaration"
                 break
             else
@@ -2053,14 +2080,14 @@ stmt_compilers =
     FnCall: (env)=>
         ret_type = get_type(@)
         if ret_type
-            node_assert ret_type == Types.Void, @, "Return value (#{ret_type}) is not being used"
+            node_assert ret_type == Types.Void or ret_type == Types.Nil, @, "Return value (#{ret_type}) is not being used"
         _, code = env\to_reg @, true
         code = code\gsub("[^\n]- (call [^\n]*\n)$", "%1")
         return code
     MethodCall: (env)=>
         ret_type = get_type(@)
         if ret_type
-            node_assert ret_type == Types.Void, @, "Return value (#{ret_type}) is not being used"
+            node_assert ret_type == Types.Void or ret_type == Types.Nil, @, "Return value (#{ret_type}) is not being used"
         _, code = env\to_reg @, true
         code = code\gsub("[^\n]- (call [^\n]*\n)$", "%1")
         return code
