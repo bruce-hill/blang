@@ -167,7 +167,7 @@ find_declared_type = (scope, name, arg_signature=nil)->
             for a in *scope.args
                 if a.arg[0] == name
                     return parse_type(a.type)
-        when "For","ListComprehension","TableComprehension"
+        when "For"
             iter_type = if scope.iterable.__tag == "Var"
                 find_declared_type(scope.__parent, scope.iterable[0])
             else get_type(scope.iterable)
@@ -379,31 +379,45 @@ get_type = memoize (node)->
         when "List"
             decl_type = node.type and parse_type(node.type)
             return decl_type if #node == 0
-            t = get_type node[1]
+            item_type = (item)->
+                switch item.__tag
+                    when "If" then return get_type item[1].body[1]
+                    when "For","While","Repeat" then return get_type item.body[1]
+                    else return get_type item
+
+            t = item_type(node[1])
             if decl_type
                 node_assert t == decl_type.item_type, node[1],
                     "List is declared as having type #{decl_type}, but this item has type: #{t}"
+
             for i=2,#node
-                t_i = get_type(node[i])
+                t_i = item_type(node[i])
                 node_assert t_i == t, node[i], "Earlier items have type #{t}, but this item is a #{t_i}"
-            return ListType(t)
-        when "ListComprehension"
-            t = get_type(node.expression)
+
             return ListType(t)
         when "Table"
             decl_type = node.type and parse_type(node.type)
             return decl_type if #node == 0
-            key_type = get_type node[1].key
-            value_type = get_type node[1].value
+
+            entry_types = (entry)->
+                e = switch entry.__tag
+                    when "If" then entry[1].body[1]
+                    when "For","While","Repeat" then entry.body[1]
+                    else entry
+                node_assert e.__tag == "TableEntry", e, "Expected a table entry here"
+                return get_type(e.key), get_type(e.value)
+
+            key_type, value_type = entry_types node[1]
+
             if decl_type
                 node_assert key_type == decl_type.key_type and value_type == decl_type.value_type, node[1], "Not expected type: #{t}"
+
             for i=2,#node
-                k_t, v_t = get_type(node[i].key), get_type(node[i].value)
-                node_assert k_t == key_type, node[i].key, "Item is type #{k_t} but should be #{key_type}"
-                node_assert v_t == value_type, node[i].value, "Item is type #{v_t} but should be #{value_type}"
+                t_k, t_v = entry_types node[i]
+                node_assert t_k == key_type, node[i].key, "Item is type #{t_k} but should be #{key_type}"
+                node_assert t_v == value_type, node[i].value, "Item is type #{t_v} but should be #{value_type}"
+
             return TableType(key_type, value_type)
-        when "TableComprehension"
-            return TableType(get_type(node.entry.key), get_type(node.entry.value))
         when "IndexedTerm"
             if node.value.__tag == "Var"
                 enum = find_type_alias node, node.value[0]

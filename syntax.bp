@@ -8,8 +8,7 @@ term: (
     / Global !(_`(,{) / Var !(_`(,{)
     / Percent / Measure / Float / Int
     / String / DSL
-    / ListComprehension / List
-    / TableComprehension / Table
+    / List / Table
     / Struct / FnCall
     / `(__extended-expr__`)
 )
@@ -68,12 +67,11 @@ DSL:: `% [@name=id] @string=(
   / @:String=(`> _ @content=@..%AtInterp $)
   / @:String=(@delim:. @curdent:\C $ \n @strdent:\C strdent @content=@..%(@:Newline=(\n strdent) / \n$ / Escape / Interp) (\n curdent delim))
   / @:String=(@delm:. @content=@..%(Escape/Interp) delim) / @:ParseError=(..$ =>"This string has no closing delimiter"))
-List:: `[__*extended-expr %(__`,__) __ [`,__] `] [_`:_@type=type] / `[__`:__@type=@:ListType=(@itemtype=type)__`]
-ListComprehension:: (`[ __
-  @expression=extended-expr __ \b"for"\b __
-  [@index=Var__`,__] @val=Var __ "in" __ @iterable=required-extended-expr __
-  [(@control=(Skip/Stop) __ (PostfixConditional / @:ParseError=(..>`] =>"Expected to see a condition here")))
-   / PostfixConditional] __`])
+List:: `[__`:__@type=@:ListType=(@itemtype=type)__`] / `[ __ +listItem % (__`,__) __[`,__] `]
+listItem: PostfixFor / PostfixWhile / PostfixIf / extended-expr
+Table:: `{ __ `:__ @type=@:TableType=(@keyType=type __ `= __ @valueType=type) __ `} / `{ __ +tableEntry % (__`,__) __ `}
+tableEntry: PostfixFor / PostfixWhile / PostfixIf / TableEntry
+TableEntry:: ((`[__@key=required-extended-expr__`] / @key=@:String=(@content=id) / @key=String) __`= __ @value=required-extended-expr)
 PostfixConditional: \b"if"\b _ @condition=required-extended-expr / \b"unless"\b_ @condition=@:Not=(@value=required-extended-expr)
 Cast:: @expr=(methodCall / Measure / Float / Percent / Int / Global / Var / `(__extended-expr__`))_`:_@type=type
 Interp:: `$ @value=(Var / `(__ required-extended-expr __`) / @:String=@content=`$)
@@ -85,15 +83,6 @@ MeasureType:: `< +@(@unit=id [`^ @power=([`-] +`0-9)]) % (`*,/) `>
 Percent:: (`0-9 *`0-9,_ [`. *`0-9] / `. +`0-9) `%
 Int:: "0x" +`0-9,a-f,A-F,_ / [`-,+] `0-9 *`0-9,_
 Struct:: [@name=Var] _ `{ __ *@:StructField=([`. @name=FieldName __`=__] @value=extended-expr) % (__`,__) __[`, __] `}
-Table:: `{ __ (
-  (`:__ @type=@:TableType=(@keyType=type __ `= __ @valueType=type))
-  / (*@:TableEntry=((`[__@key=required-extended-expr__`] / @key=@:String=(@content=id) / @key=String) __`= __ @value=required-extended-expr)%(__`,__) [__`,])
-  ) __ `}
-TableComprehension:: (`{ __
-  @entry=@:TableEntry=(@key=required-extended-expr__`, __ @value=required-extended-expr) __ \b"for"\b __
-  [@index=Var__`,__] @val=Var __ "in" __ @iterable=required-extended-expr __
-  [(@control=(Skip/Stop) __ (PostfixConditional / @:ParseError=(..>`] =>"Expected to see a condition here")))
-   / PostfixConditional] __`})
 FnCall:: @fn=(FnCall / IndexedTerm / Global / Var / `(__required-extended-expr__`)) `( __ *extended-expr % (__`,__) __ [`,__] `) [_`:_@type=type]
 methodCall: @:FnCall=((methodCall / IndexedTerm / term) _ `| _
   (@fn=(Global / Var / `(__required-extended-expr__`)) _
@@ -120,7 +109,7 @@ statement: (
 Skip:: \b"skip"\b [_ @target=(\b"for"\b / \b"while"\b / \b"repeat"\b / \b"do"\b / Var)]
 Stop:: \b"stop"\b [_ @target=(\b"for"\b / \b"while"\b / \b"repeat"\b / \b"do"\b / Var)]
 line-statement: (
-    @:Pass=(\b"pass"\b _ [comment]) / Fail
+    @:Pass=(\b"pass"\b _ [comment]) / Fail / >'[' TableEntry
   / Assignment / AddUpdate / SubUpdate / MulUpdate / DivUpdate / AndUpdate / OrUpdate / XorUpdate / ButWithUpdate / MethodCallUpdate
   / extended-expr) _ [comment]
 Fail:: \b"fail"\b _ [@message=extended-expr]
@@ -176,27 +165,30 @@ If:: \b"if"\b @curdent:\C _ (
     [nl curdent \b"else"\b [_comment] @elseBody=maybeIndentedBlock]
 )
 Do:: \b"do"\b @curdent:\C _ [_comment] maybeIndentedBlock *(nl curdent \b"else"\b [_comment] maybeIndentedBlock)
-PostfixIf: @:If=(@:Clause=(@body=@:Block=@(Return / Skip / Stop / line-statement) _ PostfixConditional _ [comment]))
-PostfixFor: @:For=(@body=@:Block=@(line-statement) _
-  \b"for"\b _ [@index=Var_`,_] @val=Var _ "in" _ @iterable=required-extended-expr _ [comment])
-PostfixWhile: @:While=(@body=@:Block=@(line-statement) _
-  \b"while"\b _ @condition=extended-expr _ [comment])
+PostfixIf: @:If=(@:Clause=(@body=@:Block=@(Return / Skip / Stop / line-statement / extended-expr) _ PostfixConditional _ [comment]))
+PostfixFor: @:For=(@body=@:Block=@(line-statement / extended-expr) _
+  \b"for"\b _ [@index=Var_`,_] @val=Var _ "in" _ @iterable=required-extended-expr _ [@filter=loopFilter] _ [comment])
+PostfixWhile: @:While=(@body=@:Block=@(line-statement / extended-expr) _
+  \b"while"\b _ @condition=extended-expr _ [@filter=loopFilter] _ [comment])
 When:: ( \b"when"\b @curdent:\C _
   @what=required-extended-expr _ [[comment] nl curdent]
   +@:Clause=("is"\b _ @cases=@+required-extended-expr%(_`,_) _ [comment] @body=indentedBlock)%(nl curdent)
   [nl curdent "else" _ [comment] @elseBody=maybeIndentedBlock]
 )
 For:: (
-  \b"for"\b @curdent:\C _ [@index=Var_`,_] @val=Var _ "in" _ @iterable=required-extended-expr _ [comment]
+  \b"for"\b @curdent:\C _ [@index=Var_`,_] @val=Var _ "in" _ @iterable=required-extended-expr _ [@filter=loopFilter] _ [comment]
   @body=indentedBlock
   [between]
 )
 While:: (
-  \b"while"\b @curdent:\C _ @condition=extended-expr _ [comment]
+  \b"while"\b @curdent:\C _ @condition=required-extended-expr _ [@filter=loopFilter] _ [comment]
   @body=indentedBlock
   [between]
 )
-Repeat:: \b"repeat"\b @curdent:\C _ [comment] @body=maybeIndentedBlock [between]
+Repeat:: \b"repeat"\b [@filter=loopFilter] @curdent:\C _ [comment] @body=maybeIndentedBlock [between]
+loopFilter: @:If=(@:Clause=(
+  (@body=@:Block=@@:Skip=("") _ \b"if"\b _ @condition=@:Not=(@value=required-extended-expr) / \b"unless"\b_ @condition=required-extended-expr)
+  / @body=(Skip/Stop) _ PostfixConditional))
 maybeIndentedBlock: indentedBlock / @:Block=@(_line-statement_)
 between: nl curdent \b"between"\b _ [comment] @between=(maybeIndentedBlock / @:ParseError=(..$ => "Invalid 'between' body"))
 Return:: \b"return"\b _ [@value=extended-expr]

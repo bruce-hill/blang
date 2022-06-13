@@ -21,7 +21,7 @@ $puts "After setting [2][1]: $L3"
 // (L3[99] or fail)[1] = 999
 // $puts "Unreachable: $L3"
 
-L4 := []:Int
+L4 := [:Int]
 $puts "Empty: $L4"
 
 $puts "L: $L sliced[2..4]: $(L[2..4])"
