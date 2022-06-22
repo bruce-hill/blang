@@ -93,8 +93,9 @@ overload_infix = (env, overload_name, regname="result")=>
     return result, code
 
 comparison = (env, cmp)=>
-    t = get_type @lhs
-    node_assert get_type(@rhs) == t, @rhs, "Expected #{t} but got #{get_type(@rhs)}"
+    t1 = get_type @lhs
+    t2 = get_type @rhs
+    node_assert t1 == t2, @, "This comparison is between two different types: `#{t1}` and `#{t2}` which is not allowed"
 
     prev_val = nil
     lhs_reg,code = env\to_reg @lhs
