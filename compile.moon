@@ -2093,8 +2093,14 @@ stmt_compilers =
     Pass: (env)=> ""
     Fail: (env)=>
         if @message
-            node_assert get_type(@message) == Types.String, @message, "Failure messages must be a String, not a #{get_type @message}"
+            node_assert get_type(@message)\is_a(Types.OptionalType(Types.String)), @message,
+                "Failure messages must be a String or nil, not #{get_type @message}"
             msg,code = env\to_reg @message
+            fail_label,empty_label = env\fresh_labels "failure", "empty.message"
+            code ..= "jnz #{msg}, #{fail_label}, #{empty_label}\n"
+            code ..= "#{empty_label}\n"
+            code ..= "#{msg} =l copy #{env\get_string_reg("Unexpected failure!", "default.failure")}\n"
+            code ..= "jmp #{fail_label}\n#{fail_label}\n"
             full_msg = env\fresh_local "failure.message"
             code ..= "#{full_msg} =l call $bl_string_append_string(l #{env\get_string_reg(get_node_pos(@)..': ', "failure.location")}, l #{msg})\n"
             code ..= "call $errx(l 1, l #{full_msg})\n"
