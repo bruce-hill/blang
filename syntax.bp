@@ -85,11 +85,10 @@ Int:: "0x" +`0-9,a-f,A-F,_ / [`-,+] `0-9 *`0-9,_
 Struct:: [@name=Var] _ `{ __ *@:StructField=([`. @name=FieldName __`=__] @value=extended-expr) % (__`,__) __[`, __] `}
 FnCall:: @fn=(FnCall / IndexedTerm / Global / Var / `(__required-extended-expr__`)) `( __ *extended-expr % (__`,__) __ [`,__] `) [_`:_@type=type]
 methodCall: @:FnCall=((methodCall / IndexedTerm / term) _ `| _
-  (@fn=(Global / Var / `(__required-extended-expr__`)) _
-   [`( __ *expr % (__`,__) __ [`,__] `)] / @:ParseError=(=>"Not a valid method call")) [_`:_@type=type])
+  (@fn=(Global / Var / `(__required-extended-expr__`)) _ [`( __ *expr % (__`,__) __ [`,__] `)]) [_`:_@type=type])
 splatFnCall: @:FnCall=(@fn=(FnCall / IndexedTerm / Global / Var / `(__required-extended-expr__`)) +(` /\t) +expr % +(` ,,/\t))
-splatMethodCall: @:FnCall=((methodCall / IndexedTerm / term) _ `| _
-  (@fn=(Global / Var / `(__required-extended-expr__`)) +(` /\t) +expr % +(` ,,/\t) / @:ParseError=(=>"Not a valid method call")))
+splatMethodCall: @:FnCall=((splatMethodCall / IndexedTerm / term) _ `| _
+  (@fn=(Global / Var / `(__required-extended-expr__`)) +(` /\t) +expr % +(` ,,/\t)))
 Var:: id !~ keyword
 FieldName:: id !~ keyword
 Global:: `$ id
