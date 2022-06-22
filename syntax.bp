@@ -192,7 +192,7 @@ loopFilter: @:If=(@:Clause=(
 maybeIndentedBlock: indentedBlock / @:Block=@(_line-statement_)
 between: nl curdent \b"between"\b _ [comment] @between=(maybeIndentedBlock / @:ParseError=(..$ => "Invalid 'between' body"))
 Return:: \b"return"\b _ [@value=extended-expr]
-Use:: \b"use"\b _ `" @name=.. `" [_\b"or"\b_ @orElse=(Fail/Return/Skip/Stop)]
+Use:: \b"use"\b _ `" @name=.. `"
 Export:: \b"export"\b _ +Var %(_`,__)
 TypeOf:: \b"typeof"\b _ @expression=(expr)
 Range:: (

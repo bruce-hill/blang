@@ -4,7 +4,7 @@ import log, viz, print_err, node_assert, node_error, each_tag from require 'util
 import Measure, register_unit_alias from require 'units'
 parse = require 'parse'
 
-local get_type, parse_type
+local get_type, parse_type, get_module_type
 
 class Type
     is_a: (cls)=> @ == cls or @.__class == cls or cls\contains @
@@ -153,14 +153,12 @@ find_declared_type = (scope, name, arg_signature=nil)->
                     return get_type stmt.value
                 elseif stmt.__tag == "Use"
                     -- Naked "use"
-                    if stmt.__parent.__tag == "Block"
-                        mod_type = get_type(stmt)
-                        mem = (mod_type.nonnil or mod_type).members_by_name[name]
-                        if mem and mem.type\is_a(FnType) and ("#{mem.type}" == arg_signature or mem.type\arg_signature! == arg_signature)
-                            if stmt.orElse
-                                return mem.type
-                            else
-                                return OptionalType(mem.type)
+                    t = get_module_type(stmt.name[0])
+                    mem = t.members_by_name[name]
+                    if mem and not arg_signature
+                        return mem.type
+                    elseif mem and mem.type\is_a(FnType) and ("#{mem.type}" == arg_signature or mem.type\arg_signature! == arg_signature)
+                        return mem.type
         when "Macro"
             return nil
         when "FnDecl","Lambda"
@@ -223,7 +221,7 @@ derived_types = {}
 
 parse_type = memoize (type_node)->
     switch type_node.__tag
-        when "NamedType"
+        when "NamedType","Var"
             if primitive_types[type_node[0]]
                 return primitive_types[type_node[0]]
             tmp = type_node.__parent
@@ -309,6 +307,25 @@ get_op_type = (t1, op, t2)=>
     overload = find_declared_type @, overload_names[op], "(#{t1},#{t2})"
     return overload.return_type if overload
 
+load_module = memoize (path)->
+    libpath = path\gsub("([^/]*)$","lib%1.so")
+    cmd = io.popen("./getsym #{libpath} source")
+    source = cmd\read("a")
+    unless cmd\close!
+        blpath = path\gsub("([^/]*)$","lib%1.so")
+        src_file = io.open(blpath)
+        return nil unless src_file
+        source = src_file\read("*a")
+
+    ast = parse source, filename
+    exports = {}
+    for exp in coroutine.wrap(-> each_tag(ast, "Export"))
+        for var in *exp
+            table.insert(exports, var)
+    t = StructType("Module", [{type: get_type(e), name: e[0]} for e in *exports])
+    log "Module type #{node.name[0]} = {#{concat ["#{m.name}=#{m.type}" for m in *t.members], ", "}}"
+    return t
+
 get_type = memoize (node)->
     switch node.__tag
         when "Int" then return Int
@@ -334,48 +351,24 @@ get_type = memoize (node)->
         when "Export"
             return Nil
         when "Use"
-            name = node.name[0]
             tmp = node.__parent
             while tmp.__parent
                 tmp = tmp.__parent
             filename = tmp.__filename
 
-            module_dirname,module_basename = name\match("(.*/)([^/]*)$")
+            module_dirname,module_basename = @name[0]\match("(.*/)([^/]*)$")
             if not module_dirname
-                module_dirname,module_basename = "",name
+                module_dirname,module_basename = "",modname
 
             for search_path in (os.getenv("BLANG_MODULE_PATHS") or ".")\gmatch("[^:]+")
                 unless search_path\match("^/")
                     dirname = filename\match("^.*/") or ""
                     search_path = dirname..search_path
-                cmd = io.popen("./getsym #{search_path}/#{module_dirname}/lib#{module_basename}.so source")
-                source = cmd\read("a")
-                unless cmd\close!
-                    src_file = io.open("#{search_path}/#{module_dirname}/#{module_basename}.bl")
-                    continue unless src_file
-                    -- Compile on-demand:
-                    tmpfile = io.popen("mktemp /tmp/blang-module-XXXXXX.so")\read("l")
-                    log "Compiling on the fly #{search_path}/#{module_dirname}/#{module_basename}.bl -> #{tmpfile}"
-                    unless os.execute("./blangc -c #{search_path}/#{module_dirname}/#{module_basename}.bl -s #{tmpfile}")
-                        continue
-                    src_file\close!
+                path = "#{search_path}/#{module_dirname}/#{module_basename}"
+                t = load_module(path)
+                return t if t
 
-                    cmd = io.popen("./getsym #{tmpfile} source")
-                    source = cmd\read("a")
-                    unless cmd\close!
-                        log "Getsym #{tmpfile} failed!"
-                    os.execute("rm #{tmpfile}")
-
-                ast = parse source, filename
-                exports = {}
-                for exp in coroutine.wrap(-> each_tag(ast, "Export"))
-                    for var in *exp
-                        table.insert(exports, var)
-                t = StructType("Module", [{type: get_type(e), name: e[0]} for e in *exports])
-                log "Module type #{node.name[0]} = {#{concat ["#{m.name}=#{m.type}" for m in *t.members], ", "}}"
-                t = OptionalType(t) unless node.orElse
-                return t
-            node_error node, "Cannot find module: #{name}"
+            node_error node, "Cannot find module: #{modname}"
 
         when "Cast" then return parse_type(node.type)
         when "List"

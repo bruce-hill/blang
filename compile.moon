@@ -665,24 +665,50 @@ class Environment
         for glob in coroutine.wrap(-> each_tag(ast, "Global"))
             glob.__register = glob[0]
 
+        -- Compile modules:
+        for use in coroutine.wrap(-> each_tag(ast, "Use"))
+            module_dirname,module_basename = use.name[0]\match("(.*/)([^/]*)$")
+            if not module_dirname
+                module_dirname,module_basename = "",modname
+            found = false
+            for search_path in (os.getenv("BLANG_MODULE_PATHS") or ".")\gmatch("[^:]+")
+                unless search_path\match("^/")
+                    dirname = filename\match("^.*/") or ""
+                    search_path = dirname..search_path
+                path = "#{search_path}/#{module_dirname}/#{module_basename}"
+                libfile = io.open((path\gsub("([^/]+)$", "lib%1.so")))
+                if libfile
+                    libfile\close!
+                    found = true
+                    break
+                bl_path = path\gsub("([^/]+)$", "%1.bl")
+                bl_file = io.open(bl_path)
+                if bl_file
+                    bl_file\close!
+                    assert os.execute("./blangc -c #{bl_path}"), "Failed to compile dependency module: #{bl_path}"
+                    found = true
+                    break
+
+            assert found, "Failed to find module: #{use.name[0]}"
+
         naked_imports = {}
         -- Hook up naked imports
         for use in coroutine.wrap(-> each_tag(ast, "Use"))
-            if use.__parent.__tag == "Block"
-                i = 1
-                while use.__parent[i] != use
-                    i += 1
-                scope = {table.unpack(use.__parent, i+1)}
-                mod_type = get_type(use)
-                use.__imports = {}
-                for i,mem in ipairs (mod_type.nonnil or mod_type).members
-                    loc = @fresh_global "#{use.name[0]}.#{mem.name}"
-                    t = use.orElse and mem.type or Types.OptionalType(mem.type)
-                    pseudo_var = setmetatable({[0]: mem.name, __tag:"Var", __type: t, __location: loc, __from_use:true}, getmetatable(use))
-                    use.__imports[i] = pseudo_var
-                    sig = mem.type\is_a(Types.FnType) and mem.type\arg_signature! or nil
-                    hook_up_refs pseudo_var, scope, sig
-                    table.insert naked_imports, pseudo_var
+            continue if use.as
+            i = 1
+            while use.__parent[i] != use
+                i += 1
+            scope = {table.unpack(use.__parent, i+1)}
+            mod_type = get_type(use)
+            use.__imports = {}
+            for i,mem in ipairs (mod_type.nonnil or mod_type).members
+                loc = @fresh_global "#{use.name[0]}.#{mem.name}"
+                t = use.orElse and mem.type or Types.OptionalType(mem.type)
+                pseudo_var = setmetatable({[0]: mem.name, __tag:"Var", __type: t, __location: loc, __from_use:true}, getmetatable(use))
+                use.__imports[i] = pseudo_var
+                sig = mem.type\is_a(Types.FnType) and mem.type\arg_signature! or nil
+                hook_up_refs pseudo_var, scope, sig
+                table.insert naked_imports, pseudo_var
 
         for vardec in coroutine.wrap(-> each_tag(ast, "Declaration"))
             scope = if vardec.__parent.__tag == "Block"
@@ -1016,6 +1042,9 @@ expr_compilers =
             t = get_type(@)
             tmp = env\fresh_local "#{@[0]}.value"
             return tmp, "#{tmp} =#{t.base_type} load#{t.base_type} #{@__location}\n"
+        elseif get_type(@) == Types.TypeString
+            t = parse_type(@)
+            return env\get_string_reg(t\verbose_type!, @[0]), ""
         node_error @, "This variable is not defined"
     Global: (env)=>
         return "#{@[0]}", ""

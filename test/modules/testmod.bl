@@ -7,4 +7,6 @@ $puts "wip loaded!"
 
 def bloop(s:String):= "bloop $s"
 
-export foo, baz, rand, bloop, str
+struct CustomStruct{x:Int, y:Int}
+
+export foo, baz, rand, bloop, str, CustomStruct
