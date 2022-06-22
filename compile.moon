@@ -658,7 +658,7 @@ class Environment
                             hook_up_refs var, node.body, var_type
                     when "FnCall","MethodCall","MethodCallUpdate"
                         arg_types = [get_type(a) for a in *node]
-                        if var_type\is_a(Types.FnType) and var_type\matches(arg_types)
+                        if var_type and var_type\is_a(Types.FnType) and var_type\matches(arg_types)
                             hook_up_refs var, {node.fn}, var_type
                         hook_up_refs var, {table.unpack(node)}, var_type
                     else

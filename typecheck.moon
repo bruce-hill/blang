@@ -179,35 +179,31 @@ find_declared_type = (scope, name, arg_signature=nil)->
                 if a.arg[0] == name
                     return parse_type(a.type)
         when "For"
-            iter_type = if scope.iterable.__tag == "Var"
-                find_declared_type(scope.__parent, scope.iterable[0])
-            else get_type(scope.iterable)
+            get_iter_type = ->
+                iter_type = if scope.iterable.__tag == "Var"
+                    find_declared_type(scope.__parent, scope.iterable[0])
+                else get_type(scope.iterable)
 
-            if not iter_type and scope.iterable[0] == "argv"
-                iter_type = ListType(String)
+                node_assert iter_type, scope.iterable, "Can't determine the type of this variable"
+                return iter_type
 
-            node_assert iter_type, scope.iterable, "Can't determine the type of this variable"
-            if iter_type\is_a(TableType)
-                if scope.index
-                    -- `for k,v in table`
-                    if scope.index[0] == name
-                        return iter_type.key_type
-                    elseif scope.val and scope.val[0] == name
-                        return iter_type.value_type
-                elseif scope.val and scope.val[0] == name
-                    -- `for k in table`
+            if scope.index and scope.index[0] == name
+                iter_type = get_iter_type!
+                if iter_type\is_a(TableType)
                     return iter_type.key_type
-            else
-                if scope.index and scope.index[0] == name
+                else
                     return Int
-                if scope.val and scope.val[0] == name
-                    if iter_type\is_a(Range)
-                        return Int
-                    elseif iter_type\is_a(ListType)
-                        return iter_type.item_type
-                    else
-                        node_error scope.iterable, "Not an iterable value"
-    
+            elseif scope.val and scope.val[0] == name
+                iter_type = get_iter_type!
+                if iter_type\is_a(TableType)
+                    return scope.index and iter_type.value_type or iter_type.key_type
+                elseif iter_type\is_a(Range)
+                    return Int
+                elseif iter_type\is_a(ListType)
+                    return iter_type.item_type
+                else
+                    node_error scope.iterable, "Not an iterable value"
+
     if scope.__parent and (scope.__parent.__tag == "For" or scope.__parent.__tag == "While" or scope.__parent.__tag == "Repeat")
         loop = scope.__parent
         if scope == loop.between
