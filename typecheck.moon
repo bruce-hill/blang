@@ -20,13 +20,17 @@ class NamedType extends Type
     __tostring: => @name
     __eq: Type.__eq
 
+Value = NamedType("Value")
+Value.contains = (other)=> true
+Value.is_a = (other)=> other == @
+
 class DerivedType extends Type
     new: (@name, @derived_from)=>
         @base_type = @derived_from.base_type
         @abi_type = @derived_from.abi_type
     __tostring: => @name
     __eq: Type.__eq
-    is_a: (cls)=> @ == cls or @derived_from\is_a(cls) or @.__class == cls or cls\contains @
+    is_a: (cls)=> @ == cls or @derived_from\is_a(cls) or @.__class == cls or cls\contains(@)
 
 local Num
 class MeasureType extends Type
@@ -43,12 +47,14 @@ class ListType extends Type
     __tostring: => "[#{@item_type}]"
     id_str: => "#{@item_type\id_str!}.List"
     __eq: Type.__eq
+    is_a: (cls)=> cls == @ or cls == @__class or (cls.__class == ListType and @item_type\is_a(cls.item_type))
 
 class TableType extends Type
     new: (@key_type, @value_type)=>
         assert @key_type and @value_type
     __tostring: => "{#{@key_type}=#{@value_type}}"
     id_str: => "#{@key_type\id_str!}.#{@value_type\id_str!}.Table"
+    is_a: (cls)=> cls == @ or cls == @__class or (cls.__class == TableType and @key_type\is_a(cls.key_type) and @value_type\is_a(cls.value_type))
     __eq: Type.__eq
 
 class FnType extends Type
@@ -57,6 +63,13 @@ class FnType extends Type
     __eq: Type.__eq
     id_str: => "Fn"
     arg_signature: => "(#{concat ["#{a}" for a in *@arg_types], ","})"
+    matches: (arg_types, return_type=nil)=>
+        return false unless #arg_types == #@arg_types
+        for i=1,#arg_types
+            return false unless arg_types[i]\is_a(@arg_types[i])
+        if return_type
+            return false unless @return_type\is_a(return_type)
+        return true
 
 class StructType extends Type
     new: (@name, members)=> -- Members: {{type=t, name="Foo"}, {type=t2, name="Baz"}, ...}
@@ -108,7 +121,7 @@ Pointer = NamedType("Pointer")
 Num = NamedType("Num")
 Num.base_type = 'd'
 Num.abi_type = 'd'
-Int = DerivedType("Int", Num)
+Int = NamedType("Int", Num)
 Int.base_type = 'l'
 Int.abi_type = 'l'
 Percent = DerivedType("Percent", Num)
@@ -118,7 +131,7 @@ Bool = NamedType("Bool")
 String = NamedType("String")
 TypeString = DerivedType("TypeString", String)
 Range = StructType("Range", {{name:"first",type:Int},{name:"next",type:Int},{name:"last",type:Int}})
-primitive_types = {:Pointer, :Int, :Num, :Void, :Nil, :Bool, :String, :Range, :OptionalType, :Percent, :TypeString}
+primitive_types = {:Value, :Pointer, :Int, :Num, :Void, :Nil, :Bool, :String, :Range, :OptionalType, :Percent, :TypeString}
 
 tuples = {}
 tuple_index = 1
@@ -679,5 +692,5 @@ get_type = memoize (node)->
 
 return {
     :parse_type, :get_type, :Type, :NamedType, :ListType, :TableType, :FnType, :StructType,
-    :Pointer, :Int, :Num, :Percent, :String, :Bool, :Void, :Nil, :Range, :OptionalType, :MeasureType, :TypeString, :EnumType,
+    :Value, :Pointer, :Int, :Num, :Percent, :String, :Bool, :Void, :Nil, :Range, :OptionalType, :MeasureType, :TypeString, :EnumType,
 }

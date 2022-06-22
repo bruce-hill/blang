@@ -12,7 +12,7 @@ has_jump = bp.compile('^_("jmp"/"jnz"/"ret")\\b ..$ $$')
 
 local stmt_compilers, expr_compilers
 
-get_function_reg = (scope, name, signature)->
+get_function_reg = (scope, name, arg_types, return_type=nil)->
     return nil unless scope
     switch scope.__tag
         when "Block"
@@ -20,26 +20,26 @@ get_function_reg = (scope, name, signature)->
                 stmt = scope[i]
                 if stmt.__tag == "FnDecl" and stmt.name[0] == name
                     t = get_type(stmt)
-                    if "#{t}" == signature or t\arg_signature! == signature
+                    if t\matches(arg_types, return_type)
                         return node_assert(stmt.__register, stmt, "Function without a name"), false, get_type(stmt)
                 elseif stmt.__tag == "Declaration" and stmt.var[0] == name
                     t = if stmt.type
                         parse_type(stmt.type)
                     else
                         get_type stmt.value
-                    if t\is_a(Types.FnType) and ("#{t}" == signature or t\arg_signature! == signature)
+                    if t\is_a(Types.FnType) and t\matches(arg_types, return_type)
                         return stmt.var.__register, false, t
                 elseif stmt.__tag == "Use"
                     mod_type = get_type(stmt)
                     mem = mod_type.nonnil.members_by_name[name]
-                    if mem and mem.type\is_a(Types.FnType) and ("#{mem.type}" == signature or mem.type\arg_signature! == signature)
+                    if mem and mem.type\is_a(Types.FnType) and mem.type\matches(arg_types, return_type)
                         t = stmt.orElse and mem.type or OptionalType(mem.type)
                         return mem.__location, true, t
         when "FnDecl","Lambda"
             for a in *scope.args
                 if a.arg[0] == name
                     t = parse_type(a.type)
-                    if t\is_a(Types.FnType) and ("#{t}" == signature or t\arg_signature! == signature)
+                    if t\is_a(Types.FnType) and t\matches(arg_types, return_type)
                         return a.__register, false, t
         when "For"
             iter_type = get_type(scope.iterable)
@@ -55,10 +55,10 @@ get_function_reg = (scope, name, signature)->
     if scope.__parent and (scope.__parent.__tag == "For" or scope.__parent.__tag == "While" or scope.__parent.__tag == "Repeat")
         loop = scope.__parent
         if scope == loop.between
-            r,c,t = get_function_reg(loop.body, name, signature)
+            r,c,t = get_function_reg(loop.body, name, arg_types, return_type)
             return r,c,t if r
     
-    return get_function_reg(scope.__parent, name, signature)
+    return get_function_reg(scope.__parent, name, arg_types, return_type)
 
 nonnil_eq = (t1, t2)-> (t1.nonnil or t1) == (t2.nonnil or t2)
 
@@ -82,7 +82,7 @@ infixop = (env, op)=>
 overload_infix = (env, overload_name, regname="result")=>
     t = get_type @
     lhs_type, rhs_type = get_type(@lhs), get_type(@rhs)
-    fn_reg, needs_loading, t2 = get_function_reg @__parent, overload_name, "(#{lhs_type},#{rhs_type})"
+    fn_reg, needs_loading, t2 = get_function_reg @__parent, overload_name, {lhs_type,rhs_type}
     node_assert fn_reg, @, "#{overload_name} is not supported for #{lhs_type} and #{rhs_type}"
     lhs_reg,rhs_reg,operand_code = env\to_regs @lhs, @rhs
     code = ""
@@ -103,7 +103,7 @@ comparison = (env, cmp)=>
     code ..= rhs_code
 
     result = env\fresh_local "comparison"
-    if t\is_a(Types.String)
+    if t1\is_a(Types.String)
         code ..= "#{result} =l call $strcmp(l #{lhs_reg}, l #{rhs_reg})\n"
         code ..= "#{result} =l #{cmp} 0, #{result}\n"
     else
@@ -217,7 +217,7 @@ class Environment
 
     get_tostring_fn: (t, scope)=>
         if t != Types.String
-            fn,needs_loading = get_function_reg scope, "tostring", "(#{t})=>String"
+            fn,needs_loading = get_function_reg scope, "tostring", {t}, Types.String
             return fn,needs_loading if fn
 
         -- HACK: these primitive values' functions only take 1 arg, but it
@@ -634,7 +634,7 @@ class Environment
 
         file_scope_vars = {}
         -- Set up variable registers:
-        hook_up_refs = (var, scope, arg_signature)->
+        hook_up_refs = (var, scope, var_type)->
             assert var.__tag == "Var" and scope and scope != var
             if not var.__register and not var.__location
                 if var.__parent and var.__parent.__tag == "Declaration" and is_file_scope var
@@ -654,14 +654,15 @@ class Environment
                             node.__location = var.__location
                             node.__decl = var
                     when "FnDecl","Lambda"
-                        hook_up_refs var, node.body, arg_signature if (var.__register and var.__register\match("^%$")) or var.__location
+                        if (var.__register and var.__register\match("^%$")) or var.__location
+                            hook_up_refs var, node.body, var_type
                     when "FnCall","MethodCall","MethodCallUpdate"
-                        call_sig = "(#{concat [tostring(get_type(a)) for a in *node], ","})"
-                        if not arg_signature or call_sig == arg_signature
-                            hook_up_refs var, {node.fn}, arg_signature
-                        hook_up_refs var, {table.unpack(node)}, arg_signature
+                        arg_types = [get_type(a) for a in *node]
+                        if var_type\is_a(Types.FnType) and var_type\matches(arg_types)
+                            hook_up_refs var, {node.fn}, var_type
+                        hook_up_refs var, {table.unpack(node)}, var_type
                     else
-                        hook_up_refs var, node, arg_signature
+                        hook_up_refs var, node, var_type
 
         for glob in coroutine.wrap(-> each_tag(ast, "Global"))
             glob.__register = glob[0]
@@ -674,7 +675,7 @@ class Environment
                 {table.unpack(s.__parent, i+1)}
             else s.__parent
             var = {__tag:"Var", [0]: s[1].name[0], __location: @get_string_reg(s[1].name[0], "typestring"), __parent:s.__parent}
-            hook_up_refs var, scope
+            hook_up_refs var, scope, parse_type(s[1])
 
         -- Compile modules:
         for use in coroutine.wrap(-> each_tag(ast, "Use"))
@@ -717,8 +718,8 @@ class Environment
                 t = use.orElse and mem.type or Types.OptionalType(mem.type)
                 pseudo_var = setmetatable({[0]: mem.name, __tag:"Var", __type: t, __location: loc, __from_use:true}, getmetatable(use))
                 use.__imports[i] = pseudo_var
-                sig = mem.type\is_a(Types.FnType) and mem.type\arg_signature! or nil
-                hook_up_refs pseudo_var, scope, sig
+                fn_type = mem.type\is_a(Types.FnType) and mem.type or nil
+                hook_up_refs pseudo_var, scope, fn_type
                 table.insert naked_imports, pseudo_var
 
         for vardec in coroutine.wrap(-> each_tag(ast, "Declaration"))
@@ -728,7 +729,9 @@ class Environment
                     i += 1
                 {table.unpack(vardec.__parent, i+1)}
             else vardec.__parent
-            hook_up_refs vardec.var, scope
+
+            t = vardec.type and parse_type(vardec.type) or get_type(vardec.value)
+            hook_up_refs vardec.var, scope, t
 
             block = vardec.__parent
             loop = block and block.__parent
@@ -736,7 +739,7 @@ class Environment
                 loop = loop.__parent
             if loop and (loop.__tag == "For" or loop.__tag == "While" or loop.__tag == "Repeat")
                 if block == loop.body and loop.between
-                    hook_up_refs vardec.var, loop.between
+                    hook_up_refs vardec.var, loop.between, t
 
         -- Set up function names (global):
         for fndec in coroutine.wrap(-> each_tag(ast, "FnDecl", "Lambda"))
@@ -745,24 +748,27 @@ class Environment
             if fndec.name
                 fndec.name.__register = fndec.__register
                 fndec.name.__decl = fndec
-                hook_up_refs fndec.name, fndec.__parent, get_type(fndec)\arg_signature!
+                t = get_type(fndec)
+                hook_up_refs fndec.name, fndec.__parent, get_type(fndec)
                     
         for fn in coroutine.wrap(-> each_tag(ast, "FnDecl", "Lambda"))
             for a in *fn.args
                 a.arg.__register,a.arg.__location = nil,nil
-                hook_up_refs a.arg, fn.body
+                hook_up_refs a.arg, fn.body, parse_type(a.type)
 
         for for_block in coroutine.wrap(-> each_tag(ast, "For"))
             if for_block.val
                 for_block.val.__register,for_block.val.__location = nil,nil
-                hook_up_refs for_block.val, for_block.body
-                hook_up_refs for_block.val, for_block.between if for_block.between
-                hook_up_refs for_block.val, for_block.filter if for_block.filter
+                t = get_type(for_block.val)
+                hook_up_refs for_block.val, for_block.body, t
+                hook_up_refs for_block.val, for_block.between, t if for_block.between
+                hook_up_refs for_block.val, for_block.filter, t if for_block.filter
             if for_block.index
                 for_block.index.__register,for_block.index.__location = nil,nil
-                hook_up_refs for_block.index, for_block.body
-                hook_up_refs for_block.index, for_block.between if for_block.between
-                hook_up_refs for_block.index, for_block.filter if for_block.filter
+                t = get_type(for_block.index)
+                hook_up_refs for_block.index, for_block.body, t
+                hook_up_refs for_block.index, for_block.between, t if for_block.between
+                hook_up_refs for_block.index, for_block.filter, t if for_block.filter
 
         -- Look up which function to use for each callsite:
         for call in coroutine.wrap(-> each_tag(ast, "FnCall","MethodCall","MethodCallUpdate"))
@@ -1213,7 +1219,7 @@ expr_compilers =
             safe = if t == dsl_type
                 val_reg
             else
-                fn_reg,needs_loading = get_function_reg @__parent, "escape", "(#{t})=>#{dsl_type}"
+                fn_reg,needs_loading = get_function_reg @__parent, "escape", {t}, dsl_type
                 node_assert fn_reg, val, "No escape(#{t})=>#{dsl_type} function is implemented, so this value cannot be safely inserted"
                 code ..= "#{fn_reg} =l loadl #{fn_reg}\n" if needs_loading
                 escaped = env\fresh_local "escaped"
@@ -1732,13 +1738,13 @@ expr_compilers =
         return ret_reg, code
 
     FnCall: (env, skip_ret=false)=>
-        call_sig = "(#{concat [tostring(get_type(a)) for a in *@], ","})"
         fn_type = get_type @fn
         fn_reg,code = env\to_reg @fn
 
         if fn_type
             node_assert fn_type\is_a(Types.FnType), @fn, "This is not a function, it's a #{fn_type or "???"}"
-            node_assert fn_type\arg_signature! == call_sig, @, "This function is being called with #{@fn[0]}#{call_sig} but is defined as #{fn_type}"
+            node_assert fn_type\matches([get_type(a) for a in *@]), @,
+                "This function is being called with #{@fn[0]}(#{concat ["#{get_type(a)}" for a in *@], ", "}) but is defined as #{fn_type}"
 
         args = {}
         for arg in *@
@@ -1941,9 +1947,8 @@ stmt_compilers =
         elseif lhs_type == rhs_type and lhs_type\is_a(Types.ListType)
             return code.."#{lhs_reg} =l call $bl_list_concat(l #{lhs_reg}, l #{rhs_reg})\n"..store_code
         else
-            fn_reg, needs_loading, t2 = get_function_reg @__parent, "add", "(#{lhs_type},#{rhs_type})"
+            fn_reg, needs_loading, t2 = get_function_reg @__parent, "add", {lhs_type,rhs_type}, lhs_type
             node_assert fn_reg, @, "addition is not supported for #{lhs_type} and #{rhs_type}"
-            node_assert t2.return_type == lhs_type, @, "Return type for add(#{lhs_type},#{rhs_type}) is #{t2.return_type} instead of #{lhs_type}"
             code ..= "#{fn_reg} =l loadl #{fn_reg}\n" if needs_loading
             return code.."#{lhs_reg} =#{lhs_type.base_type} call #{fn_reg}(#{lhs_type.base_type} #{lhs_reg}, #{rhs_type.base_type} #{rhs_reg})\n"..store_code
     SubUpdate: (env)=>
@@ -1953,9 +1958,8 @@ stmt_compilers =
         if nonnil_eq(lhs_type, rhs_type) and (lhs_type\is_a(Types.Int) or lhs_type\is_a(Types.Num))
             return code.."#{lhs_reg} =#{lhs_type.base_type} sub #{lhs_reg}, #{rhs_reg}\n"..store_code
         else
-            fn_reg, needs_loading, t2 = get_function_reg @__parent, "subtract", "(#{lhs_type},#{rhs_type})"
+            fn_reg, needs_loading, t2 = get_function_reg @__parent, "subtract", {lhs_type,rhs_type}, lhs_type
             node_assert fn_reg, @, "subtraction is not supported for #{lhs_type} and #{rhs_type}"
-            node_assert t2.return_type == lhs_type, @, "Return type for subtract(#{lhs_type},#{rhs_type}) is #{t2.return_type} instead of #{lhs_type}"
             code ..= "#{fn_reg} =l loadl #{fn_reg}\n" if needs_loading
             return code.."#{lhs_reg} =#{lhs_type.base_type} call #{fn_reg}(#{lhs_type.base_type} #{lhs_reg}, #{rhs_type.base_type} #{rhs_reg})\n"..store_code
     MulUpdate: (env)=>
@@ -1965,9 +1969,8 @@ stmt_compilers =
         if nonnil_eq(lhs_type, rhs_type) and (lhs_type\is_a(Types.Int) or lhs_type\is_a(Types.Num))
             return code.."#{lhs_reg} =#{lhs_type.base_type} mul #{lhs_reg}, #{rhs_reg}\n"..store_code
         else
-            fn_reg, needs_loading, t2 = get_function_reg @__parent, "multiply", "(#{lhs_type},#{rhs_type})"
+            fn_reg, needs_loading, t2 = get_function_reg @__parent, "multiply", {lhs_type,rhs_type}, lhs_type
             node_assert fn_reg, @, "multiplication is not supported for #{lhs_type} and #{rhs_type}"
-            node_assert t2.return_type == lhs_type, @, "Return type for multiply(#{lhs_type},#{rhs_type}) is #{t2.return_type} instead of #{lhs_type}"
             code ..= "#{fn_reg} =l loadl #{fn_reg}\n" if needs_loading
             return code.."#{lhs_reg} =#{lhs_type.base_type} call #{fn_reg}(#{lhs_type.base_type} #{lhs_reg}, #{rhs_type.base_type} #{rhs_reg})\n"..store_code
     DivUpdate: (env)=>
@@ -1977,9 +1980,8 @@ stmt_compilers =
         if nonnil_eq(lhs_type, rhs_type) and (lhs_type\is_a(Types.Int) or lhs_type\is_a(Types.Num))
             return code.."#{lhs_reg} =#{lhs_type.base_type} div #{lhs_reg}, #{rhs_reg}\n"..store_code
         else
-            fn_reg, needs_loading, t2 = get_function_reg @__parent, "divide", "(#{lhs_type},#{rhs_type})"
+            fn_reg, needs_loading, t2 = get_function_reg @__parent, "divide", {lhs_type,rhs_type}, lhs_type
             node_assert fn_reg, @, "division is not supported for #{lhs_type} and #{rhs_type}"
-            node_assert t2.return_type == lhs_type, @, "Return type for divide(#{lhs_type},#{rhs_type}) is #{t2.return_type} instead of #{lhs_type}"
             code ..= "#{fn_reg} =l loadl #{fn_reg}\n" if needs_loading
             return code.."#{lhs_reg} =#{lhs_type.base_type} call #{fn_reg}(#{lhs_type.base_type} #{lhs_reg}, #{rhs_type.base_type} #{rhs_reg})\n"..store_code
     OrUpdate: (env)=>
