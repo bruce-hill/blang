@@ -666,6 +666,16 @@ class Environment
         for glob in coroutine.wrap(-> each_tag(ast, "Global"))
             glob.__register = glob[0]
 
+        for s in coroutine.wrap(-> each_tag(ast, "StructDeclaration"))
+            scope = if s.__parent.__tag == "Block"
+                i = 1
+                while s.__parent[i] != s
+                    i += 1
+                {table.unpack(s.__parent, i+1)}
+            else s.__parent
+            var = {__tag:"Var", [0]: s[1].name[0], __location: @get_string_reg(s[1].name[0], "typestring"), __parent:s.__parent}
+            hook_up_refs var, scope
+
         -- Compile modules:
         for use in coroutine.wrap(-> each_tag(ast, "Use"))
             module_dirname,module_basename = use.name[0]\match("(.*/)([^/]*)$")
