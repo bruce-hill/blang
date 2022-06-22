@@ -47,14 +47,14 @@ class ListType extends Type
     __tostring: => "[#{@item_type}]"
     id_str: => "#{@item_type\id_str!}.List"
     __eq: Type.__eq
-    is_a: (cls)=> cls == @ or cls == @__class or (cls.__class == ListType and @item_type\is_a(cls.item_type))
+    is_a: (cls)=> cls == @ or cls == @__class or (cls.__class == ListType and @item_type\is_a(cls.item_type)) or cls\contains(@) or cls\contains(@)
 
 class TableType extends Type
     new: (@key_type, @value_type)=>
         assert @key_type and @value_type
     __tostring: => "{#{@key_type}=#{@value_type}}"
     id_str: => "#{@key_type\id_str!}.#{@value_type\id_str!}.Table"
-    is_a: (cls)=> cls == @ or cls == @__class or (cls.__class == TableType and @key_type\is_a(cls.key_type) and @value_type\is_a(cls.value_type))
+    is_a: (cls)=> cls == @ or cls == @__class or (cls.__class == TableType and @key_type\is_a(cls.key_type) and @value_type\is_a(cls.value_type)) or cls\contains(@)
     __eq: Type.__eq
 
 class FnType extends Type
