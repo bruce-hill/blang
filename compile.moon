@@ -104,8 +104,10 @@ comparison = (env, cmp)=>
 
     result = env\fresh_local "comparison"
     if t1\is_a(Types.String)
-        code ..= "#{result} =l call $strcmp(l #{lhs_reg}, l #{rhs_reg})\n"
-        code ..= "#{result} =l #{cmp} 0, #{result}\n"
+        tmp = env\fresh_local "comparison.i32"
+        code ..= "#{tmp} =w call $strcmp(l #{lhs_reg}, l #{rhs_reg})\n"
+        code ..= "#{result} =l extsw #{tmp}\n"
+        code ..= "#{result} =l #{cmp} #{result}, 0\n"
     else
         code ..= "#{result} =l #{cmp} #{lhs_reg}, #{rhs_reg}\n"
 
@@ -258,6 +260,8 @@ class Environment
             code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("nil", "nil")})\n"
         elseif t\is_a(Types.Void)
             code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("Void", "void")})\n"
+        elseif t == Types.Value
+            code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("<Value>", "value")})\n"
         elseif t\is_a(Types.EnumType)
             init_fields,fields_exist = @fresh_labels "make_fields", "fields_exist"
             tmp = @fresh_local "fieldname"
@@ -1850,7 +1854,7 @@ stmt_compilers =
         if @type
             decl_type = Types.parse_type @type
             node_assert value_type, @value, "Can't infer the type of this value"
-            node_assert value_type\is_a(decl_type) or decl_type\is_a(value_type), @value, "Value is type #{value_type}, not declared type #{decl_type}"
+            node_assert value_type\is_a(decl_type) or decl_type\is_a(value_type), @value, "Assignment value is type #{value_type}, not declared type #{decl_type}"
         node_assert decl_type, @, "Cannot infer type"
         val_reg,code = env\to_reg @value
         if @var.__register
@@ -1862,8 +1866,8 @@ stmt_compilers =
         return code
     Assignment: (env)=>
         lhs_type,rhs_type = get_type(@lhs), get_type(@rhs)
-        node_assert rhs_type\is_a(lhs_type), @rhs, "Value is type #{rhs_type}, but it's being assigned to something with type #{lhs_type}"
         if @lhs.__tag == "Var"
+            node_assert rhs_type\is_a(lhs_type), @rhs, "Assignment value is type #{rhs_type}, but it's being assigned to something with type #{lhs_type}"
             rhs_reg,code = env\to_reg @rhs
             if @lhs.__register
                 return code.."#{@lhs.__register} =#{lhs_type.base_type} copy #{rhs_reg}\n"
