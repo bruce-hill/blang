@@ -5,9 +5,6 @@ import log, viz, node_assert, node_error, get_node_pos, print_err, each_tag from
 import Measure, register_unit_alias from require 'units'
 concat = table.concat
 
-INT_NIL = tostring(0x7FFFFFFFFFFFFFFF)
-FLOAT_NIL = INT_NIL
-
 has_jump = bp.compile('^_("jmp"/"jnz"/"ret")\\b ..$ $$')
 
 local stmt_compilers, expr_compilers
@@ -124,10 +121,10 @@ check_truthiness = (t, env, reg, truthy_label, falsey_label)->
     elseif t\is_a(Types.OptionalType)
         if t.nonnil\is_a(Types.Bool)
             tmp = env\fresh_local "is.true"
-            return "#{tmp} =l ceql #{reg}, 1\njnz #{tmp}, #{truthy_label}, #{falsey_label}\n"
+            return "#{tmp} =l ceq#{t.base_type} #{reg}, 1\njnz #{tmp}, #{truthy_label}, #{falsey_label}\n"
         elseif t.nonnil\is_a(Types.Int)
             tmp = env\fresh_local "is.nonnil"
-            return "#{tmp} =l cnel #{reg}, #{INT_NIL}\njnz #{tmp}, #{truthy_label}, #{falsey_label}\n"
+            return "#{tmp} =l cne#{t.base_type} #{reg}, #{t.nil_value}\njnz #{tmp}, #{truthy_label}, #{falsey_label}\n"
         elseif t.nonnil.base_type == "d"
             tmp = env\fresh_local "is.nonnil"
             return "#{tmp} =l cod #{reg}, d_0.0 # Test for NaN\njnz #{tmp}, #{truthy_label}, #{falsey_label}\n"
@@ -141,16 +138,47 @@ check_nil = (t, env, reg, nonnil_label, nil_label)->
         return "jmp #{nil_label}\n"
     elseif not t\is_a(Types.OptionalType)
         return "jmp #{nonnil_label}\n"
+    elseif t.nil_value == 0
+        return "jnz #{reg}, #{nonnil_label}, #{nil_label}\n"
+    elseif t.nonnil.base_type == "s" or t.nonnil.base_type == "d"
+        is_not_nan = env\fresh_local "is.not.NaN"
+        return "#{is_not_nan} =w cod #{reg}, d_0.0 # Test for NaN\njnz #{is_not_nan}, #{nonnil_label}, #{nil_label}\n"
     else
-        if t.nonnil\is_a(Types.Bool) or t.nonnil\is_a(Types.Int)
-            tmp = env\fresh_local "is.nonnil"
-            return "#{tmp} =l cnel #{reg}, #{INT_NIL}\njnz #{tmp}, #{nonnil_label}, #{nil_label}\n"
-        elseif t.nonnil\is_a(Types.Num)
-            tmp = env\fresh_local "is.nonnil"
-            return "#{tmp} =l cod #{reg}, d_0.0 # Test for NaN\njnz #{tmp}, #{nonnil_label}, #{nil_label}\n"
+        tmp = env\fresh_local "is.nonnil"
+        return "#{tmp} =w cne#{t.base_type} #{reg}, #{t.nil_value}\njnz #{tmp}, #{nonnil_label}, #{nil_label}\n"
+
+set_nil = (t, env, reg)->
+    if t.base_type == "s" or t.base_type == "d"
+        return "#{reg} =#{t.base_type} cast #{t.nil_value}\n"
+    else
+        return "#{reg} =#{t.base_type} copy #{t.nil_value}\n"
+
+convert_nil = (t, env, src_reg, dest_reg)->
+    assert t and env and src_reg and dest_reg, "XXX"
+    if t.base_type == "s" or t.base_type == "d"
+        bits = env\fresh_local "bits"
+        code = "#{bits} =#{if t.base_type == "s" then "w" else "l"} xor #{src_reg}, #{t.nil_value}\n"
+        code ..= "#{dest_reg} =#{t.base_type} cast #{bits}\n"
+        return code
+    elseif t.nil_value != 0
+        return "#{dest_reg} =#{t.base_type} xor #{src_reg}, #{t.nil_value}\n"
+    else
+        return "#{dest_reg} =#{t.base_type} copy #{src_reg}\n"
+
+hash_prep = (value_t, value_reg, dest_reg)->
+    assert value_t and value_reg and dest_reg, "XXX"
+    if value_t.base_type == "s" or value_t.base_type == "d"
+        code = "#{dest_reg} =l cast #{value_reg}\n"
+        return code.."#{dest_reg} =l xor #{dest_reg}, #{value_t.nil_value}\n"
+    else
+        code = if value_t.bytes == 8
+            "#{dest_reg} =l copy #{value_reg}\n"
         else
-            return "jnz #{reg}, #{nonnil_label}, #{nil_label}\n"
-        return "jmp #{truthy_label}\n"
+            "#{dest_reg} =l extu#{value_t.abi_type} #{value_reg}\n"
+
+        if value_t.nil_value != 0
+            code ..= "#{dest_reg} =l xor #{dest_reg}, #{value_t.nil_value}\n"
+        return code
 
 class Environment
     new: (@filename)=>
@@ -179,6 +207,10 @@ class Environment
         return name
 
     fresh_local: (suggestion="x")=> "%"..@fresh_name(suggestion)
+    fresh_locals: (...)=>
+        locals = {...}
+        for i,l in ipairs(locals) do locals[i] = "%"..@fresh_name(l)
+        return table.unpack(locals)
     fresh_global: (suggestion="g")=> "$"..@fresh_name(suggestion)
     fresh_label: (suggestion="label")=> "@"..@fresh_name(suggestion)
     fresh_labels: (...)=>
@@ -227,10 +259,14 @@ class Environment
         -- they'll just ignore.
         if t\is_a(Types.Int)
             return "$bl_tostring_int",false
+        elseif t\is_a(Types.Int32)
+            return "$bl_tostring_int32",false
         elseif t\is_a(Types.Percent)
             return "$bl_tostring_percent",false
         elseif t\is_a(Types.Num)
             return "$bl_tostring_float",false
+        elseif t\is_a(Types.Num32)
+            return "$bl_tostring_float32",false
         elseif t\is_a(Types.Bool)
             return "$bl_tostring_bool",false
         elseif t\is_a(Types.String)
@@ -284,7 +320,7 @@ class Environment
             code ..= "#{dest} =l loadl #{tmp}\n"
         elseif t\is_a(Types.ListType)
             len = @fresh_local "len"
-            code ..= "#{len} =l call $bl_list_len(l #{reg})\n"
+            code ..= "#{len} =l loadl #{reg}\n"
 
             buf = @fresh_local "buf"
             code ..= "#{buf} =l copy #{@get_string_reg "[", "lsq"}\n"
@@ -325,95 +361,54 @@ class Environment
             len = @fresh_local "len"
             code ..= "#{len} =l call $hashmap_length(l #{reg})\n"
 
-            entry_strs = @fresh_local "entry.strings"
-            code ..= "#{entry_strs} =l call $gc_calloc(l 8, l #{len})\n"
-            chunk_ptr = @fresh_local "chunk.ptr"
-            code ..= "#{chunk_ptr} =l copy #{entry_strs}\n"
+            buf = @fresh_local "buf"
+            code ..= "#{buf} =l copy #{@get_string_reg "{", "lbracket"}\n"
 
             key = @fresh_local "key.raw"
             code ..= "#{key} =l copy 0\n"
 
-            loop_label,body_label,end_label = @fresh_labels "table.loop", "table.loop.body", "table.loop.end"
+            loop_label,body_label,comma_label,end_label = @fresh_labels "table.loop", "table.loop.body", "table.loop.comma", "table.loop.end"
 
-            code ..= "jmp #{loop_label}\n"
+            code ..= "#{key} =l call $hashmap_next(l #{reg}, l #{key})\n"
+            code ..= "jnz #{key}, #{body_label}, #{end_label}\n"
 
             code ..= @block loop_label, ->
                 code = "#{key} =l call $hashmap_next(l #{reg}, l #{key})\n"
-                code ..= "jnz #{key}, #{body_label}, #{end_label}\n"
+                code ..= "jnz #{key}, #{comma_label}, #{end_label}\n"
                 return code
 
-            code ..= @block body_label, ->
-                entry_chunks = @fresh_local "entry.chunks"
-                code = "#{entry_chunks} =l alloc8 #{3*8}\n"
-                p = @fresh_local "p"
-                code ..= "#{p} =l copy #{entry_chunks}\n"
+            code ..= @block comma_label, ->
+                code = "#{buf} =l call $CORD_cat(l #{buf}, l #{@get_string_reg ", ", "comma"})\n"
+                return code.."jmp #{body_label}\n"
 
-                key_reg = if t.key_type\is_a(Types.Int) or t.key_type\is_a(Types.Bool)
-                    tmp = @fresh_local "key.int"
-                    code ..= "#{tmp} =l xor #{key}, #{INT_NIL}\n"
-                    tmp
-                elseif t.key_type\is_a(Types.Num)
-                    bits = @fresh_local "key.bits"
-                    code ..= "#{bits} =l xor #{key}, #{FLOAT_NIL}\n"
-                    tmp2 = @fresh_local "key.float"
-                    code ..= "#{tmp2} =d cast #{bits}\n"
-                    tmp2
-                else
-                    key
-                
+            code ..= @block body_label, ->
+                key_reg = @fresh_local "key"
+                code = hash_prep t.key_type, key, key_reg
                 key_str = @fresh_local "key.string"
                 fn,needs_loading = @get_tostring_fn t.key_type, scope
                 code ..= "#{fn} =l loadl #{fn}\n" if needs_loading
                 code ..= "#{key_str} =l call #{fn}(#{t.key_type.base_type} #{key_reg}, l #{callstack})\n"
-                code ..= "storel #{key_str}, #{p}\n"
-                code ..= "#{p} =l add #{p}, 8\n"
-
-                code ..= "storel #{@get_string_reg "=", "equals"}, #{p}\n"
-                code ..= "#{p} =l add #{p}, 8\n"
+                code ..= "#{buf} =l call $CORD_cat(l #{buf}, l #{key_str})\n"
+                code ..= "#{buf} =l call $CORD_cat(l #{buf}, l #{@get_string_reg "=", "equals"})\n"
 
                 value_raw = @fresh_local "value.raw"
                 code ..= "#{value_raw} =l call $hashmap_get(l #{reg}, l #{key})\n"
-                value_reg = if t.value_type\is_a(Types.Int) or t.value_type\is_a(Types.Bool)
-                    tmp = @fresh_local "value.int"
-                    code ..= "#{tmp} =l xor #{value_raw}, #{INT_NIL}\n"
-                    tmp
-                elseif t.value_type\is_a(Types.Num)
-                    bits = @fresh_local "value.bits"
-                    code ..= "#{bits} =l xor #{value_raw}, #{FLOAT_NIL}\n"
-                    tmp2 = @fresh_local "key.float"
-                    code ..= "#{tmp2} =d cast #{bits}\n"
-                    tmp2
-                else
-                    value_raw
+                value_reg = @fresh_local "value"
+                code ..= convert_nil t.value_type, @, value_raw, value_reg
                 
                 value_str = @fresh_local "value.string"
                 fn,needs_loading = @get_tostring_fn t.value_type, scope
                 code ..= "#{fn} =l loadl #{fn}\n" if needs_loading
                 code ..= "#{value_str} =l call #{fn}(#{t.value_type.base_type} #{value_reg}, l #{callstack})\n"
-                code ..= "storel #{value_str}, #{p}\n"
-
-                entry_str = @fresh_local "entry.str"
-                code ..= "#{entry_str} =l call $bl_string_join(l 3, l #{entry_chunks}, l 0)\n"
-                code ..= "storel #{entry_str}, #{chunk_ptr}\n"
-                code ..= "#{chunk_ptr} =l add #{chunk_ptr}, 8\n"
+                code ..= "#{buf} =l call $CORD_cat(l #{buf}, l #{value_str})\n"
 
                 code ..= "jmp #{loop_label}\n"
                 return code
 
             code ..= @block end_label, ->
-                chunks = @fresh_local "chunks"
-                chunk = @fresh_local "chunk"
-                code = "#{chunks} =l alloc8 #{8*3}\n"
-                code ..= "#{chunk} =l add #{chunks}, #{0*8}\n"
-                code ..= "storel #{@get_string_reg("{","curly.open")}, #{chunk}\n"
-                content_str = @fresh_local "table.content.str"
-                code ..= "#{content_str} =l call $bl_string_join(l #{len}, l #{entry_strs}, l #{@get_string_reg(", ", "comma.space")})\n"
-                code ..= "call $gc_free(l #{entry_strs})\n"
-                code ..= "#{chunk} =l add #{chunks}, #{1*8}\n"
-                code ..= "storel #{content_str}, #{chunk}\n"
-                code ..= "#{chunk} =l add #{chunks}, #{2*8}\n"
-                code ..= "storel #{@get_string_reg("}","curly.close")}, #{chunk}\n"
-                code ..= "#{dest} =l call $bl_string_join(l 3, l #{chunks}, l 0)\n"
+                code = "#{buf} =l call $CORD_cat(l #{buf}, l #{@get_string_reg "}", "rbracket"})\n"
+                code ..= "#{buf} =l call $CORD_to_const_char_star(l #{buf})\n"
+                code ..= "#{dest} =l call $bl_string(l #{buf})\n"
                 return code
 
         elseif t\is_a(Types.StructType)
@@ -827,24 +822,20 @@ class Environment
         code ..= "export function w $main(w %argc, l %argv) {\n"
         code ..= "@start\n"
         code ..= "  %argc2 =l extsw %argc\n"
-        code ..= "  %args =l call $bl_list_new(l %argc2, l %argv)\n"
+        code ..= "  %args.size =l mul %argc2, 8\n"
+        code ..= "  %args.items =l call $gc_alloc(l %args.size)\n"
+        code ..= "  call $memcpy(l %args.items, l %argv, l %args.size)\n"
+        code ..= "  %args =l call $gc_alloc(l 16)\n"
+        code ..= "  storel %argc2, %args\n"
         code ..= "  storel %args, $args\n"
+        code ..= "  %args =l add %args, 8\n"
+        code ..= "  storel %args.items, %args\n"
         code ..= "  call $load()\n"
         code ..= "  ret 0\n"
         code ..= "}\n"
         source_chunks = ast[0]\gsub('[^ !#-[^-~]', (c)->"\",b #{c\byte(1)},b\"")\gsub("\n", "\\n")
         code ..= "\nexport data $source = {b\"#{source_chunks}\",b 0}\n"
         return code
-
-convert_nils = (t, src_reg, dest_reg)->
-    if t\is_a(Types.Int) or t\is_a(Types.Bool)
-        return "#{dest_reg} =l xor #{src_reg}, #{INT_NIL}\n"
-    elseif t\is_a(Types.Num)
-        code = "#{dest_reg} =l cast #{src_reg}\n"
-        code ..= "#{dest_reg} =l xor #{dest_reg}, #{FLOAT_NIL}\n"
-        return code
-    else
-        return "#{dest_reg} =l copy #{src_reg}\n"
 
 for_loop = (env, make_body)=>
     -- Rough breakdown:
@@ -886,7 +877,7 @@ for_loop = (env, make_body)=>
     if iter_type\is_a(Types.Range)
         code ..= "#{len} =l call $range_len(l #{iter_reg})\n"
     elseif iter_type\is_a(Types.ListType)
-        code ..= "#{len} =l call $bl_list_len(l #{iter_reg})\n"
+        code ..= "#{len} =l loadl #{iter_reg}\n"
         list_item = env\fresh_local "list.item"
         code ..= "#{list_item} =l add #{iter_reg}, 8\n"
         code ..= "#{list_item} =l loadl #{list_item}\n"
@@ -911,12 +902,8 @@ for_loop = (env, make_body)=>
         code = ""
         if @index
             index_reg = assert @index.__register, "Index variable isn't hooked up"
-            if iter_type\is_a(Types.TableType) and (iter_type.key_type\is_a(Types.Int) or iter_type.key_type\is_a(Types.Bool))
-                code ..= "#{index_reg} =l xor #{i}, #{INT_NIL}\n"
-            elseif iter_type\is_a(Types.TableType) and iter_type.key_type\is_a(Types.Num)
-                bits = @fresh_local "key.bits"
-                code ..= "#{bits} =l xor #{i}, #{FLOAT_NIL}\n"
-                code ..= "#{index_reg} =d cast #{bits}\n"
+            if iter_type\is_a(Types.TableType)
+                code ..= convert_nil(iter_type.key_type, env, i, index_reg)
             else
                 code ..= "#{index_reg} =l copy #{i}\n"
 
@@ -924,26 +911,11 @@ for_loop = (env, make_body)=>
             var_reg = assert @val.__register, "Iterator value variable isn't hooked up"
             if iter_type\is_a(Types.TableType)
                 if @index
-                    if iter_type.value_type\is_a(Types.Int) or iter_type.value_type\is_a(Types.Bool)
-                        value_raw = env\fresh_local "value.raw"
-                        code ..= "#{value_raw} =l call $hashmap_get(l #{iter_reg}, l #{i})\n"
-                        code ..= "#{var_reg} =l xor #{value_raw}, #{INT_NIL}\n"
-                    elseif iter_type.value_type\is_a(Types.Num)
-                        value_raw = env\fresh_local "value.raw"
-                        code ..= "#{value_raw} =l call $hashmap_get(l #{iter_reg}, l #{i})\n"
-                        code ..= "#{value_raw} =l xor #{value_raw}, #{FLOAT_NIL}\n"
-                        code ..= "#{var_reg} =d cast #{bits}\n"
-                    else
-                        code ..= "#{var_reg} =l call $hashmap_get(l #{iter_reg}, l #{i})\n"
+                    value_raw = env\fresh_local "value.raw"
+                    code ..= "#{value_raw} =l call $hashmap_get(l #{iter_reg}, l #{i})\n"
+                    code ..= convert_nil(iter_type.value_type, env, value_raw, var_reg)
                 else
-                    if iter_type.key_type\is_a(Types.Int) or iter_type.key_type\is_a(Types.Bool)
-                        code ..= "#{var_reg} =l xor #{i}, #{INT_NIL}\n"
-                    elseif iter_type.key_type\is_a(Types.Num)
-                        key_bits = env\fresh_local "key.bits"
-                        code ..= "#{key_bits} =l xor #{i}, #{FLOAT_NIL}\n"
-                        code ..= "#{var_reg} =d cast #{key_bits}\n"
-                    else
-                        code ..= "#{var_reg} =l copy #{i}\n"
+                    code ..= convert_nil(iter_type.key_type, env, i, var_reg)
             elseif iter_type\is_a(Types.Range)
                 code ..= "#{var_reg} =l call $range_nth(l #{iter_reg}, l #{i})\n"
             else
@@ -1086,16 +1058,6 @@ expr_compilers =
         s = @[0]\gsub("_","")\gsub("%%","")
         return "d_#{tonumber(s)/100.0}",""
     Nil: (env)=>
-        -- Figure out what kind of nil this is, since different types have different binary
-        -- representations of nil (Int -> INT_MAX, Float -> NaN, otherwise -> 0)
-        values_for = (nonnil)->
-            if nonnil\is_a(Types.Int) or nonnil\is_a(Types.Bool)
-                return "#{INT_NIL}",""
-            elseif nonnil\is_a(Types.Num) or nonnil.base_type == "d"
-                return "#{FLOAT_NIL}",""
-            else
-                return "0",""
-
         child = @
         parent = @__parent
         while parent
@@ -1113,7 +1075,7 @@ expr_compilers =
                 t = get_type(other)
                 if t\is_a(Types.OptionalType) and t != Types.Nil
                     t = t.nonnil
-                return values_for(t)
+                return "#{t.nil_value}",""
 
             t = if parent.__tag == "Declaration" and parent.type
                 parse_type parent.type
@@ -1146,19 +1108,30 @@ expr_compilers =
                 get_type(parent)
 
             if t != Types.Nil and t\is_a(Types.OptionalType)
-                return values_for(t.nonnil)
+                return "#{t.nil_value}",""
 
             parent,child = parent.__parent,parent
         return "0",""
     Bool: (env)=> (@[0] == "yes" and "1" or "0"),""
     Cast: (env)=>
         reg,code = env\to_reg @expr
-        t = parse_type @type
+        cast_type = parse_type @type
         actual_type = get_type(@expr)
-        if actual_type and t.base_type == actual_type.base_type
+        if actual_type and cast_type.base_type == actual_type.base_type
             return reg,code
         c = env\fresh_local "casted"
-        code ..= "#{c} =#{t.base_type} cast #{reg}\n"
+        abt = actual_type.base_type
+        cbt = cast_type.base_type
+        if abt == "l" and cbt == "w"
+            code ..= "#{c} =w copy #{reg}\n"
+        elseif abt == "w" and cbt == "l"
+            code ..= "#{c} =l extsw #{reg}\n"
+        elseif abt == "s" and cbt == "d"
+            code ..= "#{c} =d exts #{reg}\n"
+        elseif abt == "d" and cbt == "s"
+            code ..= "#{c} =d truncd #{reg}\n"
+        else
+            code ..= "#{c} =#{cast_type.base_type} cast #{reg}\n"
         return c,code
     TypeOf: (env)=>
         assert @expression
@@ -1199,7 +1172,6 @@ expr_compilers =
                     code ..= "#{fn} =l loadl #{fn}\n" if needs_loading
                     code ..= "#{chunk_reg} =l call #{fn}(#{t.base_type} #{val_reg}, l 0)\n"
 
-            -- code ..= "#{cord_reg} =l call $printf(l #{env\get_string_reg "Catting: %s + %s\n"}, l #{cord_reg}, l #{chunk_reg})\n"
             code ..= "#{cord_reg} =l call $CORD_cat(l #{cord_reg}, l #{chunk_reg})\n"
                 
         code ..= "#{cord_reg} =l call $CORD_to_const_char_star(l #{cord_reg})\n"
@@ -1286,7 +1258,7 @@ expr_compilers =
         elseif t\is_a(Types.ListType)
             list,code = env\to_reg @value
             len = env\fresh_local "list.len"
-            return len, "#{code}#{len} =l call $bl_list_len(l #{list})\n"
+            return len, "#{code}#{len} =l loadl #{list}\n"
         elseif t\is_a(Types.TableType)
             tab,code = env\to_reg @value
             len = env\fresh_local "table.len"
@@ -1302,13 +1274,13 @@ expr_compilers =
         b,code = env\to_reg @value
         ret = env\fresh_local "not"
         if t\is_a(Types.OptionalType) and t != Types.Nil and t.nonnil\is_a(Types.Int)
-            code ..= "#{ret} =l ceql #{b}, #{INT_NIL}\n"
+            code ..= "#{ret} =w ceq#{t.base_type} #{b}, #{t.nil_value}\n"
         elseif t\is_a(Types.OptionalType) and t != Types.Nil and t.nonnil.base_type == "d"
-            code ..= "#{ret} =l cuod #{reg}, d_0.0 # Test for NaN\n"
+            code ..= "#{ret} =w cuod #{reg}, d_0.0 # Test for NaN\n"
         elseif t\is_a(Types.Bool)
-            code ..= "#{ret} =l cnel #{b}, 1\n"
+            code ..= "#{ret} =w cne#{t.base_type} #{b}, 1\n"
         else
-            code ..= "#{ret} =l ceql #{b}, 0\n"
+            code ..= "#{ret} =w ceq#{t.base_type} #{b}, 0\n"
         return ret, code
     IndexedTerm: (env)=>
         t = get_type @value
@@ -1328,19 +1300,8 @@ expr_compilers =
 
             ifnil,ifnonnil,done = env\fresh_labels "if.nil", "if.nonnil", "if.nil.done"
             code = check_truthiness get_type(@value), env, check_reg, ifnonnil, ifnil
-
-            code ..= env\block ifnonnil, ->
-                get_nonnil_code!.."jmp #{done}\n"
-
-            code ..= env\block ifnil, ->
-                code = if output_type\is_a(Types.Int) or output_type\is_a(Types.Bool)
-                    "#{output_reg} =l copy #{INT_NIL}\n"
-                elseif output_type\is_a(Types.Num) or output_type.base_type == "d"
-                    "#{output_reg} =d copy #{FLOAT_NIL}\n"
-                else
-                    "#{output_reg} =l copy 0 # hmmmm #{output_type}\n"
-                return code.."jmp #{done}\n"
-
+            code ..= env\block ifnonnil, -> (get_nonnil_code!.."jmp #{done}\n")
+            code ..= env\block ifnil, -> set_nil(output_type, env, output_reg)
             code ..= "#{done}\n"
             return code
             
@@ -1350,18 +1311,49 @@ expr_compilers =
             list_reg, index_reg, code = env\to_regs @value, @index
             if index_type\is_a(Types.Int) or index_type == Types.OptionalType(Types.Int)
                 item = env\fresh_local "list.item"
-                code ..= nil_guard list_reg, item, t.item_type, ->
-                    if t.item_type.base_type == "d"
-                        tmp = env\fresh_local "list.item.as_int"
-                        code = "#{tmp} =l call $bl_list_nth(l #{list_reg}, l #{index_reg}, l #{FLOAT_NIL})\n"
-                        return code.."#{item} =d cast #{tmp}\n"
-                    else
-                        return "#{item} =l call $bl_list_nth(l #{list_reg}, l #{index_reg}, l #{item_type\is_a(Types.Num) and INT_NIL or "0"})\n"
+                code = nil_guard list_reg, item, t.item_type, ->
+                    not_too_low,not_too_high,outside_bounds,done = env\fresh_labels "not.too.low", "not.too.high", "outside.bounds", "done"
+                    len, bounds_check = env\fresh_locals "len", "bounds.check"
+                    code ..= "#{bounds_check} =w csgel #{index_reg}, 1\n"
+                    code ..= "jnz #{bounds_check}, #{not_too_low}, #{outside_bounds}\n"
+                    code ..= env\block not_too_low, ->
+                        code = "#{len} =l loadl #{list_reg}\n"
+                        code ..= "#{bounds_check} =w cslel #{index_reg}, #{len}\n"
+                        return code.."jnz #{bounds_check}, #{not_too_high}, #{outside_bounds}\n"
+
+                    code ..= env\block not_too_high, ->
+                        code = ""
+                        items = env\fresh_local "items"
+                        code ..= "#{items} =l add #{list_reg}, 8\n"
+                        code ..= "#{items} =l loadl #{items}\n"
+                        offset = env\fresh_local "offset"
+                        code ..= "#{offset} =l sub #{index_reg}, 1\n"
+                        code ..= "#{offset} =l mul #{offset}, #{item_type.bytes}\n"
+                        code ..= "#{items} =l add #{items}, #{offset}\n"
+                        if t.item_type.base_type == "d" or t.item_type.base_type == "s"
+                            tmp = env\fresh_local "list.item.as_int"
+                            int_type = t.item_type.base_type == "d" and "l" or "w"
+                            code ..= "#{tmp} =#{int_type} load#{int_type} #{items}\n"
+                            code ..= "#{item} =d cast #{tmp}\n"
+                        elseif t.item_type.bytes < 8
+                            code ..= "#{item} =#{t.item_type.base_type} loadu#{t.item_type.abi_type} #{items}\n"
+                        else
+                            code ..= "#{item} =l loadl #{items}\n"
+                        return code .. "jmp #{done}\n"
+
+                    code ..= env\block outside_bounds, ->
+                        code = set_nil(item_type, env, item)
+                        return code.."jmp #{done}\n"
+
+                    return code.."#{done}\n"
+
                 return item,code
             elseif index_type\is_a(Types.Range)
                 slice = env\fresh_local "slice"
                 code ..= nil_guard list_reg, slice, t, ->
-                    "#{slice} =l call $bl_list_slice_range(l #{list_reg}, l #{index_reg})\n"
+                    code = "#{slice} =l call $gc_alloc(l 16)\n"
+                    -- code ..= "TODO: IMPLEMENT;;;;;\n"
+                    return code
                 return slice,code
             else
                 node_error @index, "Index is #{index_type} instead of Int or Range"
@@ -1371,25 +1363,10 @@ expr_compilers =
             code ..= nil_guard tab_reg, value_reg, t.key_type, ->
                 code = ""
                 key_getter = env\fresh_local "key.getter"
-                if t.key_type\is_a(Types.Int) or t.key_type\is_a(Types.Bool)
-                    code ..= "#{key_getter} =l xor #{index_reg}, #{INT_NIL}\n"
-                elseif t.key_type\is_a(Types.Num) or t.key_type.base_type == "d"
-                    code ..= "#{key_getter} =l cast #{index_reg}\n"
-                    code ..= "#{key_getter} =l xor #{key_getter}, #{INT_NIL}\n"
-                else
-                    code ..= "#{key_getter} =l copy #{index_reg}\n"
-
+                code ..= hash_prep t.key_type, index_reg, key_getter
                 raw_value = env\fresh_local "value.raw"
                 code ..= "#{raw_value} =l call $hashmap_get(l #{tab_reg}, l #{key_getter})\n"
-
-                if t.value_type\is_a(Types.Int) or t.value_type\is_a(Types.Bool)
-                    code ..= "#{value_reg} =l xor #{raw_value}, #{INT_NIL}\n"
-                elseif t.value_type\is_a(Types.Num) or t.value_type.base_type == "d"
-                    bits = @fresh_local "value.bits"
-                    code ..= "#{bits} =l xor #{raw_value}, #{FLOAT_NIL}\n"
-                    code ..= "#{value_reg} =d cast #{bits}\n"
-                else
-                    code ..= "#{value_reg} =l copy #{raw_value}\n"
+                code ..= convert_nil t.value_type, @, raw_value, value_reg
                 return code
 
             return value_reg,code
@@ -1436,19 +1413,23 @@ expr_compilers =
         else
             node_error @value, "Indexing is not valid on type #{t}"
     List: (env)=>
-        list = env\fresh_local "list"
-        code = "#{list} =l call $bl_list_new(l 0, l 0)\n"
+        list,list_items,size,p = env\fresh_locals "list", "list.items", "list.size", "p"
+        code = "#{list} =l call $gc_alloc(l 16)\n"
         if #@ == 0
             return list, code
 
+        code ..= "#{size} =l copy 0\n"
+        code ..= "#{list_items} =l copy 0\n"
+
+        item_type = get_type(@).item_type
+
         add_item = (item)->
             item_reg, code = env\to_reg item
-            t = get_type item
-            if t.base_type == "d"
-                item_i = env\fresh_local "item.int"
-                code ..= "#{item_i} =l cast #{item_reg}\n"
-                item_reg = item_i
-            code ..= "call $bl_list_append(l #{list}, l #{item_reg})\n"
+            code ..= "#{size} =l add #{size}, #{item_type.bytes}\n"
+            code ..= "#{list_items} =l call $gc_realloc(l #{list_items}, l #{size})\n"
+            code ..= "#{p} =l add #{list_items}, #{size}\n"
+            code ..= "#{p} =l sub #{p}, #{item_type.bytes}\n"
+            code ..= "store#{item_type.abi_type} #{item_reg}, #{p}\n"
             return code
 
         next_label = nil
@@ -1480,6 +1461,13 @@ expr_compilers =
         if next_label
             code ..= "jmp #{next_label}\n" unless has_jump\match(code)
             code ..= "#{next_label}\n"
+
+        code ..= "#{size} =l div #{size}, #{item_type.bytes}\n"
+        code ..= "storel #{size}, #{list}\n"
+        items_loc = env\fresh_local "items.loc"
+        code ..= "#{items_loc} =l add #{list}, 8\n"
+        code ..= "storel #{list_items}, #{items_loc}\n"
+
         return list, code
     Table: (env)=>
         t = get_type @
@@ -1494,9 +1482,9 @@ expr_compilers =
         add_entry = (entry)->
             key_reg, value_reg, code = env\to_regs entry.key, entry.value
             key_setter = env\fresh_local "key.setter"
-            code ..= convert_nils t.key_type, key_reg, key_setter
+            code ..= hash_prep t.key_type, key_reg, key_setter
             value_setter = env\fresh_local "value.setter"
-            code ..= convert_nils t.value_type, value_reg, value_setter
+            code ..= hash_prep t.value_type, value_reg, value_setter
             code ..= "call $hashmap_set(l #{tab}, l #{key_setter}, l #{value_setter})\n"
             return code
 
@@ -1596,9 +1584,68 @@ expr_compilers =
             elseif t_lhs == t_rhs and t_lhs\is_a(Types.String)
                 return infixop @, env, (ret,lhs,rhs)->
                     "#{ret} =l call $bl_string_append_string(l #{lhs}, l #{rhs})\n"
+            elseif t_lhs\is_a(Types.ListType) and t_rhs\is_a(t_lhs.item_type)
+                return infixop @, env, (ret,lhs,rhs)->
+                    list_reg,item_reg,item_type = lhs,rhs,t_rhs
+                    new_len,len,new_items,items,new_size,size,tmp = env\fresh_locals "new.len","len","new.items","items","new.size","size","tmp"
+                    code = "\n# Append\n"
+                    code ..= "#{len} =l loadl #{list_reg}\n"
+                    code ..= "#{size} =l mul #{len}, #{item_type.bytes}\n"
+                    code ..= "#{new_len} =l add #{len}, 1\n"
+                    code ..= "#{tmp} =l add #{list_reg}, 8\n"
+                    code ..= "#{items} =l loadl #{tmp}\n"
+                    code ..= "#{new_size} =l mul #{new_len}, #{item_type.bytes}\n"
+                    code ..= "#{new_items} =l call $gc_alloc(l #{new_size})\n"
+                    code ..= "#{tmp} =l call $mempcpy(l #{new_items}, l #{items}, l #{size})\n"
+                    code ..= "store#{item_type.abi_type} #{item_reg}, #{tmp}\n"
+                    code ..= "#{ret} =l call $gc_alloc(l 16)\n"
+                    code ..= "storel #{new_len}, #{ret}\n"
+                    code ..= "#{tmp} =l add #{ret}, 8\n"
+                    code ..= "storel #{new_items}, #{tmp}\n"
+                    code ..= "\n"
+                    return code
+            elseif t_rhs\is_a(Types.ListType) and t_lhs\is_a(t_rhs.item_type)
+                return infixop @, env, (ret,lhs,rhs)->
+                    list_reg,item_reg,item_type = rhs,lhs,t_lhs
+                    new_len,len,new_items,items,new_size,size,tmp = env\fresh_locals "new.len","len","new.items","items","new.size","size","tmp"
+                    code = "\n# Prepend\n"
+                    code ..= "#{len} =l loadl #{list_reg}\n"
+                    code ..= "#{size} =l mul #{len}, #{item_type.bytes}\n"
+                    code ..= "#{new_len} =l add #{len}, 1\n"
+                    code ..= "#{tmp} =l add #{list_reg}, 8\n"
+                    code ..= "#{items} =l loadl #{tmp}\n"
+                    code ..= "#{new_size} =l mul #{new_len}, #{item_type.bytes}\n"
+                    code ..= "#{new_items} =l call $gc_alloc(l #{new_size})\n"
+                    code ..= "store#{item_type.abi_type} #{item_reg}, #{new_items}\n"
+                    code ..= "#{tmp} =l add #{new_items}, #{item_type.bytes}\n"
+                    code ..= "call $memcpy(l #{tmp}, l #{items}, l #{size})\n"
+                    code ..= "#{ret} =l call $gc_alloc(l 16)\n"
+                    code ..= "storel #{new_len}, #{ret}\n"
+                    code ..= "#{tmp} =l add #{ret}, 8\n"
+                    code ..= "storel #{new_items}, #{tmp}\n"
+                    code ..= "\n"
+                    return code
             elseif t_lhs == t_rhs and t_lhs\is_a(Types.ListType)
                 return infixop @, env, (ret,lhs,rhs)->
-                    "#{ret} =l call $bl_list_concat(l #{lhs}, l #{rhs})\n"
+                    len1,len2,len3,items1,items2,items3,size,tmp = env\fresh_locals "len1","len2","len3","items1","items2","items3","size","tmp"
+                    code = "#{len1} =l loadl #{lhs}\n"
+                    code ..= "#{len2} =l loadl #{rhs}\n"
+                    code ..= "#{lhs} =l add #{lhs}, 8\n"
+                    code ..= "#{items1} =l loadl #{lhs}\n"
+                    code ..= "#{rhs} =l add #{rhs}, 8\n"
+                    code ..= "#{items2} =l loadl #{rhs}\n"
+                    code ..= "#{len3} =l add #{len1}, #{len2}\n"
+                    code ..= "#{size} =l mul #{len3}, #{t_lhs.item_type.bytes}\n"
+                    code ..= "#{ret} =l call $gc_alloc(l 16)\n"
+                    code ..= "storel #{len3}, #{ret}\n"
+                    code ..= "#{items3} =l call $gc_alloc(l #{size})\n"
+                    code ..= "#{tmp} =l add #{ret}, 8\n"
+                    code ..= "storel #{items3}, #{tmp}\n"
+                    code ..= "#{size} =l mul #{len1}, #{t_lhs.item_type.bytes}\n"
+                    code ..= "#{items3} =l call $mempcpy(l #{items3}, l #{items1}, l #{size})\n"
+                    code ..= "#{size} =l mul #{len2}, #{t_lhs.item_type.bytes}\n"
+                    code ..= "call $memcpy(l #{items3}, l #{items2}, l #{size})\n"
+                    return code
             else
                 return overload_infix @, env, "add", "sum"
         else -- "-"
@@ -1890,8 +1937,27 @@ stmt_compilers =
                 nonnil_label, end_label = env\fresh_labels "if.nonnil", "if.nonnil.done"
                 code ..= check_nil get_type(@lhs.value), env, list_reg, nonnil_label, end_label
                 code ..= env\block nonnil_label, ->
-                    ("call $bl_list_set_nth(l #{list_reg}, l #{index_reg}, l #{rhs_reg})\n"..
-                     "jmp #{end_label}\n")
+                    not_too_low,not_too_high = env\fresh_labels "not.too.low", "not.too.high"
+                    len, bounds_check = env\fresh_locals "len", "bounds.check"
+                    code = "#{bounds_check} =w csgel #{index_reg}, 1\n"
+                    code ..= "jnz #{bounds_check}, #{not_too_low}, #{end_label}\n"
+                    code ..= env\block not_too_low, ->
+                        code = "#{len} =l loadl #{list_reg}\n"
+                        code ..= "#{bounds_check} =w cslel #{index_reg}, #{len}\n"
+                        return code.."jnz #{bounds_check}, #{not_too_high}, #{end_label}\n"
+
+                    code ..= env\block not_too_high, ->
+                        p = env\fresh_local "p"
+                        code = "#{p} =l add #{list_reg}, 8\n"
+                        code ..= "#{p} =l loadl #{p}\n"
+                        offset = env\fresh_local "offset"
+                        code ..= "#{offset} =l sub #{index_reg}, 1\n"
+                        code ..= "#{offset} =l mul #{offset}, #{t.item_type.bytes}\n"
+                        code ..= "#{p} =l add #{p}, #{offset}\n"
+                        code ..= "store#{t.item_type.abi_type} #{rhs_reg}, #{p}\n"
+                        return code.."jmp #{end_label}\n"
+
+                    return code
                 code ..= "#{end_label}\n"
                 return code
             elseif index_type\is_a(Types.Range)
@@ -1902,13 +1968,15 @@ stmt_compilers =
         elseif t\is_a(Types.TableType)
             key_type = get_type(@lhs.index)
             tab_reg,key_reg,val_reg,code = env\to_regs @lhs.value, @lhs.index, @rhs
+
             key_setter = env\fresh_local "key.setter"
-            code ..= convert_nils t.key_type, key_reg, key_setter
+            code ..= hash_prep t.key_type, key_reg, key_setter
             value_setter = env\fresh_local "value.setter"
-            code ..= convert_nils t.value_type, val_reg, value_setter
+            code ..= hash_prep t.value_type, val_reg, value_setter
 
             nonnil_label, end_label = env\fresh_labels "if.nonnil", "if.nonnil.done"
             code ..= check_nil get_type(@lhs.value), env, tab_reg, nonnil_label, end_label
+
             code ..= env\block nonnil_label, ->
                 ("call $hashmap_set(l #{tab_reg}, l #{key_setter}, l #{value_setter})\n"..
                  "jmp #{end_label}\n")
@@ -1948,8 +2016,45 @@ stmt_compilers =
             return code.."#{lhs_reg} =#{lhs_type.base_type} add #{lhs_reg}, #{rhs_reg}\n"..store_code
         elseif lhs_type == rhs_type and lhs_type\is_a(Types.String)
             return code.."#{lhs_reg} =l call $bl_string_append_string(l #{lhs_reg}, l #{rhs_reg})\n"..store_code
+        elseif lhs_type\is_a(Types.ListType) and rhs_type\is_a(lhs_type.item_type)
+            len,size,items,tmp = env\fresh_locals "len","size","items","tmp"
+            code ..= "\n# Append\n"
+            code ..= "#{len} =l loadl #{lhs_reg}\n"
+            code ..= "#{tmp} =l add #{lhs_reg}, 8\n"
+            code ..= "#{items} =l loadl #{tmp}\n"
+            code ..= "#{len} =l add #{len}, 1\n"
+            code ..= "storel #{len}, #{lhs_reg}\n"
+            code ..= "#{size} =l mul #{len}, #{lhs_type.item_type.bytes}\n"
+            code ..= "#{items} =l call $gc_realloc(l #{items}, l #{size})\n"
+            code ..= "#{tmp} =l add #{lhs_reg}, 8\n"
+            code ..= "storel #{items}, #{tmp}\n"
+            code ..= "#{tmp} =l add #{items}, #{size}\n"
+            code ..= "#{tmp} =l sub #{tmp}, #{lhs_type.item_type.bytes}\n"
+            code ..= "storel #{rhs_reg}, #{tmp}\n"
+            code ..= "\n"
+            return code
         elseif lhs_type == rhs_type and lhs_type\is_a(Types.ListType)
-            return code.."#{lhs_reg} =l call $bl_list_concat(l #{lhs_reg}, l #{rhs_reg})\n"..store_code
+            len1,len2,len3,size,items1,items2,tmp = env\fresh_locals "len1","len2","len3","size","items1","items2","tmp"
+            code ..= "\n# Add Update\n"
+            code ..= "#{len1} =l loadl #{lhs_reg}\n"
+            code ..= "#{tmp} =l add #{lhs_reg}, 8\n"
+            code ..= "#{items1} =l loadl #{tmp}\n"
+            code ..= "#{len2} =l loadl #{rhs_reg}\n"
+            code ..= "#{len3} =l add #{len1}, #{len2}\n"
+            code ..= "#{size} =l mul #{len3}, #{lhs_type.item_type.bytes}\n"
+            code ..= "#{items1} =l call $gc_realloc(l #{items1}, l #{size})\n"
+            p = env\fresh_local "p"
+            code ..= "#{tmp} =l add #{lhs_reg}, 8\n"
+            code ..= "storel #{items1}, #{tmp}\n"
+            code ..= "#{p} =l mul #{len1}, #{lhs_type.item_type.bytes}\n"
+            code ..= "#{p} =l add #{p}, #{items1}\n"
+            code ..= "#{size} =l mul #{len2}, #{lhs_type.item_type.bytes}\n"
+            code ..= "#{tmp} =l add #{rhs_reg}, 8\n"
+            code ..= "#{items2} =l loadl #{tmp}\n"
+            code ..= "call $memcpy(l #{p}, l #{items2}, l #{size})\n"
+            code ..= "storel #{len3}, #{lhs_reg}\n"
+            code ..= "\n"
+            return code
         else
             fn_reg, needs_loading, t2 = get_function_reg @__parent, "add", {lhs_type,rhs_type}, lhs_type
             node_assert fn_reg, @, "addition is not supported for #{lhs_type} and #{rhs_type}"
@@ -2029,12 +2134,7 @@ stmt_compilers =
             "#{lhs_reg} =#{t_lhs.base_type} copy #{rhs_reg}\n"..store_code
         code ..= env\block use_false, ->
             if t_lhs\is_a(Types.Optional)
-                if t_lhs.nonnil\is_a(Types.Int) or t_lhs.nonnil\is_a(Types.Bool)
-                    code ..= "#{lhs_reg} =l copy #{INT_NIL}"..store_code
-                elseif t_lhs.nonnil\is_a(Types.Num) or t_lhs.nonnil.base_type == "d"
-                    code ..= "#{lhs_reg} =d copy #{FLOAT_NIL}"..store_code
-                else
-                    code ..= "#{lhs_reg} =l copy 0"..store_code
+                code ..= set_nil t_lhs, env, lhs_reg
             else
                 code ..= "#{lhs_reg} =l copy 0"..store_code
             code ..= "jmp #{xor_true}\n"

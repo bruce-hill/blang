@@ -20,9 +20,11 @@ static const int64_t INT_NIL = 0x7FFFFFFFFFFFFFFF;
 
 const char *bl_string(const char *s) { return intern_str(s); }
 const char *bl_tostring_int(int64_t i) { RETURN_FMT("%ld", i); }
+const char *bl_tostring_int32(int32_t i) { RETURN_FMT("%d", i); }
 const char *bl_tostring_hex(int64_t i) { RETURN_FMT("0x%lX", i); }
 const char *bl_tostring_char(int64_t c) { RETURN_FMT("%c", (char)c); }
 const char *bl_tostring_float(double f) { RETURN_FMT("%g", f); }
+const char *bl_tostring_float32(float f) { RETURN_FMT("%g", f); }
 const char *bl_tostring_percent(double f) { RETURN_FMT("%g%%", f*100.0); }
 const char *bl_tostring_bool(int64_t b) { return intern_str(b ? "yes" : "no"); }
 const char *bl_tostring_nil(void) { return intern_str("nil"); }

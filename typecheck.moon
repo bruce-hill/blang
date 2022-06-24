@@ -11,6 +11,8 @@ class Type
     contains: (other)=> @ == other
     base_type: 'l'
     abi_type: 'l'
+    bytes: 8
+    nil_value: 0x7FFFFFFFFFFFFFFF
     id_str: => tostring(@)\gsub('[^%w%d.]','')
     __eq: (other)=> type(other) == type(@) and other.__class == @__class and tostring(other) == tostring(@)
     verbose_type: => "#{@}"
@@ -23,11 +25,22 @@ class NamedType extends Type
 Value = NamedType("Value")
 Value.contains = (other)=> true
 Value.is_a = (other)=> other == @
+Value.nil_value = 0
+
+Value32 = NamedType("Value32")
+Value32.contains = (other)=> true
+Value32.is_a = (other)=> other == @
+Value32.base_type = 'w'
+Value32.abi_type = 'w'
+Value32.bytes = 4
+Value32.nil_value = 0
 
 class DerivedType extends Type
     new: (@name, @derived_from)=>
         @base_type = @derived_from.base_type
         @abi_type = @derived_from.abi_type
+        @bytes = @derived_from.bytes
+        @nil_value = @derived_from.nil_value
     __tostring: => @name
     __eq: Type.__eq
     is_a: (cls)=> @ == cls or @derived_from\is_a(cls) or @.__class == cls or cls\contains(@)
@@ -48,6 +61,7 @@ class ListType extends Type
     id_str: => "#{@item_type\id_str!}.List"
     __eq: Type.__eq
     is_a: (cls)=> cls == @ or cls == @__class or (cls.__class == ListType and @item_type\is_a(cls.item_type)) or cls\contains(@) or cls\contains(@)
+    nil_value: 0
 
 class TableType extends Type
     new: (@key_type, @value_type)=>
@@ -56,11 +70,13 @@ class TableType extends Type
     id_str: => "#{@key_type\id_str!}.#{@value_type\id_str!}.Table"
     is_a: (cls)=> cls == @ or cls == @__class or (cls.__class == TableType and @key_type\is_a(cls.key_type) and @value_type\is_a(cls.value_type)) or cls\contains(@)
     __eq: Type.__eq
+    nil_value: 0
 
 class FnType extends Type
     new: (@arg_types, @return_type)=>
     __tostring: => "#{@arg_signature!}=>#{@return_type}"
     __eq: Type.__eq
+    nil_value: 0
     id_str: => "Fn"
     arg_signature: => "(#{concat ["#{a}" for a in *@arg_types], ","})"
     matches: (arg_types, return_type=nil)=>
@@ -75,11 +91,13 @@ class StructType extends Type
     new: (@name, members)=> -- Members: {{type=t, name="Foo"}, {type=t2, name="Baz"}, ...}
         @members_by_name = {}
         @set_members(members) if members
-        @abi_type = ":#{@name}"
+        @abi_type = "l"
+        --":#{@name}"
     set_members: (@members)=>
         for i,m in ipairs @members
             @members_by_name[m.name] = {index: i, type: m.type} if m.name
     __tostring: => "#{@name}"
+    nil_value: 0
     verbose_type: =>
         if @members
             mem_strs = {}
@@ -104,6 +122,7 @@ class OptionalType extends Type
             @nonnil = assert(@nonnil.nonnil)
         @base_type = @nonnil.base_type
         @abi_type = @nonnil.abi_type
+        @nil_value = @nonnil.nil_value
     contains: (other)=> other == @ or other == Nil or (@nonnil and other\is_a(@nonnil))
     __tostring: => @nonnil\is_a(FnType) and "(#{@nonnil})?" or "#{@nonnil}?"
     verbose_type: => @nonnil\is_a(FnType) and "(#{@nonnil\verbose_type!})?" or "#{@nonnil\verbose_type!}?"
@@ -112,26 +131,51 @@ class OptionalType extends Type
 
 class EnumType extends Type
     new: (@name, @fields)=>
+    nil_value: 0
     __tostring: => @name
     id_str: => @name
     __eq: Type.__eq
 
 -- Primitive Types:
 Pointer = NamedType("Pointer")
+Pointer.nil_value = 0
+
 Num = NamedType("Num")
 Num.base_type = 'd'
 Num.abi_type = 'd'
-Int = NamedType("Int", Num)
+Num32 = NamedType("Num32")
+Num32.base_type = 's'
+Num32.abi_type = 's'
+Num32.bytes = 4
+Num32.nil_value = 0x7FFFFFFF
+
+Int = NamedType("Int")
 Int.base_type = 'l'
 Int.abi_type = 'l'
+Int32 = NamedType("Int32")
+Int32.base_type = 'w'
+Int32.abi_type = 'w'
+Int32.bytes = 4
+Int32.nil_value = 0x7FFFFFFF
+
 Percent = DerivedType("Percent", Num)
 
 Void = NamedType("Void")
+
 Bool = NamedType("Bool")
+Bool.base_type = 'w'
+Bool.abi_type = 'b'
+Bool.bytes = 1
+Bool.nil_value = 0x7F
+
 String = NamedType("String")
+String.nil_value = 0
 TypeString = DerivedType("TypeString", String)
 Range = StructType("Range", {{name:"first",type:Int},{name:"next",type:Int},{name:"last",type:Int}})
-primitive_types = {:Value, :Pointer, :Int, :Num, :Void, :Nil, :Bool, :String, :Range, :OptionalType, :Percent, :TypeString}
+Range.item_type = Int
+Range.nil_value = 0
+
+primitive_types = {:Value, :Value32, :Pointer, :Int, :Int32, :Num, :Num32, :Void, :Nil, :Bool, :String, :Range, :OptionalType, :Percent, :TypeString}
 
 tuples = {}
 tuple_index = 1
@@ -300,6 +344,12 @@ get_op_type = (t1, op, t2)=>
         switch op
             when "Add","Sub","Mul","Div","Mod","Pow"
                 return t1
+
+    if op == "Add"
+        if t1\is_a(ListType) and t2\is_a(t1.item_type)
+            return t1
+        elseif t2\is_a(ListType) and t1\is_a(t2.item_type)
+            return t2
 
     if t1 == t2
         if t1\is_a(Int)
@@ -688,5 +738,6 @@ get_type = memoize (node)->
 
 return {
     :parse_type, :get_type, :Type, :NamedType, :ListType, :TableType, :FnType, :StructType,
-    :Value, :Pointer, :Int, :Num, :Percent, :String, :Bool, :Void, :Nil, :Range, :OptionalType, :MeasureType, :TypeString, :EnumType,
+    :Value, :Value32, :Pointer, :Int, :Int32, :Num, :Num32, :Percent, :String, :Bool, :Void, :Nil, :Range,
+    :OptionalType, :MeasureType, :TypeString, :EnumType,
 }

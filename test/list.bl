@@ -10,7 +10,7 @@ L2 := [1.5, 2.5, 3.5, 4.5]
 $puts "L2: $L2"
 x2 := L2[3]
 $puts "L2[3]: $x2"
-L2 | $bl_list_append((99.5):Int)
+L2 += 99.5
 $puts "After append: $L2"
 
 L3 := [[10],[20]]
@@ -25,7 +25,7 @@ L4 := [:Int]
 $puts "Empty: $L4"
 
 $puts "L: $L sliced[2..4]: $(L[2..4])"
-L | $bl_list_append(9999)
+L += 9999
 $puts "After append: $L"
 
 a := [1,2,3,4]
