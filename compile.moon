@@ -917,6 +917,7 @@ for_loop = (env, make_body)=>
                 else
                     code ..= convert_nil(iter_type.key_type, env, i, var_reg)
             elseif iter_type\is_a(Types.Range)
+                -- TODO: optimize to not use function call and just do var=start ... var += step
                 code ..= "#{var_reg} =l call $range_nth(l #{iter_reg}, l #{i})\n"
             else
                 code ..= "#{var_reg} =#{iter_type.item_type.base_type} load#{iter_type.item_type.base_type} #{list_item}\n"
