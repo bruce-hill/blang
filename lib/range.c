@@ -52,3 +52,43 @@ range_t *range_backwards(range_t *src) {
     int64_t step = src->next - src->first;
     return range_new(src->last, src->last - step, src->first);
 }
+
+list_t *bl_list_slice(list_t *list, range_t *r, size_t list_item_size) {
+    list_t *slice = gc_alloc(sizeof(list_t));
+    int64_t first = r->first;
+    int64_t step = r->next - r->first;
+    if (step == 0) return slice;
+    // printf("step: %ld\n", step);
+    int64_t last = r->last;
+    if (step > 0) {
+        if (first > list->len) return slice;
+        if (first < 1) {
+            first = first % step;
+            if (first < 1) first += step;
+        }
+        if (last > list->len) last = list->len;
+        if (last < first) return slice;
+    } else {
+        if (first < 1) return slice;
+        if (first > list->len) {
+            first = list->len - (list->len % -step) + (first % -step);
+            if (first > list->len) first += step;
+        }
+        if (last < 1) last = 1;
+        if (last > first) return slice;
+    }
+    int64_t len = ((last+step) - first) / step;
+    if (len <= 0) len = 0;
+    slice->len = len;
+    if (len > 0) {
+        void *p = gc_alloc(len * list_item_size);
+        slice->items = p;
+        void *src_items = list->items;
+        int64_t actual_len = 0;
+        for (int64_t i = first; step > 0 ? (i <= last) : (i >= last); i += step) {
+            actual_len += 1;
+            p = mempcpy(p, src_items + (i - 1)*list_item_size, list_item_size);
+        }
+    }
+    return slice;
+}

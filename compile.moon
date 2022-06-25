@@ -1351,8 +1351,8 @@ expr_compilers =
             elseif index_type\is_a(Types.Range)
                 slice = env\fresh_local "slice"
                 code ..= nil_guard list_reg, slice, t, ->
-                    code = "#{slice} =l call $gc_alloc(l 16)\n"
-                    -- code ..= "TODO: IMPLEMENT;;;;;\n"
+                    range,code = env\to_reg @index
+                    code ..= "#{slice} =l call $bl_list_slice(l #{list_reg}, l #{range}, l #{t.item_type.bytes})\n"
                     return code
                 return slice,code
             else
