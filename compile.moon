@@ -241,7 +241,7 @@ class Environment
         ret_type = fn_type.return_type
         node_assert fndec.__register, fndec, "Function has no name"
         fn_name = fndec.__register
-        @fn_code ..= "function #{ret_type\is_a(Types.Void) and "" or ret_type.base_type.." "}"
+        @fn_code ..= "\nfunction #{ret_type\is_a(Types.Void) and "" or ret_type.base_type.." "}"
         @fn_code ..= "#{fn_name}(#{concat args, ", "}) {\n@start\n#{body_code}"
         if ret_type\is_a(Types.Void) and not has_jump\match(@fn_code)
             @fn_code ..= "  ret\n"
