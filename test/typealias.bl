@@ -1,5 +1,5 @@
 deftype Foo:Int
-x:Foo= 5
+x := (5):Foo
 
 deftype MyString:String
 s := ("Hello"):MyString

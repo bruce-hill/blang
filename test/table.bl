@@ -1,4 +1,4 @@
-t :{String=Int}= {k=123, v=456}
+t := {k=123, v=456}
 $puts "t = $t"
 $puts "t['k'] = $(t["k"])"
 $puts "t['missing'] = $(t["missing"])"
@@ -25,7 +25,7 @@ for k,v in t
 for val in t
     $puts "Just the value: $val"
 
-t_int :{Int=Int}= {[123]=456, [0]=345, [567]=0}
+t_int := {[123]=456, [0]=345, [567]=0}
 $puts "t_int = $t_int"
 $puts "t_int[0] = $(t_int[0])"
 $puts "t_int[123] = $(t_int[123])"

@@ -1,10 +1,10 @@
 should_nil := yes
-int:Int? = should_nil ? nil; 123
+int := should_nil ? nil; 123
 $puts "$int (Optional(Int) $(int ? "wasn't"; "was") nil)"
-float:Num? = should_nil ? nil; 5.5
+float := should_nil ? nil; 5.5
 $puts "$float (Optional(Num) $(float ? "wasn't"; "was") nil)"
 
-s:String? = should_nil ? nil; "Not nil"
+s := should_nil ? nil; "Not nil"
 $puts "$s (Optional(String) $(s? "wasn't"; "was") nil)"
 $puts(s or "Nah")
 
@@ -17,11 +17,11 @@ def maybe_str(s:String,nil_it:Bool):
     return s
 
 $puts(maybe_str("hi", no) or "XXX")
-foo:String? = maybe_str("hi", no)
+foo:= maybe_str("hi", no)
 
-boolnil:Bool? = nil
-boolyes:Bool? = yes
-boolno:Bool? = no
+boolnil:= (nil):Bool?
+boolyes:= (yes):Bool?
+boolno:= (no):Bool?
 
 t := "truthy"
 f := "falsey"

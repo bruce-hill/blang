@@ -24,7 +24,7 @@ fail "and= gave wrong result" if tmp
 
 def doop():String
     maybe_str := yes ? nil; "ok"
-    x:String = maybe_str or return "Successfully short circuited with return"
+    x := maybe_str or return "Successfully short circuited with return"
     fail "Failed to short circuit"
     return "x"
 
@@ -32,11 +32,11 @@ $puts doop()
 
 for i in 1..5
     maybe_str := yes ? nil; "ok"
-    x:String = maybe_str or stop
+    x := maybe_str or stop
     fail "Failed to short circuit"
 
 $puts "Successfully short circuited with stop"
 
-opt:String? = nil
+opt := (nil):String?
 opt or= "optstring"
 fail unless opt == "optstring"

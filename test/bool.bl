@@ -1,6 +1,6 @@
-x :Bool= yes
+x := yes
 y := x and (1 < 2)
-z :Nil= nil
+z := nil
 
 if x and y and z == nil
     $puts "And pass"
