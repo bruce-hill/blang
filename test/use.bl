@@ -1,9 +1,9 @@
 $puts "'use' is temporarily disabled"
 // $puts "Loading wip..."
-// x := use "modules/testmod" or fail "Failed to load testmod"
+// x := use "modules/testmod"
 // $puts "Fully loaded: $(x.rand)"
 // $puts "Loading wip again..."
-// y := use "modules/testmod" or fail "Failed to load testmod"
+// y := use "modules/testmod"
 // $puts "Fully loaded: $(y.rand)"
 // fail "Module idempotency failed" unless x.rand == y.rand
 
@@ -11,10 +11,10 @@ $puts "'use' is temporarily disabled"
 
 // "blop" | (x.bloop) | $puts
 
-// use "modules/testothermod" or fail "Failed to use testothermod"
+// use "modules/testothermod"
 
 // $puts "$from_othermod"
 // $puts "Call: $(othermod_foo(5))"
 
-// emp := use "modules/emptymod" or fail "Failed to use emptymod"
+// emp := use "modules/emptymod"
 // $puts "$emp"
