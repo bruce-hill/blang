@@ -224,7 +224,7 @@ class Environment
         unless @strings[str]
             name = @fresh_global suggestion
             @strings[str] = name
-            chunks = str\gsub('[^ !#-[^-~]', (c)->"\",b #{c\byte(1)},b\"")\gsub("\n", "\\n")
+            chunks = str\gsub('[^ !#-[^-~%]]', (c)->"\",b #{c\byte(1)},b\"")\gsub("\n", "\\n")
             @string_code ..= "data #{name} = {b\"#{chunks}\",b 0}\n"
         return @strings[str]
 
