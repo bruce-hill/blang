@@ -206,7 +206,6 @@ find_declared_type = (scope, name, arg_signature=nil)->
                 if stmt.__tag == "FnDecl" and stmt.name[0] == name and (not arg_signature or arg_signature == (get_type(stmt) or {arg_signature:->})\arg_signature!)
                     return get_type(stmt)
                 elseif stmt.__tag == "Declaration" and stmt.var[0] == name
-                    return parse_type(stmt.type) if stmt.type
                     return get_type stmt.value
                 elseif stmt.__tag == "Use"
                     -- Naked "use"
@@ -222,6 +221,13 @@ find_declared_type = (scope, name, arg_signature=nil)->
             for a in *scope.args
                 if a.arg[0] == name
                     return parse_type(a.type)
+        when "Clause"
+            if scope.condition.__tag == "Declaration" and scope.condition.var[0] == name
+                t = get_type(scope.condition.value)
+                if t\is_a(OptionalType)
+                    return t.nonnil
+                else
+                    return t
         when "For"
             get_iter_type = ->
                 iter_type = if scope.iterable.__tag == "Var"
@@ -393,6 +399,7 @@ get_type = memoize (node)->
         when "Measure"
             m = Measure(1, node.units[0]\gsub("[<>]",""))
             return MeasureType(m.str)\normalized!
+        when "Declaration" return get_type(node.value)
         when "EnumDeclaration" then return parse_type(node)
         when "Bool" then return Bool
         when "Nil" then return Nil

@@ -20,10 +20,7 @@ get_function_reg = (scope, name, arg_types, return_type=nil)->
                     if t\matches(arg_types, return_type)
                         return node_assert(stmt.__register, stmt, "Function without a name"), false, get_type(stmt)
                 elseif stmt.__tag == "Declaration" and stmt.var[0] == name
-                    t = if stmt.type
-                        parse_type(stmt.type)
-                    else
-                        get_type stmt.value
+                    t = get_type stmt.value
                     if t\is_a(Types.FnType) and t\matches(arg_types, return_type)
                         return stmt.var.__register, false, t
                 elseif stmt.__tag == "Use"
@@ -727,6 +724,8 @@ class Environment
                 while vardec.__parent[i] != vardec
                     i += 1
                 {table.unpack(vardec.__parent, i+1)}
+            elseif vardec.__parent.__tag == "Clause"
+                vardec.__parent.body
             else vardec.__parent
 
             t = vardec.type and parse_type(vardec.type) or get_type(vardec.value)
@@ -1040,6 +1039,10 @@ expr_compilers =
             t = parse_type(@)
             return env\get_string_reg(t\verbose_type!, @[0]), ""
         node_error @, "This variable is not defined"
+    Declaration: (env)=>
+        code = env\compile_stmt @
+        var_reg,var_code = env\to_reg @var
+        return var_reg, code..var_code
     Global: (env)=>
         return "#{@[0]}", ""
     Int: (env)=>
@@ -1078,8 +1081,8 @@ expr_compilers =
                     t = t.nonnil
                 return "#{t.nil_value}",""
 
-            t = if parent.__tag == "Declaration" and parent.type
-                parse_type parent.type
+            t = if parent.__tag == "Declaration"
+                get_type parent.value
             elseif parent.__tag == "Assignment"
                 get_type parent.lhs
             elseif parent.__tag == "StructField"
@@ -1103,7 +1106,7 @@ expr_compilers =
                     tab = tab.__parent
                 table_type = get_type(tab)
                 child == entry.key and table_type.key_type or table_type.value_type
-            elseif parent.__tag == "FnDecl" or parent.__tag == "Lambda" or parent.__tag == "Declaration"
+            elseif parent.__tag == "FnDecl" or parent.__tag == "Lambda"
                 break
             else
                 get_type(parent)
@@ -1894,21 +1897,12 @@ stmt_compilers =
             code ..= "#{done_label}\n"
         return code
     Declaration: (env)=>
-        varname = "%#{@var[0]}"
-        -- node_assert not env.used_names[varname], @var, "Variable being shadowed: #{varname}"
-        env.used_names[varname] = true
         value_type = get_type @value
-        decl_type = value_type
-        if @type
-            decl_type = Types.parse_type @type
-            node_assert value_type, @value, "Can't infer the type of this value"
-            node_assert value_type\is_a(decl_type) or decl_type\is_a(value_type), @value, "Assignment value is type #{value_type}, not declared type #{decl_type}"
-        node_assert decl_type, @, "Cannot infer type"
         val_reg,code = env\to_reg @value
         if @var.__register
-            code ..= "#{@var.__register} =#{decl_type.base_type} copy #{val_reg}\n"
+            code ..= "#{@var.__register} =#{value_type.base_type} copy #{val_reg}\n"
         elseif @var.__location
-            code ..= "store#{decl_type.base_type} #{val_reg}, #{@var.__location}\n"
+            code ..= "store#{value_type.base_type} #{val_reg}, #{@var.__location}\n"
         else
             node_error @var, "Undefined variable"
         return code

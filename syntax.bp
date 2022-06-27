@@ -112,7 +112,7 @@ line-statement: (
   / Assignment / AddUpdate / SubUpdate / MulUpdate / DivUpdate / AndUpdate / OrUpdate / XorUpdate / ButWithUpdate / MethodCallUpdate
   / extended-expr) _ [comment]
 Fail:: \b"fail"\b _ [@message=extended-expr]
-Declaration:: @var=Var _`: _[@type=type_] `= _ @value=required-extended-expr
+Declaration:: @var=Var _":=" _ @value=required-extended-expr
 TypeDeclaration:: \b"deftype"\b _ @name=@:NamedType=(id) _ `: _ @derivesFrom=(type / @:ParseError=(..$ =>"Not a valid type"))
 UnitDeclaration:: \b"unit"\b _ @name=@:NamedType=(id) _ `= _ @measure=Measure
 StructDeclaration:: \b"struct"\b _ (StructType / @:ParseError=((braces /..$) =>"Not a valid struct declaration"))
@@ -159,8 +159,8 @@ nonoptional-type: (
 )
 StructType:: @name=[id] _ `{__ @members=@(*@:StructField=([@name=FieldName_`:]_@type=type) % ((__`,__/__)~(`,/\n))) [__`,] __`}
 If:: \b"if"\b @curdent:\C _ (
-    @:Clause=(@condition=required-extended-expr [_comment] @body=indentedBlock)
-    *@:Clause=(nl curdent \b"elseif"\b _ @condition=required-extended-expr [_comment] @body=indentedBlock)
+    @:Clause=(@condition=(Declaration / required-extended-expr) [_comment] @body=indentedBlock)
+    *@:Clause=(nl curdent \b"elseif"\b _ @condition=(Declaration / required-extended-expr) [_comment] @body=indentedBlock)
     [nl curdent \b"else"\b [_comment] @elseBody=maybeIndentedBlock]
 )
 Do:: \b"do"\b @curdent:\C _ [_comment] maybeIndentedBlock *(nl curdent \b"else"\b [_comment] maybeIndentedBlock)
