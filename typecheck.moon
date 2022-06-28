@@ -309,7 +309,13 @@ parse_type = memoize (type_node)->
         when "StructType"
             t = StructType(type_node.name[0])
             type_node.__type = t
-            t\set_members [{name: m.name[0], type: parse_type(m.type)} for m in *type_node.members when m.name]
+            members = {}
+            for m in *type_node.members
+                continue unless m.names
+                mt = parse_type(m.type)
+                for name in *m.names
+                    table.insert members, {name: name[0], type: mt}
+            t\set_members members
             return t
         when "EnumDeclaration"
             return EnumType(type_node.name[0], [f[0] for f in *type_node])

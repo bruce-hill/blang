@@ -43,8 +43,7 @@ $puts "Equality: $(Vec{1,1} == Vec{1,1})"
 // Recursive struct
 struct Tree {
     value:Int
-    left:Tree?
-    right:Tree?
+    left,right:Tree?
 }
 
 t := Tree{5, Tree{0, nil, nil}, nil}
