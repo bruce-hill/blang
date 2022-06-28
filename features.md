@@ -453,7 +453,7 @@ safety guarantees. The compiler allows normal math operations between
 percentages (adding, multiplying, etc.) but treats addition and subtraction
 between percentages and non-percentages as a type error (e.g. `5% + 10.0`).
 Multiplying percentages by numbers or units of measure produces something of
-the same type, as you would expect, so `50%*10.0<km> + 2.0<km> == 7.0<km>"`
+the same type, as you would expect, so `50%*10.0<km> + 2.0<km> == 7.0<km>`
 
 To be frank, percentages are a bit of a gimmicky language feature, but they
 were easy to add and interesting as an experiment.
