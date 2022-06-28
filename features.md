@@ -204,8 +204,7 @@ l.next.next.next.next.value = 99 // no-op
 (l.next.next.next.next or fail).value = 99 // failure
 
 // Or check this way:
-dest := l.next.next.next.next
-if dest
+if dest := l.next.next.next.next
     dest.value = 99
 else
     handle_error()
