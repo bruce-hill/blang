@@ -72,17 +72,42 @@ class TableType extends Type
     __eq: Type.__eq
     nil_value: 0
 
+dbg = (t)->
+    if type(t) == 'table'
+        "{#{concat [dbg(k).."="..dbg(v) for k,v in pairs(t)], ", "}}"
+    else
+        tostring(t)
+
 class FnType extends Type
-    new: (@arg_types, @return_type)=>
+    new: (@arg_types, @return_type, @arg_names=nil)=>
     __tostring: => "#{@arg_signature!}=>#{@return_type}"
     __eq: Type.__eq
     nil_value: 0
     id_str: => "Fn"
     arg_signature: => "(#{concat ["#{a}" for a in *@arg_types], ","})"
     matches: (arg_types, return_type=nil)=>
-        return false unless #arg_types == #@arg_types
-        for i=1,#arg_types
-            return false unless arg_types[i]\is_a(@arg_types[i])
+        if @arg_names
+            unmatched = {name,@arg_types[i] for i,name in ipairs @arg_names}
+            for name,t in pairs arg_types
+                continue unless type(name) == 'string'
+                return false unless unmatched[name] and t\is_a(unmatched[name])
+                unmatched[name] = nil
+
+            i,j = 1,1
+            while i <= #arg_types and j <= #@arg_names
+                t = unmatched[@arg_names[j]]
+                if t
+                    return false unless arg_types[i]\is_a(t)
+                    unmatched[@arg_names[j]] = nil
+                    i += 1
+                j += 1
+                
+            return false if next(unmatched)
+        else
+            return false unless #arg_types == #@arg_types
+            for i=1,#arg_types
+                return false unless arg_types[i]\is_a(@arg_types[i])
+
         if return_type
             return false unless @return_type\is_a(return_type)
         return true
@@ -232,13 +257,13 @@ find_returns = (node)->
             for k,child in pairs node
                 find_returns(child) if type(child) == 'table' and not (type(k) == 'string' and k\match("^__"))
 
-find_declared_type = (scope, name, arg_signature=nil)->
+find_declared_type = (scope, name, arg_types=nil, return_type=nil)->
     return nil unless scope
     switch scope.__tag
         when "Block"
             for i=#scope,1,-1
                 stmt = scope[i]
-                if stmt.__tag == "FnDecl" and stmt.name[0] == name and (not arg_signature or arg_signature == (get_type(stmt) or {arg_signature:->})\arg_signature!)
+                if stmt.__tag == "FnDecl" and stmt.name[0] == name and (not arg_types or get_type(stmt)\matches(arg_types,return_type))
                     return get_type(stmt)
                 elseif stmt.__tag == "Declaration" and stmt.var[0] == name
                     return get_type stmt.value
@@ -246,9 +271,9 @@ find_declared_type = (scope, name, arg_signature=nil)->
                     -- Naked "use"
                     t = get_module_type(stmt.name[0])
                     mem = t.members[name]
-                    if mem and not arg_signature
+                    if mem and not arg_types
                         return mem.type
-                    elseif mem and mem.type\is_a(FnType) and ("#{mem.type}" == arg_signature or mem.type\arg_signature! == arg_signature)
+                    elseif mem and mem.type\is_a(FnType) and mem.type\matches(arg_types,return_type)
                         return mem.type
         when "Macro"
             return nil
@@ -266,7 +291,7 @@ find_declared_type = (scope, name, arg_signature=nil)->
         when "For"
             get_iter_type = ->
                 iter_type = if scope.iterable.__tag == "Var"
-                    find_declared_type(scope.__parent, scope.iterable[0])
+                    find_declared_type(scope.__parent, scope.iterable[0], arg_types, return_type)
                 else get_type(scope.iterable)
 
                 node_assert iter_type, scope.iterable, "Can't determine the type of this variable"
@@ -292,10 +317,10 @@ find_declared_type = (scope, name, arg_signature=nil)->
     if scope.__parent and (scope.__parent.__tag == "For" or scope.__parent.__tag == "While" or scope.__parent.__tag == "Repeat")
         loop = scope.__parent
         if scope == loop.between
-            t = find_declared_type(loop.body, name, arg_signature)
+            t = find_declared_type(loop.body, name, arg_types, return_type)
             return t if t
             
-    return find_declared_type(scope.__parent, name, arg_signature)
+    return find_declared_type(scope.__parent, name, arg_types, return_type)
 
 find_type_alias = (scope, name)->
     while scope
@@ -421,7 +446,7 @@ get_op_type = (t1, op, t2)=>
 
     overload_names = Add:"add", Sub:"subtract", Mul:"multiply", Div:"divide", Mod:"modulus", Pow:"raise"
     return unless overload_names[op]
-    overload = find_declared_type @, overload_names[op], "(#{t1},#{t2})"
+    overload = find_declared_type @, overload_names[op], {t1,t2}
     return overload.return_type if overload
 
 load_module = memoize (path)->
@@ -701,7 +726,8 @@ get_type = memoize (node)->
         when "Lambda","FnDecl"
             decl_ret_type = node.return and parse_type(node.return)
             if node.__pending == true
-                return decl_ret_type and FnType([parse_type a.type for a in *node.args], decl_ret_type) or nil
+                return nil unless decl_ret_type
+                return FnType([parse_type a.type for a in *node.args], decl_ret_type, [a.arg[0] for a in *node.args])
             node.__pending = true
             node_assert node.body.__tag == "Block", node.body, "Expected function body to be a block, not #{node.body.__tag or '<untagged>'}"
             ret_type = nil
@@ -746,7 +772,7 @@ get_type = memoize (node)->
             elseif decl_ret_type
                 node_assert decl_ret_type == ret_type, node, "Conflicting return types: #{decl_ret_type} vs #{ret_type}"
             node.__pending = nil
-            return FnType([parse_type a.type for a in *node.args], ret_type)
+            return FnType([parse_type a.type for a in *node.args], ret_type, [a.arg[0] for a in *node.args])
         when "Var"
             if find_type_alias node, node[0]
                 return TypeString
@@ -762,8 +788,14 @@ get_type = memoize (node)->
         when "FnCall"
             return parse_type(node.type) if node.type
             fn_type = if node.fn.__tag == "Var"
-                target_sig = "(#{concat [tostring(get_type(a)) for a in *node], ","})"
-                find_declared_type node, node.fn[0], target_sig
+                arg_types = {}
+                for arg in *node
+                    if arg.__tag == "KeywordArg"
+                        arg_types[arg.name[0]] = get_type(arg.value)
+                    else
+                        table.insert arg_types, get_type(arg)
+                find_declared_type node, node.fn[0], arg_types
+
             else
                 get_type node.fn
             node_assert fn_type or node.__parent.__tag == "Block", node, "This function's return type cannot be inferred. It must be specified manually using a type annotation"

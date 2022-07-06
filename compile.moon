@@ -705,7 +705,12 @@ class Environment
                         if (var.__register and var.__register\match("^%$")) or var.__location
                             hook_up_refs var, node.body, var_type
                     when "FnCall","MethodCall","MethodCallUpdate"
-                        arg_types = [get_type(a) for a in *node]
+                        arg_types = {}
+                        for arg in *node
+                            if arg.__tag == "KeywordArg"
+                                arg_types[arg.name[0]] = get_type(arg.value)
+                            else
+                                table.insert arg_types, get_type(arg)
                         if var_type and var_type\is_a(Types.FnType) and var_type\matches(arg_types)
                             hook_up_refs var, {node.fn}, var_type
                         hook_up_refs var, {table.unpack(node)}, var_type
@@ -1864,23 +1869,53 @@ expr_compilers =
         fn_type = get_type @fn
         fn_reg,code = env\to_reg @fn
 
+        local arg_list
         if fn_type
             node_assert fn_type\is_a(Types.FnType), @fn, "This is not a function, it's a #{fn_type or "???"}"
-            node_assert fn_type\matches([get_type(a) for a in *@]), @,
-                "This function is being called with #{@fn[0]}(#{concat ["#{get_type(a)}" for a in *@], ", "}) but is defined as #{fn_type}"
+            arg_types,arg_text = {},{}
+            for arg in *@
+                if arg.__tag == "KeywordArg"
+                    arg_types[arg.name[0]] = get_type(arg.value)
+                    table.insert arg_text, "#{arg.name[0]}=#{get_type arg.value}"
+                else
+                    table.insert arg_types, get_type(arg)
+                    table.insert arg_text, "#{get_type arg}"
+            node_assert fn_type\matches(arg_types), @,
+                "This function is being called with #{@fn[0]}(#{concat arg_text, ", "}) but is defined as #{fn_type}"
 
-        args = {}
-        for arg in *@
-            arg_reg, arg_code = env\to_reg arg
-            code ..= arg_code
-            table.insert args, "#{get_type(arg).base_type} #{arg_reg}"
+            kw_args = {}
+            pos_args = {}
+            for arg in *@
+                if arg.__tag == "KeywordArg"
+                    arg_reg, arg_code = env\to_reg arg.value
+                    code ..= arg_code
+                    kw_args[arg.name[0]] = arg_reg
+                else
+                    arg_reg, arg_code = env\to_reg arg
+                    code ..= arg_code
+                    table.insert pos_args, arg_reg
+
+            if fn_type.arg_names
+                arg_list = {}
+                assert fn_type.arg_names, "No arg names: #{fn_type}"
+                for i,name in ipairs fn_type.arg_names
+                    arg_reg = kw_args[name] or table.remove(pos_args, 1)
+                    table.insert arg_list, "#{fn_type.arg_types[i].base_type} #{arg_reg}"
+
+        if not arg_list
+            arg_list = {}
+            for arg in *@
+                node_assert arg.__tag != "KeywordArg", arg, "Keyword arguments are not allowed here"
+                arg_reg, arg_code = env\to_reg arg
+                code ..= arg_code
+                table.insert arg_list, "#{get_type(arg).base_type} #{arg_reg}"
 
         if skip_ret
-            return nil, "#{code}call #{fn_reg}(#{concat args, ", "})\n"
+            return nil, "#{code}call #{fn_reg}(#{concat arg_list, ", "})\n"
 
         ret_reg = env\fresh_local "return"
         ret_type = fn_type and fn_type.return_type or get_type(@)
-        code ..= "#{ret_reg} =#{ret_type.base_type} call #{fn_reg}(#{concat args, ", "})\n"
+        code ..= "#{ret_reg} =#{ret_type.base_type} call #{fn_reg}(#{concat arg_list, ", "})\n"
         return ret_reg, code
 
     MethodCall: (env, skip_ret=false)=> expr_compilers.FnCall(@, env, skip_ret)
