@@ -505,7 +505,7 @@ class Environment
             code ..= "#{name} =l add $#{t\id_str!}.member_names, #{offset}\n"
             code ..= "#{dest} =l loadl #{name}\n"
             code ..= "#{dest} =l call $CORD_cat(l #{@get_string_reg "[", "lsq"}, l #{dest})\n"
-            code ..= "#{dest} =l call $CORD_cat(l #{dest}, l #{@get_string_reg '] ', "rsq_space"})\n"
+            code ..= "#{dest} =l call $CORD_cat(l #{dest}, l #{@get_string_reg ']', "rsq"})\n"
             code ..= "#{val_loc} =l add #{reg}, 8\n"
             next_check,done_label = @fresh_labels "check.member","done"
             for name,info in pairs t.members
@@ -1444,6 +1444,26 @@ expr_compilers =
                 loc = env\fresh_local "member.loc"
                 code = "#{loc} =l add #{struct_reg}, #{member.offset}\n"
                 return code.."#{ret} =#{member.type.base_type} load#{member.type.base_type} #{loc}\n"
+            return ret,code
+        elseif t\is_a(Types.UnionType)
+            node_assert @index.__tag == "FieldName", @, "Not a valid union field name"
+            member_name = @index[0]
+            member = node_assert t.members[member_name], @index, "Not a valid union member of #{t\verbose_type!}"
+            union_reg, code = env\to_reg @value
+            is_member,tag,ret = env\fresh_locals "is.member","tag","ret"
+            code ..= "#{tag} =l loadl #{union_reg}\n"
+            code ..= "#{is_member} =w ceq#{member.type.base_type} #{tag}, #{member.index}\n"
+            if_tag,use_nil,done = env\fresh_labels "if.tag","use.nil","done"
+            code ..= "jnz #{is_member}, #{if_tag}, #{use_nil}\n"
+            code ..= env\block if_tag, ->
+                value_loc = env\fresh_local "value.loc"
+                code = "#{value_loc} =l add #{union_reg}, 8\n"
+                code ..= "#{ret} =#{member.type.base_type} load#{member.type.abi_type} #{value_loc}\n"
+                code ..= "jmp #{done}\n"
+                return code
+            code ..= env\block use_nil, ->
+                set_nil(member.type, env, ret).."jmp #{done}\n"
+            code ..= "#{done}\n"
             return ret,code
         elseif t\is_a(Types.Range)
             index_type = get_type(@index)

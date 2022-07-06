@@ -572,8 +572,8 @@ get_type = memoize (node)->
                 node_assert node.index.__tag == "FieldName", node, "Not a union field"
                 member_name = node.index[0]
                 node_assert t.members[member_name], node.index, "Not a valid union member of #{t}"
-                ret_type = t.members[member_name]
-                return OptionalType(ret_type)
+                member = t.members[member_name]
+                return OptionalType(member.type)
             elseif t\is_a(String)
                 index_type = get_type(node.index, vars)
                 if index_type == Int
