@@ -1900,6 +1900,9 @@ expr_compilers =
                 assert fn_type.arg_names, "No arg names: #{fn_type}"
                 for i,name in ipairs fn_type.arg_names
                     arg_reg = kw_args[name] or table.remove(pos_args, 1)
+                    if not arg_reg
+                        arg_reg = env\fresh_local name
+                        code ..= set_nil fn_type.arg_types[i], env, arg_reg
                     table.insert arg_list, "#{fn_type.arg_types[i].base_type} #{arg_reg}"
 
         if not arg_list

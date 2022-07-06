@@ -78,6 +78,7 @@ dbg = (t)->
     else
         tostring(t)
 
+local OptionalType
 class FnType extends Type
     new: (@arg_types, @return_type, @arg_names=nil)=>
     __tostring: => "#{@arg_signature!}=>#{@return_type}"
@@ -102,7 +103,8 @@ class FnType extends Type
                     i += 1
                 j += 1
                 
-            return false if next(unmatched)
+            for _,t in pairs unmatched
+                return false unless t\is_a(OptionalType)
         else
             return false unless #arg_types == #@arg_types
             for i=1,#arg_types
@@ -795,7 +797,6 @@ get_type = memoize (node)->
                     else
                         table.insert arg_types, get_type(arg)
                 find_declared_type node, node.fn[0], arg_types
-
             else
                 get_type node.fn
             node_assert fn_type or node.__parent.__tag == "Block", node, "This function's return type cannot be inferred. It must be specified manually using a type annotation"
