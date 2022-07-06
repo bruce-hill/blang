@@ -1,0 +1,21 @@
+union Foo {
+    x,y:Int
+    z:String
+}
+
+def show(foo:Foo):
+    $puts "$foo: .x=$(foo.x) .y=$(foo.y) .z=$(foo.z)"
+    if x := foo.x
+        $puts "It was an x: $x"
+    elseif y := foo.y
+        $puts "It was a y: $y"
+    elseif z := foo.z
+        $puts "It was a z: $z"
+
+def doop():
+    tmp := @Foo.z "hi"
+    show(@Foo.x 5)
+    show(@Foo.y 6)
+    show(@Foo.z "Hello")
+
+doop()
