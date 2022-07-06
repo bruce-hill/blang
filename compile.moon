@@ -25,7 +25,7 @@ get_function_reg = (scope, name, arg_types, return_type=nil)->
                         return stmt.var.__register, false, t
                 elseif stmt.__tag == "Use"
                     mod_type = get_type(stmt)
-                    mem = mod_type.nonnil.members_by_name[name]
+                    mem = mod_type.nonnil.members[name]
                     if mem and mem.type\is_a(Types.FnType) and mem.type\matches(arg_types, return_type)
                         t = stmt.orElse and mem.type or OptionalType(mem.type)
                         return mem.__location, true, t
@@ -303,10 +303,10 @@ class Environment
             code ..= @block init_fields, ->
                 code = ""
                 for i,field in ipairs(t.fields)
-                    str = @fresh_local "str"
-                    code ..= "#{str} =l call $bl_string(l #{@get_string_reg "#{t.name}.#{field}", "#{t.name}.#{field}"})\n"
+                    -- str = @fresh_local "str"
+                    -- code ..= "#{str} =l call $bl_string(l #{@get_string_reg "#{t.name}.#{field}", "#{t.name}.#{field}"})\n"
                     code ..= "#{tmp} =l add $#{t\id_str!}.fields, #{8*(i-1)}\n"
-                    code ..= "storel #{str}, #{tmp}\n"
+                    code ..= "storel #{@get_string_reg "#{t.name}.#{field}", "#{t.name}.#{field}"}, #{tmp}\n"
                 code ..= "jmp #{fields_exist}\n"
                 return code
 
@@ -443,8 +443,8 @@ class Environment
                 code ..= "#{p} =l add #{new_callstack}, 8\n"
                 code ..= "storel #{reg}, #{p}\n"
                 chunks = @fresh_local "chunks"
-                code ..= "#{chunks} =l alloc8 #{8*#t.members}\n"
-                for i,mem in ipairs t.members
+                code ..= "#{chunks} =l alloc8 #{8*#t.sorted_members}\n"
+                for i,mem in ipairs t.sorted_members
                     member_loc = @fresh_local "#{t\id_str!\lower!}.#{mem.name}.loc"
                     code ..= "#{member_loc} =l add #{reg}, #{8*(i-1)}\n"
                     member_reg = @fresh_local "#{t\id_str!\lower!}.#{mem.name}"
@@ -460,7 +460,7 @@ class Environment
                     chunk_loc = @fresh_local "string.chunk.loc"
                     code ..= "#{chunk_loc} =l add #{chunks}, #{8*(i-1)}\n"
                     code ..= "storel #{member_str}, #{chunk_loc}\n"
-                code ..= "#{content} =l call $bl_string_join(l #{#t.members}, l #{chunks}, l #{@get_string_reg(", ", "comma.space")})\n"
+                code ..= "#{content} =l call $bl_string_join(l #{#t.sorted_members}, l #{chunks}, l #{@get_string_reg(", ", "comma.space")})\n"
                 code ..= "jmp #{conclusion}\n"
                 return code
 
@@ -479,6 +479,51 @@ class Environment
                 code ..= "storel #{@get_string_reg("}","closecurly")}, #{chunk_loc}\n"
                 code ..= "#{dest} =l call $bl_string_join(l 3, l #{final_chunks}, l 0)\n"
                 return code
+
+        elseif t\is_a(Types.UnionType)
+            init_fields,fields_exist = @fresh_labels "make_fields", "fields_exist"
+            tmp = @fresh_local "fieldname"
+            code ..= "#{tmp} =l loadl $#{t\id_str!}.member_names\n"
+            code ..= "jnz #{tmp}, #{fields_exist}, #{init_fields}\n"
+            code ..= @block init_fields, ->
+                code = ""
+                for name,info in pairs t.members
+                    -- str = @fresh_local "str"
+                    -- code ..= "#{str} =l call $bl_string(l #{@get_string_reg "#{t.name}.#{name}", "#{t.name}.#{name}"})\n"
+                    code ..= "#{tmp} =l add $#{t\id_str!}.member_names, #{(info.index-1)*8}\n"
+                    code ..= "storel #{@get_string_reg "#{t.name}.#{name}", "#{t.name}.#{name}"}, #{tmp}\n"
+                code ..= "jmp #{fields_exist}\n"
+                return code
+
+            code ..= "#{fields_exist}\n"
+
+            tag,offset,val,tmp,name,is_tag = @fresh_locals "tag","offset","val","tmp","name","is_tag"
+            val_loc = @fresh_local "val.loc"
+            code ..= "#{tag} =l loadl #{reg}\n"
+            code ..= "#{offset} =l sub #{tag}, 1\n"
+            code ..= "#{offset} =l mul #{offset}, 8\n"
+            code ..= "#{name} =l add $#{t\id_str!}.member_names, #{offset}\n"
+            code ..= "#{dest} =l loadl #{name}\n"
+            code ..= "#{dest} =l call $CORD_cat(l #{@get_string_reg "[", "lsq"}, l #{dest})\n"
+            code ..= "#{dest} =l call $CORD_cat(l #{dest}, l #{@get_string_reg '] ', "rsq_space"})\n"
+            code ..= "#{val_loc} =l add #{reg}, 8\n"
+            next_check,done_label = @fresh_labels "check.member","done"
+            for name,info in pairs t.members
+                check,next_check = next_check, @fresh_label "check.member"
+                found_member = @fresh_label "found.member"
+                code ..= @block check, ->
+                    code = "#{is_tag} =w ceq#{info.type.base_type} #{tag}, #{info.index}\n"
+                    code ..= "jnz #{is_tag}, #{found_member}, #{next(t.members, name) and next_check or done_label}\n"
+                    return code
+                code ..= @block found_member, ->
+                    code = "#{val} =#{info.type.base_type} load#{info.type.abi_type} #{val_loc}\n"
+                    code ..= "#{tmp} =l call #{@get_tostring_fn info.type, scope}(#{info.type.base_type} #{val}, l #{callstack})\n"
+                    code ..= "#{dest} =l call $CORD_cat(l #{dest}, l #{tmp})\n"
+                    code ..= "jmp #{done_label}\n"
+                    return code
+            code ..= "#{done_label}\n"
+            code ..= "#{dest} =l call $CORD_to_const_char_star(l #{dest})\n"
+            code ..= "#{dest} =l call $bl_string(l #{dest})\n"
 
         elseif t\is_a(Types.FnType)
             code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("#{t}")})\n"
@@ -599,7 +644,7 @@ class Environment
                 node_assert declared_structs[t.name] == t, s, "Struct declaration shadows"
                 continue
             declared_structs[t.name] = t
-            @type_code ..= "type :#{t.name} = {#{concat [m.type.base_type for m in *t.members], ","}}\n"
+            @type_code ..= "type :#{t.name} = {#{concat [m.type.base_type for m in *t.sorted_members], ","}}\n"
 
         -- Declared units:
         for u in coroutine.wrap(-> each_tag(ast, "UnitDeclaration"))
@@ -613,6 +658,13 @@ class Environment
             assert t\is_a(Types.EnumType), "#{t}"
             fieldnames = "$#{t\id_str!}.fields"
             @type_code ..= "data #{fieldnames} = {#{("l 0,")\rep(#t.fields)}}\n"
+
+        -- Union field names
+        for u in coroutine.wrap(-> each_tag(ast, "UnionDeclaration"))
+            t = parse_type(u)
+            assert t\is_a(Types.UnionType), "#{t}"
+            fieldnames = "$#{t\id_str!}.member_names"
+            @type_code ..= "data #{fieldnames} = {#{concat ["l 0" for _ in pairs t.members], ", "}}\n"
 
         @used_names["args"] = true
         for v in coroutine.wrap(-> each_tag(ast, "Var"))
@@ -663,15 +715,16 @@ class Environment
         for glob in coroutine.wrap(-> each_tag(ast, "Global"))
             glob.__register = glob[0]
 
-        for s in coroutine.wrap(-> each_tag(ast, "StructDeclaration"))
+        for s in coroutine.wrap(-> each_tag(ast, "StructDeclaration", "UnionDeclaration"))
             scope = if s.__parent.__tag == "Block"
                 i = 1
                 while s.__parent[i] != s
                     i += 1
                 {table.unpack(s.__parent, i+1)}
             else s.__parent
-            var = {__tag:"Var", [0]: s[1].name[0], __location: @get_string_reg(s[1].name[0], "typestring"), __parent:s.__parent}
-            hook_up_refs var, scope, parse_type(s[1])
+            t = s[1] or s.type
+            var = {__tag:"Var", [0]: t.name[0], __location: @get_string_reg(t.name[0], "typestring"), __parent:s.__parent}
+            hook_up_refs var, scope, parse_type(t)
 
         -- Compile modules:
         for use in coroutine.wrap(-> each_tag(ast, "Use"))
@@ -709,7 +762,7 @@ class Environment
             scope = {table.unpack(use.__parent, i+1)}
             mod_type = get_type(use)
             use.__imports = {}
-            for i,mem in ipairs (mod_type.nonnil or mod_type).members
+            for i,mem in ipairs((mod_type.nonnil or mod_type).sorted_members)
                 loc = @fresh_global "#{use.name[0]}.#{mem.name}"
                 t = use.orElse and mem.type or Types.OptionalType(mem.type)
                 pseudo_var = setmetatable({[0]: mem.name, __tag:"Var", __type: t, __location: loc, __from_use:true}, getmetatable(use))
@@ -1091,12 +1144,12 @@ expr_compilers =
                     parent = parent.__parent
                 struct_type = get_type parent
                 if field.name
-                    struct_type.members_by_name[field.name].type
+                    struct_type.members[field.name].type
                 else
                     field_type = nil
                     for i,f in ipairs field.__parent
                         if f == field
-                            field_type = struct_type.members[i].type
+                            field_type = node_assert(struct_type.members[i] or struct_type.sorted_members[i], @, "Not a #{struct_type} field").type
                             break
                     field_type
             elseif parent.__tag == "TableEntry"
@@ -1375,22 +1428,22 @@ expr_compilers =
 
             return value_reg,code
         elseif t\is_a(Types.StructType)
-            i,member_type = if @index.__tag == "FieldName"
+            member = if @index.__tag == "FieldName"
                 member_name = @index[0]
-                node_assert t.members_by_name[member_name], @index, "Not a valid struct member of #{t}"
-                t.members_by_name[member_name].index, t.members_by_name[member_name].type
+                node_assert t.members[member_name], @index, "Not a valid struct member of #{t}"
+                t.members[member_name]
             elseif @index.__tag == "Int"
                 i = tonumber(@index[0])
                 node_assert 1 <= i and i <= #t.members, @index, "#{t} only has members between 1 and #{#t.members}"
-                i, t.members[i].type
+                t.members[i]
             else
                 node_error @index, "Structs can only be indexed by a field name or Int literal"
             struct_reg,code = env\to_reg @value
             ret = env\fresh_local "member"
-            code ..= nil_guard struct_reg, ret, member_type, ->
+            code ..= nil_guard struct_reg, ret, member.type, ->
                 loc = env\fresh_local "member.loc"
-                code = "#{loc} =l add #{struct_reg}, #{8*(i-1)}\n"
-                return code.."#{ret} =#{member_type.base_type} load#{member_type.base_type} #{loc}\n"
+                code = "#{loc} =l add #{struct_reg}, #{member.offset}\n"
+                return code.."#{ret} =#{member.type.base_type} load#{member.type.base_type} #{loc}\n"
             return ret,code
         elseif t\is_a(Types.Range)
             index_type = get_type(@index)
@@ -1706,28 +1759,23 @@ expr_compilers =
         elseif t\is_a(Types.StructType)
             lhs_reg,code = env\to_reg @base
             ret = env\fresh_local "#{t.name\lower!}.butwith"
-            struct_size = 8*#t.members
+            struct_size = 8*#t.sorted_members
             code ..= "#{ret} =l call $gc_alloc(l #{struct_size})\n"
             code ..= "call $memcpy(l #{ret}, l #{lhs_reg}, l #{struct_size})\n"
             p = env\fresh_local "#{t.name\lower!}.butwith.member.loc"
-            used = {}
             for override in *@
-                i = if override.index
-                    tonumber(override.index[0])
+                member = if override.index
+                    t.members[tonumber(override.index[0])]
                 elseif override.field
-                    t.members_by_name[override.field[0]].index
+                    t.members[override.field[0]]
                 else
                     node_error override, "I don't know what this is"
 
-                node_assert not used[i], override, "Redundant value, this field is already being overwritten"
-                used[i] = true
-
-                node_assert 1 <= i and i <= #t.members, override, "Not a valid member of #{t}"
-                node_assert get_type(override.value)\is_a(t.members[i].type), override.value, "Not a #{t.members[i].type}"
+                node_assert get_type(override.value)\is_a(member.type), override.value, "Not a #{member.type}"
                 val_reg,val_code = env\to_reg override.value
                 code ..= val_code
-                code ..= "#{p} =l add #{ret}, #{8*(i-1)}\n"
-                code ..= "store#{t.members[i].type.base_type} #{val_reg}, #{p}\n"
+                code ..= "#{p} =l add #{ret}, #{member.offset}\n"
+                code ..= "store#{member.type.base_type} #{val_reg}, #{p}\n"
 
             -- code ..= "#{ret} =l call $intern_bytes(l #{ret}, l #{struct_size})\n"
             return ret, code
@@ -1736,30 +1784,30 @@ expr_compilers =
     Less: (env)=>
         t = get_type(@lhs)
         if t\is_a(Types.Int) or t\is_a(Types.String)
-            return comparison @, env, "csltl"
+            return comparison @, env, "cslt#{t.base_type}"
         elseif t\is_a(Types.Num)
-            return comparison @, env, "cltd"
+            return comparison @, env, "clt#{t.base_type}"
         else node_error @, "Comparison is not supported for #{t}"
     LessEq: (env)=>
         t = get_type(@lhs)
         if t\is_a(Types.Int) or t\is_a(Types.String)
-            return comparison @, env, "cslel"
+            return comparison @, env, "csle#{t.base_type}"
         elseif t\is_a(Types.Num)
-            return comparison @, env, "cled"
+            return comparison @, env, "cle#{t.base_type}"
         else node_error @, "Comparison is not supported for #{t}"
     Greater: (env)=>
         t = get_type(@lhs)
         if t\is_a(Types.Int) or t\is_a(Types.String)
-            return comparison @, env, "csgtl"
+            return comparison @, env, "csgt#{t.base_type}"
         elseif t\is_a(Types.Num)
-            return comparison @, env, "cgtd"
+            return comparison @, env, "cgt#{t.base_type}"
         else node_error @, "Comparison is not supported for #{t}"
     GreaterEq: (env)=>
         t = get_type(@lhs)
         if t\is_a(Types.Int) or t\is_a(Types.String)
-            return comparison @, env, "csgel"
+            return comparison @, env, "csge#{t.base_type}"
         elseif t\is_a(Types.Num)
-            return comparison @, env, "cged"
+            return comparison @, env, "cge#{t.base_type}"
         else node_error @, "Comparison is not supported for #{t}"
     Equal: (env)=>
         lhs_type, rhs_type = get_type(@lhs), get_type(@rhs)
@@ -1768,7 +1816,7 @@ expr_compilers =
             result = env\fresh_local "comparison"
             code ..= "#{result} =l ceq#{lhs_type.base_type} #{lhs_reg}, #{rhs_reg}\n"
             return result,code
-        return comparison @, env, "ceql"
+        return comparison @, env, "ceq#{lhs_type.base_type}"
     NotEqual: (env)=>
         lhs_type, rhs_type = get_type(@lhs), get_type(@rhs)
         if lhs_type\is_a(rhs_type) or rhs_type\is_a(lhs_type)
@@ -1823,34 +1871,52 @@ expr_compilers =
 
     Struct: (env)=>
         t = get_type @
-        struct_size = 8*#t.members
         ret = env\fresh_local "#{t.name\lower!}"
-        code = "#{ret} =l call $gc_alloc(l #{struct_size})\n"
-        named_members = {m.name[0],m.value for m in *@ when m.name}
-        unnamed_members = [m.value for m in *@ when not m.name]
-        node_assert #unnamed_members <= #t.members, @, "Too many values provided for #{t} (expected #{#t.members} but got #{#unnamed_members})"
-        for name,val in pairs(named_members)
-            node_assert t.members_by_name[name], val, "Struct #{t\verbose_type!} doesn't have this as a member"
-        used = {}
-        for i,m in ipairs t.members
-            val = if named_members[m.name]
-                used[m.name] = true
-                named_members[m.name]
-            elseif #unnamed_members > 0
-                table.remove unnamed_members, 1
+        code = "#{ret} =l call $gc_alloc(l #{t.memory_size})\n"
+        i = 0
+        unpopulated = {n:memb for n,memb in pairs t.members}
+        for field in *@
+            memb = if field.name
+                t.members[field.name[0]]
             else
-                nil
+                i += 1
+                t.members[i] or t.sorted_members[i]
 
-            if val
-                loc = env\fresh_local "#{t\id_str!\lower!}.#{m.name or "member"}.loc"
-                code ..= "#{loc} =l add #{ret}, #{8*(i-1)}\n"
-                val_reg,val_code = env\to_reg val
-                code ..= val_code
-                m_t = get_type val
-                code ..= "store#{m_t.base_type} #{val_reg}, #{loc}\n"
-            elseif not m.type\is_a(Types.OptionalType)
-                node_error @, "#{t} field '#{m.name}' is required but no value was provided for it"
+            node_assert memb, field, "Not a valid struct member"
+
+            loc = env\fresh_local "#{t\id_str!\lower!}.#{memb.name}.loc"
+            code ..= "#{loc} =l add #{ret}, #{memb.offset}\n"
+            val_reg,val_code = env\to_reg field.value
+            code ..= val_code
+            m_t = get_type field.value
+            code ..= "store#{m_t.base_type} #{val_reg}, #{loc}\n"
+            unpopulated[memb.name] = nil
+
+        for name,memb in pairs unpopulated
+            continue unless memb\is_a(Types.OptionalType)
+            unpopulated[name] = nil
+            continue if memb.type.nil_value == 0
+            loc = env\fresh_local "#{t\id_str!\lower!}.#{memb.name}.loc"
+            code ..= "#{loc} =l add #{ret}, #{memb.offset}\n"
+            code ..= "store#{memb.type.base_type} #{memb.type.nil_value}, #{loc}\n"
+
+        for name,memb in pairs unpopulated
+            node_error @, "#{name} is a required field for #{t.name}, but was not specified"
+            
         -- code ..= "#{ret} =l call $intern_bytes(l #{ret}, l #{struct_size})\n"
+        return ret, code
+
+    Union: (env)=>
+        t = get_type @
+        ret = env\fresh_local "#{t.name\lower!}"
+        code = "\n\n# Union literal:\n#{ret} =l call $gc_alloc(l #{t.memory_size})\n"
+        member = node_assert t.members[@member[0]], @, "Not a valid union member name: #{@member[0]} in #{t\verbose_type!}"
+        code ..= "storel #{member.index}, #{ret}\n"
+        val_reg,val_code = env\to_reg @value
+        code ..= val_code
+        val_loc = env\fresh_local "val.loc"
+        code ..= "#{val_loc} =l add #{ret}, 8\n"
+        code ..= "storel #{val_reg}, #{val_loc}\n\n\n"
         return ret, code
 
     Fail: (env)=> "0",env\compile_stmt(@).."#{env\fresh_label "unreachable"}\n"
@@ -1978,14 +2044,14 @@ stmt_compilers =
             code ..= "#{end_label}\n"
             return code
         elseif t\is_a(Types.StructType)
-            i,member_type = if @lhs.index.__tag == "FieldName"
+            memb = if @lhs.index.__tag == "FieldName"
                 member_name = @lhs.index[0]
-                node_assert t.members_by_name[member_name], @lhs.index, "Not a valid struct member of #{t}"
-                t.members_by_name[member_name].index, t.members_by_name[member_name].type
+                node_assert t.members[member_name], @lhs.index, "Not a valid struct member of #{t}"
+                t.members[member_name]
             elseif @lhs.index.__tag == "Int"
                 i = tonumber(@lhs.index[0])
-                node_assert 1 <= i and i <= #t.members, @lhs.index, "#{t} only has members between 1 and #{#t.members}"
-                i, t.members[i].type
+                node_assert t.members, @lhs.index, "#{t} only has members between 1 and #{#t.members}"
+                t.members[i]
             else
                 node_error @lhs.index, "Structs can only be indexed by a field name or Int literal"
             struct_reg,rhs_reg,code = env\to_regs @lhs.value, @rhs
@@ -1993,7 +2059,7 @@ stmt_compilers =
             code ..= check_nil get_type(@lhs.value), env, struct_reg, nonnil_label, end_label
             code ..= env\block nonnil_label, ->
                 loc = env\fresh_local "member.loc"
-                code = "#{loc} =l add #{struct_reg}, #{8*(i-1)}\n"
+                code = "#{loc} =l add #{struct_reg}, #{memb.offset}\n"
                 code ..= "store#{rhs_type.base_type} #{rhs_reg}, #{loc}\n"
                 code ..= "jmp #{end_label}\n"
                 return code
@@ -2144,29 +2210,24 @@ stmt_compilers =
             error "Not impl"
         elseif t\is_a(Types.StructType)
             base_reg,code = env\to_reg @base
-            struct_size = 8*#t.members
             ret = env\fresh_local "#{t.name\lower!}.butwith"
-            code ..= "#{ret} =l call $gc_alloc(l #{struct_size})\n"
-            code ..= "call $memcpy(l #{ret}, l #{base_reg}, l #{struct_size})\n"
+            code ..= "#{ret} =l call $gc_alloc(l #{t.memory_size})\n"
+            code ..= "call $memcpy(l #{ret}, l #{base_reg}, l #{t.memory_size})\n"
             p = env\fresh_local "#{t.name\lower!}.butwith.member.loc"
-            used = {}
             for override in *@
-                i = if override.index
-                    tonumber(override.index[0])
+                memb = if override.index
+                    t.members[tonumber(override.index[0])]
                 elseif override.field
-                    t.members_by_name[override.field[0]].index
+                    t.members[override.field[0]]
                 else
                     node_error override, "I don't know what this is"
 
-                node_assert not used[i], override, "Redundant value, this field is already being overwritten"
-                used[i] = true
-
-                node_assert 1 <= i and i <= #t.members, override, "Not a valid member of #{t}"
-                node_assert get_type(override.value)\is_a(t.members[i].type), override.value, "Not a #{t.members[i].type}"
+                node_assert memb, override, "Not a valid member of #{t}"
+                node_assert get_type(override.value)\is_a(memb.type), override.value, "Not a #{memb}"
                 val_reg,val_code = env\to_reg override.value
                 code ..= val_code
-                code ..= "#{p} =l add #{ret}, #{8*(i-1)}\n"
-                code ..= "store#{t.members[i].type.base_type} #{val_reg}, #{p}\n"
+                code ..= "#{p} =l add #{ret}, #{memb.offset}\n"
+                code ..= "store#{memb.type.base_type} #{val_reg}, #{p}\n"
 
             code ..= "store#{t.base_type} #{base_reg}, #{@base.__location}\n" if @base.__location
             return code
@@ -2222,6 +2283,7 @@ stmt_compilers =
     TypeDeclaration: (env)=> ""
     StructDeclaration: (env)=> ""
     EnumDeclaration: (env)=> ""
+    UnionDeclaration: (env)=> ""
     UnitDeclaration: (env)=> ""
     Export: (env)=> ""
     FnCall: (env)=>

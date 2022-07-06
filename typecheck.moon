@@ -89,27 +89,61 @@ class FnType extends Type
 
 class StructType extends Type
     new: (@name, members)=> -- Members: {{type=t, name="Foo"}, {type=t2, name="Baz"}, ...}
-        @members_by_name = {}
-        @set_members(members) if members
-        @abi_type = "l"
-        --":#{@name}"
-    set_members: (@members)=>
-        for i,m in ipairs @members
-            @members_by_name[m.name] = {index: i, type: m.type} if m.name
+        @members = {}
+        @sorted_members = {}
+        @memory_size = 0
+        if members
+            for memb in *members
+                @add_member memb.name, memb.type
+    add_member: (name, memtype)=>
+        offset = @memory_size
+        -- Align memory:
+        if offset % memtype.bytes != 0
+            offset = offset - (offset % memtype.bytes) + memtype.bytes
+        @members[name] = {name: name, type: memtype, offset: offset}
+        table.insert @sorted_members, @members[name]
+        @memory_size = offset + memtype.bytes
     __tostring: => "#{@name}"
     nil_value: 0
     verbose_type: =>
-        if @members
-            mem_strs = {}
-            for m in *@members
-                t_str = if m.type.__class == StructType
-                    m.type.name
-                else
-                    "#{m.type}"
-                table.insert mem_strs, "#{m.name and m.name..':' or ''}#{m.type}"
-            "#{@name}{#{concat mem_strs, ","}}"
-        else
-            "#{@name}"
+        mem_strs = {}
+        for m in *@sorted_members
+            t_str = if m.type.__class == StructType
+                m.type.name
+            else
+                "#{m.type}"
+            table.insert mem_strs, "#{m.name and m.name..':' or ''}#{m.type}"
+        "#{@name}{#{concat mem_strs, ","}}"
+    id_str: => "#{@name}"
+    __eq: Type.__eq
+
+local EnumType
+class UnionType extends Type
+    new: (@name, @members)=> -- Members: {{type=t, name="Foo"}, {type=t2, name="Baz"}, ...}
+        @abi_type = "l"
+        @base_type = "l"
+        @memory_size = 16
+        @members = {}
+        @num_members = 0
+        @enum = EnumType(@name)
+        if members
+            for memb in *members
+                @add_member memb.name, memb.type
+                @enum\add_field memb.name
+    add_member: (name, type)=>
+        @num_members += 1
+        @members[name] = {type: type, index: @num_members}
+    __tostring: => "#{@name}"
+    nil_value: 0
+    verbose_type: =>
+        mem_strs = {}
+        for name,info in pairs @members
+            t_str = if info.type.__class == UnionType
+                info.type.name
+            else
+                "#{info.type}"
+            table.insert mem_strs, "#{name and name..':' or ''}#{info.type}"
+        "union #{@name}{#{concat mem_strs, ","}}"
     id_str: => "#{@name}"
     __eq: Type.__eq
 
@@ -130,7 +164,8 @@ class OptionalType extends Type
     __eq: Type.__eq
 
 class EnumType extends Type
-    new: (@name, @fields)=>
+    new: (@name, @fields={})=>
+    add_field: (name)=> table.insert @fields, name
     nil_value: 0
     __tostring: => @name
     id_str: => @name
@@ -210,7 +245,7 @@ find_declared_type = (scope, name, arg_signature=nil)->
                 elseif stmt.__tag == "Use"
                     -- Naked "use"
                     t = get_module_type(stmt.name[0])
-                    mem = t.members_by_name[name]
+                    mem = t.members[name]
                     if mem and not arg_signature
                         return mem.type
                     elseif mem and mem.type\is_a(FnType) and ("#{mem.type}" == arg_signature or mem.type\arg_signature! == arg_signature)
@@ -272,6 +307,8 @@ find_type_alias = (scope, name)->
                         return DerivedType(stmt.name[0], parse_type(stmt.derivesFrom))
                     elseif stmt.__tag == "StructDeclaration" and stmt[1].name[0] == name
                         return parse_type stmt[1]
+                    elseif stmt.__tag == "UnionDeclaration" and stmt.type.name[0] == name
+                        return parse_type stmt.type
                     elseif stmt.__tag == "EnumDeclaration" and stmt.name[0] == name
                         return parse_type stmt
         scope = scope.__parent
@@ -309,13 +346,22 @@ parse_type = memoize (type_node)->
         when "StructType"
             t = StructType(type_node.name[0])
             type_node.__type = t
-            members = {}
             for m in *type_node.members
                 continue unless m.names
                 mt = parse_type(m.type)
                 for name in *m.names
-                    table.insert members, {name: name[0], type: mt}
-            t\set_members members
+                    t\add_member name[0], mt
+            return t
+        when "UnionDeclaration"
+            return parse_type(type_node.type)
+        when "UnionType"
+            t = UnionType(type_node.name[0])
+            type_node.__type = t
+            for m in *type_node.members
+                continue unless m.names
+                mt = parse_type(m.type)
+                for name in *m.names
+                    t\add_member name[0], mt
             return t
         when "EnumDeclaration"
             return EnumType(type_node.name[0], [f[0] for f in *type_node])
@@ -327,7 +373,7 @@ parse_type = memoize (type_node)->
 
 get_op_type = (t1, op, t2)=>
     all_member_types = (t, pred)->
-        for mem in *t.members
+        for mem in *t.sorted_members
             return false unless pred(mem.type)
         return true
 
@@ -394,7 +440,7 @@ load_module = memoize (path)->
         for var in *exp
             table.insert(exports, var)
     t = StructType("Module", [{type: get_type(e), name: e[0]} for e in *exports])
-    log "Module type #{node.name[0]} = {#{concat ["#{m.name}=#{m.type}" for m in *t.members], ", "}}"
+    log "Module type #{node.name[0]} = {#{concat ["#{m.name}=#{m.type}" for m in *t.sorted_members], ", "}}"
     return t
 
 get_type = memoize (node)->
@@ -512,16 +558,22 @@ get_type = memoize (node)->
             elseif t\is_a(StructType)
                 if node.index.__tag == "FieldName"
                     member_name = node.index[0]
-                    node_assert t.members_by_name[member_name], node.index, "Not a valid struct member of #{t}{#{concat ["#{m.name or i}=#{m.type}" for i,m in ipairs t.members], ", "}}"
-                    ret_type = t.members_by_name[member_name].type
+                    node_assert t.members[member_name], node.index, "Not a valid struct member of #{t}{#{concat ["#{memb.name}=#{memb.type}" for memb in *t.sorted_members], ", "}}"
+                    ret_type = t.members[member_name].type
                     return is_optional and OptionalType(ret_type) or ret_type
                 elseif node.index.__tag == "Int"
                     i = tonumber(node.index[0])
-                    node_assert 1 <= i and i <= #t.members, node.index, "#{t} only has members between 1 and #{#t.members}"
-                    ret_type = t.members[i].type
+                    ret_type = node_assert(t.members[i], node, "Not a valid #{t} field: #{i}").type
+                    node_assert ret_type, node.index, "#{t} doesn't have a member #{i}"
                     return is_optional and OptionalType(ret_type) or ret_type
                 else
                     node_error node.index, "Structs can only be indexed by a field name or Int literal"
+            elseif t\is_a(UnionType)
+                node_assert node.index.__tag == "FieldName", node, "Not a union field"
+                member_name = node.index[0]
+                node_assert t.members[member_name], node.index, "Not a valid union member of #{t}"
+                ret_type = t.members[member_name]
+                return OptionalType(ret_type)
             elseif t\is_a(String)
                 index_type = get_type(node.index, vars)
                 if index_type == Int
@@ -618,11 +670,11 @@ get_type = memoize (node)->
             elseif base_type\is_a(StructType)
                 for field in *node
                     if field.field
-                        node_assert base_type.members_by_name[field.field[0]], field.field, "Not a valid struct member of #{base_type}"
+                        node_assert base_type.members[field.field[0]], field.field, "Not a valid struct member of #{base_type}"
                     elseif field.index
                         node_assert field.index.__tag == "Int", field.index, "Only field names and integer literals are supported for using |[..]=.. on Structs"
                         n = tonumber(field.index[0])
-                        node_assert 1 <= n and n <= #base_type.members, field.index, "#{base_type} only has members between 1 and #{#base_type.members}"
+                        node_assert base_type.members[n], field.index, "#{base_type} doesn't have a member #{n}"
                 return base_type
             else
                 node_error node, "| operator is only supported for List and Struct types"
@@ -730,11 +782,26 @@ get_type = memoize (node)->
 
             key = "{#{concat ["#{m.name and "#{m.name[0]}=" or ""}#{get_type m.value}" for m in *node], ","}}"
             unless tuples[key]
-                members = [{type: get_type(m.value), name: m.name and m.name[0]} for m in *node]
                 name = node.name and node.name[0] or "Tuple.#{tuple_index}"
+                tuple_type = StructType(name)
+                i = 0
+                for memb in *node
+                    if memb.name
+                        tuple_type\add_member memb.name[0], get_type(memb.value)
+                    else
+                        i += 1
+                        tuple_type\add_member i, get_type(memb.value)
+
                 tuple_index += 1
-                tuples[key] = StructType(name, members)
+                tuples[key] = tuple_type
             return tuples[key]
+        when "Union"
+            union_type = find_type_alias node, node.name[0]
+            member = node_assert union_type.members[node.member[0]], node.member, "Not a valid union field from #{union_type\verbose_type!}"
+            value_type = get_type(node.value)
+            node_assert value_type\is_a(member.type), node.value,
+                "This value is a #{value_type}, but values for #{union_type.name}.#{node.member[0]} should be #{member.type}\n"
+            return union_type
         when "Interp"
             return get_type(node.value)
         else
@@ -752,5 +819,5 @@ get_type = memoize (node)->
 return {
     :parse_type, :get_type, :Type, :NamedType, :ListType, :TableType, :FnType, :StructType,
     :Value, :Value32, :Pointer, :Int, :Int32, :Num, :Num32, :Percent, :String, :Bool, :Void, :Nil, :Range,
-    :OptionalType, :MeasureType, :TypeString, :EnumType,
+    :OptionalType, :MeasureType, :TypeString, :EnumType, :UnionType,
 }

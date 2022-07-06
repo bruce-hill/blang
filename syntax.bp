@@ -9,7 +9,7 @@ term: (
     / Percent / Measure / Float / Int
     / String / DSL
     / List / Table
-    / Struct / FnCall
+    / Struct / Union / FnCall
     / `(__extended-expr__`)
 )
 IndexedTerm:: (!`0-9 @value=(methodCall / IndexedTerm / term)
@@ -83,6 +83,7 @@ MeasureType:: `< +@(@unit=id [`^ @power=([`-] +`0-9)]) % (`*,/) `>
 Percent:: (`0-9 *`0-9,_ [`. *`0-9] / `. +`0-9) `%
 Int:: "0x" +`0-9,a-f,A-F,_ / [`-,+] `0-9 *`0-9,_
 Struct:: [@name=Var] _ `{ __ *@:StructField=([`. @name=FieldName __`=__] @value=extended-expr) % (__`,__) __[`, __] `}
+Union:: `@ @name=Var `. @member=Var _ @value=required-extended-expr
 FnCall:: @fn=(FnCall / IndexedTerm / Global / Var / `(__required-extended-expr__`)) `( __ *extended-expr % (__`,__) __ [`,__] `) [_`:_@type=type]
 methodCall: @:FnCall=((methodCall / IndexedTerm / term) _ `| _
   (@fn=(Global / Var / `(__required-extended-expr__`)) _ [`( __ *expr % (__`,__) __ [`,__] `)]) [_`:_@type=type])
@@ -100,7 +101,7 @@ statements: @curdent:\C +(
 indentedBlock: @:Block=([_comment] nl curdent +(` /\t) statements)
 statement: (
     Declaration / FnDecl / Macro / If / Do / When / For / While / Repeat
-  / TypeDeclaration / StructDeclaration / UnitDeclaration / EnumDeclaration
+  / TypeDeclaration / StructDeclaration / UnionDeclaration / UnitDeclaration / EnumDeclaration
   / PostfixIf / PostfixFor / PostfixWhile
   / Return / Skip / Stop / Export / Use
   / line-statement
@@ -116,6 +117,7 @@ Declaration:: @var=Var _":=" _ @value=required-extended-expr
 TypeDeclaration:: \b"deftype"\b _ @name=@:NamedType=(id) _ `: _ @derivesFrom=(type / @:ParseError=(..$ =>"Not a valid type"))
 UnitDeclaration:: \b"unit"\b _ @name=@:NamedType=(id) _ `= _ @measure=Measure
 StructDeclaration:: \b"struct"\b _ (StructType / @:ParseError=((braces /..$) =>"Not a valid struct declaration"))
+UnionDeclaration:: @type=UnionType
 EnumDeclaration:: \b"enum"\b _ @name=Var _ (`{__+(@Var) % (__`,__) __ [`,__] `} / @:ParseError=((braces /..$) =>"Not a valid enum declaration"))
 Macro:: @curdent:\C "macro"\b _ @name=Var _ `( __ @args=@(*Var%(__`,__))__[`,__]`)_ [comment] @body=maybeIndentedBlock
 FnDecl:: @curdent:\C "def"\b _ (@name=Var _
@@ -151,13 +153,14 @@ type: @:OptionalType=(@nonnil=nonoptional-type `?) / nonoptional-type
 nonoptional-type: (
     @:TableType=(`{__ @keyType=type __`=__ @valueType=type __`})
   / MeasureType
-  / StructType
+  / StructType / UnionType
   / @:DerivedType=(@name=id ":" @derivesFrom=(type / @:ParseError=(..$ =>"Not a valid type")))
   / @:NamedType=(id)
   / @:ListType=(`[@itemtype=type`])
   / @:FnType=(`(__ @args=@(*type % (__`,__)) __ `) _ "=>" __ @return=type)
 )
-StructType:: @name=[id] _ `{__ @members=@(*@:StructField=([@names=@*(FieldName)%(__`,__) _`:]_@type=type) % ((__`,__/__)~(`,/\n))) [__`,] __`}
+StructType:: @name=[id] _ `{__ @members=@(*@:StructField=(UnionType / [@names=@*(FieldName)%(__`,__) _`:]_@type=type) % ((__`,__/__)~(`,/\n))) [__`,] __`}
+UnionType:: \b"union"\b _ @name=(id / @:ParseError=(=>"Expected an identifier for this union")) _ `{__ @members=@(+@:StructField=([@names=@*(FieldName)%(__`,__) _`:]_@type=type) % ((__`,__/__)~(`,/\n))) [__`,] __`}
 If:: \b"if"\b @curdent:\C _ (
     @:Clause=(@condition=(Declaration / required-extended-expr) [_comment] @body=indentedBlock)
     *@:Clause=(nl curdent \b"elseif"\b _ @condition=(Declaration / required-extended-expr) [_comment] @body=indentedBlock)
