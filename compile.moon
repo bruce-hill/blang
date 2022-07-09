@@ -1977,6 +1977,51 @@ expr_compilers =
         code ..= "storel #{val_reg}, #{val_loc}\n\n\n"
         return ret, code
 
+    If: (env)=>
+        ret = env\fresh_local "if.value"
+        code = ""
+        end_label,false_label = env\fresh_labels "if.end", "if.else"
+        for cond in *@
+            r,cond_code = env\to_reg cond.condition
+            code ..= cond_code
+            true_label = env\fresh_label "if.true"
+            code ..= check_truthiness get_type(cond.condition), env, r, true_label, false_label
+            code ..= "#{true_label}\n"
+            t = get_type(cond.body)
+            if t == Types.Void
+                code ..= env\compile_stmt cond.body
+            else
+                block_reg,block_code = env\to_reg cond.body
+                code ..= block_code
+                code ..= "#{ret} =#{t.base_type} copy #{block_reg}\n"
+            unless has_jump\match(code)
+                code ..= "jmp #{end_label}\n"
+            code ..= "#{false_label}\n"
+            false_label = env\fresh_label "if.else"
+
+        if @elseBody
+            t = get_type(@elseBody)
+            if t == Types.Void
+                code ..= env\compile_stmt @elseBody
+            else
+                block_reg,block_code = env\to_reg @elseBody
+                code ..= block_code
+                code ..= "#{ret} =#{t.base_type} copy #{block_reg}\n"
+                
+            unless has_jump\match(code)
+                code ..= "jmp #{end_label}\n"
+
+        code ..= "#{end_label}\n"
+        return ret,code
+
+    Block: (env)=>
+        code = ""
+        for i=1,#@-1
+            code ..= env\compile_stmt(@[i])
+        last_reg,last_code = env\to_reg @[#@]
+        code ..= last_code
+        return last_reg,code
+
     Fail: (env)=> "0",env\compile_stmt(@).."#{env\fresh_label "unreachable"}\n"
     Return: (env)=> "0",env\compile_stmt(@).."#{env\fresh_label "unreachable"}\n"
     Skip: (env)=> "0",env\compile_stmt(@).."#{env\fresh_label "unreachable"}\n"

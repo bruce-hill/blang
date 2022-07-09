@@ -837,6 +837,30 @@ get_type = memoize (node)->
             return union_type
         when "Interp"
             return get_type(node.value)
+        when "If"
+            node_assert node.elseBody, node, "'if' statement can't be used as an expression without an 'else' block"
+            t = get_type(node[1].body[#node[1].body])
+            node_assert t != Void, node[1].body[#node[1].body]
+
+            check_block = (block)->
+                t2 = get_type(block[#block])
+                if t == Void
+                    t = t2
+                elseif t2 == Void
+                    return
+                elseif t2\is_a(t)
+                    return
+                elseif t\is_a(t2)
+                    t = t2
+                else
+                    node_error block[#block],
+                        "This expression has type #{t2}, but the earlier values for this `if` block are all #{t}"
+
+            for i=2,#node
+                check_block node[i].body
+
+            check_block node.elseBody
+            return t
         else
             error("Cannot infer type for #{viz node}")
             -- node_error node, "Cannot infer type for: #{node.__tag}"

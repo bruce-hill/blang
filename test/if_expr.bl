@@ -1,0 +1,11 @@
+def doop(cond:Bool):
+    x := if cond
+        $puts "first condition"
+        1
+    else
+        $puts "second condition"
+        2
+    return x
+
+fail unless doop(yes) == 1
+fail unless doop(no) == 2

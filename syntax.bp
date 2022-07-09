@@ -16,7 +16,7 @@ IndexedTerm:: (!`0-9 @value=(methodCall / IndexedTerm / term)
   @index=(`. FieldName / `[ __ required-extended-expr __ `] / @:ParseError=(`[ => "Unclosed bracket")))
 maybe-index-term: methodCall / IndexedTerm / term
 expr: Range / ButWith / Mod / AddSub / MulDiv / Pow / methodCall / IndexedTerm / term
-extended-expr: TernaryOp / And / Or / Xor / comparison / splatFnCall / splatMethodCall / expr
+extended-expr: TernaryOp / And / Or / Xor / If / comparison / splatFnCall / splatMethodCall / expr
 unaryOp: Negative / Len / Not
 Negative:: `- !`0-9,. @value=maybe-index-term
 Len:: `# _ @value=maybe-index-term
