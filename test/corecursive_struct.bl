@@ -1,0 +1,5 @@
+struct Foo { b:Baz? }
+struct Baz { f:Foo? }
+
+f := Foo{.b=Baz{}}
+$puts "$f"

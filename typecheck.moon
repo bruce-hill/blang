@@ -343,6 +343,7 @@ find_type_alias = (scope, name)->
 derived_types = {}
 
 parse_type = memoize (type_node)->
+    return type_node.__type if type_node.__type
     switch type_node.__tag
         when "NamedType","Var"
             if primitive_types[type_node[0]]
@@ -393,7 +394,7 @@ parse_type = memoize (type_node)->
         when "EnumDeclaration"
             return EnumType(type_node.name[0], [f[0] for f in *type_node])
         when "OptionalType"
-            t = parse_type(type_node.nonnil, override_names)
+            t = parse_type(type_node.nonnil)
             return OptionalType(t)
         else
             error "Not a type node: #{viz type_node}"
