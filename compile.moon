@@ -119,14 +119,17 @@ check_truthiness = (t, env, reg, truthy_label, falsey_label)->
         if t.nonnil\is_a(Types.Bool)
             tmp = env\fresh_local "is.true"
             return "#{tmp} =l ceq#{t.base_type} #{reg}, 1\njnz #{tmp}, #{truthy_label}, #{falsey_label}\n"
-        elseif t.nonnil\is_a(Types.Int)
-            tmp = env\fresh_local "is.nonnil"
-            return "#{tmp} =l cne#{t.base_type} #{reg}, #{t.nil_value}\njnz #{tmp}, #{truthy_label}, #{falsey_label}\n"
         elseif t.nonnil.base_type == "d"
             tmp = env\fresh_local "is.nonnil"
             return "#{tmp} =l cod #{reg}, d_0.0 # Test for NaN\njnz #{tmp}, #{truthy_label}, #{falsey_label}\n"
-        else
+        elseif t.nonnil.base_type == "s"
+            tmp = env\fresh_local "is.nonnil"
+            return "#{tmp} =l cos #{reg}, s_0.0 # Test for NaN\njnz #{tmp}, #{truthy_label}, #{falsey_label}\n"
+        elseif t.nonnil.nil_value == 0
             return "jnz #{reg}, #{truthy_label}, #{falsey_label}\n"
+        else
+            tmp = env\fresh_local "is.nonnil"
+            return "#{tmp} =l cne#{t.base_type} #{reg}, #{t.nil_value}\njnz #{tmp}, #{truthy_label}, #{falsey_label}\n"
     else
         return "jmp #{truthy_label}\n"
 
@@ -297,7 +300,7 @@ class Environment
             code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("nil", "nil")})\n"
         elseif t\is_a(Types.Void)
             code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("Void", "void")})\n"
-        elseif t == Types.Value
+        elseif t == Types.Value or t == Types.Value32 or t == Types.Value16 or t == Types.Value8
             code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("<Value>", "value")})\n"
         elseif t\is_a(Types.EnumType)
             init_fields,fields_exist = @fresh_labels "make_fields", "fields_exist"
@@ -533,7 +536,7 @@ class Environment
             code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("#{t}")})\n"
         elseif t\is_a(Types.OptionalType)
             nil_label,nonnil_label,end_label = @fresh_labels "optional.nil", "optional.nonnil", "optional.end"
-            code ..= check_truthiness t, @, reg, nonnil_label, nil_label
+            code ..= check_nil t, @, reg, nonnil_label, nil_label
             code ..= @block nil_label, ->
                 code = "#{dest} =l call $bl_string(l #{@get_string_reg("nil", "nil")})\n"
                 code ..= "jmp #{end_label}\n"
@@ -1365,7 +1368,7 @@ expr_compilers =
                 return get_nonnil_code!
 
             ifnil,ifnonnil,done = env\fresh_labels "if.nil", "if.nonnil", "if.nil.done"
-            code = check_truthiness get_type(@value), env, check_reg, ifnonnil, ifnil
+            code = check_nil get_type(@value), env, check_reg, ifnonnil, ifnil
             code ..= env\block ifnonnil, -> (get_nonnil_code!.."jmp #{done}\n")
             code ..= env\block ifnil, -> set_nil(output_type, env, output_reg)
             code ..= "#{done}\n"
@@ -1377,7 +1380,7 @@ expr_compilers =
             list_reg, index_reg, code = env\to_regs @value, @index
             if index_type\is_a(Types.Int) or index_type == Types.OptionalType(Types.Int)
                 item = env\fresh_local "list.item"
-                code = nil_guard list_reg, item, t.item_type, ->
+                code = nil_guard list_reg, item, item_type, ->
                     not_too_low,not_too_high,outside_bounds,done = env\fresh_labels "not.too.low", "not.too.high", "outside.bounds", "done"
                     len, bounds_check = env\fresh_locals "len", "bounds.check"
                     code ..= "#{bounds_check} =w csgel #{index_reg}, 1\n"
@@ -1396,13 +1399,13 @@ expr_compilers =
                         code ..= "#{offset} =l sub #{index_reg}, 1\n"
                         code ..= "#{offset} =l mul #{offset}, #{item_type.bytes}\n"
                         code ..= "#{items} =l add #{items}, #{offset}\n"
-                        if t.item_type.base_type == "d" or t.item_type.base_type == "s"
+                        if item_type.base_type == "d" or item_type.base_type == "s"
                             tmp = env\fresh_local "list.item.as_int"
-                            int_type = t.item_type.base_type == "d" and "l" or "w"
+                            int_type = item_type.base_type == "d" and "l" or "w"
                             code ..= "#{tmp} =#{int_type} load#{int_type} #{items}\n"
                             code ..= "#{item} =d cast #{tmp}\n"
-                        elseif t.item_type.bytes < 8
-                            code ..= "#{item} =#{t.item_type.base_type} loadu#{t.item_type.abi_type} #{items}\n"
+                        elseif item_type.bytes < 8
+                            code ..= "#{item} =#{item_type.base_type} loadu#{item_type.abi_type} #{items}\n"
                         else
                             code ..= "#{item} =l loadl #{items}\n"
                         return code .. "jmp #{done}\n"

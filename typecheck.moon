@@ -25,7 +25,7 @@ class NamedType extends Type
 Value = NamedType("Value")
 Value.contains = (other)=> other.bytes == @bytes
 Value.is_a = (other)=> other == @ or other == @__class
-Value.nil_value = 0
+Value.nil_value = 0x7FFFFFFFFFFFFFFF
 
 Value32 = NamedType("Value32")
 Value32.contains = (other)=> other.bytes == @bytes
@@ -33,7 +33,7 @@ Value32.is_a = (other)=> other == @ or other == @__class
 Value32.base_type = 'w'
 Value32.abi_type = 'w'
 Value32.bytes = 4
-Value32.nil_value = 0
+Value32.nil_value = 0x7FFFFFFF
 
 Value16 = NamedType("Value16")
 Value16.contains = (other)=> other.bytes == @bytes
@@ -41,7 +41,7 @@ Value16.is_a = (other)=> other == @ or other == @__class
 Value16.base_type = 'w'
 Value16.abi_type = 'h'
 Value16.bytes = 2
-Value16.nil_value = 0
+Value16.nil_value = 0x7FFF
 
 Value8 = NamedType("Value8")
 Value8.contains = (other)=> other.bytes == @bytes
@@ -49,7 +49,7 @@ Value8.is_a = (other)=> other == @ or other == @__class
 Value8.base_type = 'w'
 Value8.abi_type = 'b'
 Value8.bytes = 1
-Value8.nil_value = 0
+Value8.nil_value = 0x7F
 
 class DerivedType extends Type
     new: (@name, @derived_from)=>
