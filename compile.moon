@@ -2036,6 +2036,8 @@ expr_compilers =
                 
             unless has_jump\match(code)
                 code ..= "jmp #{end_label}\n"
+        else
+            code ..= set_nil get_type(@), env, ret
 
         code ..= "#{end_label}\n"
         return ret,code

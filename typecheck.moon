@@ -889,7 +889,6 @@ get_type = memoize (node)->
         when "Interp"
             return get_type(node.value)
         when "If"
-            node_assert node.elseBody, node, "'if' statement can't be used as an expression without an 'else' block"
             t = get_type(node[1].body[#node[1].body])
             node_assert t != Void, node[1].body[#node[1].body]
 
@@ -910,7 +909,11 @@ get_type = memoize (node)->
             for i=2,#node
                 check_block node[i].body
 
-            check_block node.elseBody
+            if node.elseBody
+                check_block node.elseBody
+            elseif not t\is_a(OptionalType)
+                t = OptionalType(t)
+
             return t
         else
             error("Cannot infer type for #{viz node}")
