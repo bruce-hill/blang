@@ -289,6 +289,17 @@ find_returns = (node)->
             for k,child in pairs node
                 find_returns(child) if type(child) == 'table' and not (type(k) == 'string' and k\match("^__"))
 
+enclosing_scope = (scope)->
+    if scope.__parent and scope.__parent.__tag == "Block"
+        i = 1
+        while scope.__parent[i] != (scope.__original or scope)
+            i += 1
+        t = {k,v for k,v in pairs scope.__parent when type(k) != 'number' or k <= i}
+        t.__original = scope.__parent
+        return t
+    else
+        return scope.__parent
+
 find_declared_type = (scope, name, arg_types=nil, return_type=nil)->
     return nil unless scope
     switch scope.__tag
@@ -313,6 +324,14 @@ find_declared_type = (scope, name, arg_types=nil, return_type=nil)->
             for a in *scope.args
                 if a.arg[0] == name
                     return parse_type(a.type)
+        when "FnCall"
+            if arg_types == nil and scope.fn.__tag == "Var" and scope.fn[0] == name
+                arg_types = {}
+                for arg in *scope
+                    if arg.__tag == "KeywordArg"
+                        arg_types[arg.name[0]] = get_type(arg.value)
+                    else
+                        table.insert arg_types, get_type(arg)
         when "Clause"
             if scope.condition.__tag == "Declaration" and scope.condition.var[0] == name
                 t = get_type(scope.condition.value)
@@ -348,11 +367,13 @@ find_declared_type = (scope, name, arg_types=nil, return_type=nil)->
 
     if scope.__parent and (scope.__parent.__tag == "For" or scope.__parent.__tag == "While" or scope.__parent.__tag == "Repeat")
         loop = scope.__parent
-        if scope == loop.between
+        if (scope.__original or scope) == loop.between
             t = find_declared_type(loop.body, name, arg_types, return_type)
             return t if t
-            
-    return find_declared_type(scope.__parent, name, arg_types, return_type)
+
+    parent_scope = enclosing_scope scope
+    if parent_scope
+        return find_declared_type(parent_scope, name, arg_types, return_type)
 
 find_type_alias = (scope, name)->
     while scope
@@ -809,27 +830,18 @@ get_type = memoize (node)->
         when "Var"
             if find_type_alias node, node[0]
                 return TypeString
-            if node.__decl
+            var_type = node.__type or find_declared_type(node, node[0])
+            if not var_type and node[0] == "args"
+                return ListType(String)
+            if not var_type and node.__decl
                 return get_type(node.__decl)
-            var_type = node.__type or find_declared_type(node.__parent, node[0])
-            if not var_type
-                return ListType(String) if node[0] == "args"
             node_assert var_type, node, "Cannot determine type for undefined variable"
             return var_type
         when "Global"
             return nil
         when "FnCall"
             return parse_type(node.type) if node.type
-            fn_type = if node.fn.__tag == "Var"
-                arg_types = {}
-                for arg in *node
-                    if arg.__tag == "KeywordArg"
-                        arg_types[arg.name[0]] = get_type(arg.value)
-                    else
-                        table.insert arg_types, get_type(arg)
-                find_declared_type node, node.fn[0], arg_types
-            else
-                get_type node.fn
+            fn_type = get_type node.fn
             node_assert fn_type or node.__parent.__tag == "Block", node, "This function's return type cannot be inferred. It must be specified manually using a type annotation"
             return Nil unless fn_type
             node_assert fn_type\is_a(FnType), node.fn, "This is not a function, it's a #{fn_type or "???"}"

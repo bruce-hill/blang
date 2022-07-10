@@ -301,7 +301,7 @@ class Environment
         elseif t\is_a(Types.Void)
             code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("Void", "void")})\n"
         elseif t == Types.Value or t == Types.Value32 or t == Types.Value16 or t == Types.Value8
-            code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("<Value>", "value")})\n"
+            code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("<#{t.name}>", t.name)})\n"
         elseif t\is_a(Types.EnumType)
             init_fields,fields_exist = @fresh_labels "make_fields", "fields_exist"
             tmp = @fresh_local "fieldname"
