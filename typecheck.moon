@@ -23,17 +23,33 @@ class NamedType extends Type
     __eq: Type.__eq
 
 Value = NamedType("Value")
-Value.contains = (other)=> true
-Value.is_a = (other)=> other == @
+Value.contains = (other)=> other.bytes == @bytes
+Value.is_a = (other)=> other == @ or other == @__class
 Value.nil_value = 0
 
 Value32 = NamedType("Value32")
-Value32.contains = (other)=> true
-Value32.is_a = (other)=> other == @
+Value32.contains = (other)=> other.bytes == @bytes
+Value32.is_a = (other)=> other == @ or other == @__class
 Value32.base_type = 'w'
 Value32.abi_type = 'w'
 Value32.bytes = 4
 Value32.nil_value = 0
+
+Value16 = NamedType("Value16")
+Value16.contains = (other)=> other.bytes == @bytes
+Value16.is_a = (other)=> other == @ or other == @__class
+Value16.base_type = 'w'
+Value16.abi_type = 'h'
+Value16.bytes = 2
+Value16.nil_value = 0
+
+Value8 = NamedType("Value8")
+Value8.contains = (other)=> other.bytes == @bytes
+Value8.is_a = (other)=> other == @ or other == @__class
+Value8.base_type = 'w'
+Value8.abi_type = 'b'
+Value8.bytes = 1
+Value8.nil_value = 0
 
 class DerivedType extends Type
     new: (@name, @derived_from)=>
@@ -214,11 +230,24 @@ Num32.nil_value = 0x7FFFFFFF
 Int = NamedType("Int")
 Int.base_type = 'l'
 Int.abi_type = 'l'
+
 Int32 = NamedType("Int32")
 Int32.base_type = 'w'
 Int32.abi_type = 'w'
 Int32.bytes = 4
 Int32.nil_value = 0x7FFFFFFF
+
+Int16 = NamedType("Int16")
+Int16.base_type = 'w'
+Int16.abi_type = 'h'
+Int16.bytes = 2
+Int16.nil_value = 0x7FFF
+
+Int8 = NamedType("Int8")
+Int8.base_type = 'w'
+Int8.abi_type = 'b'
+Int8.bytes = 1
+Int8.nil_value = 0xFF
 
 Percent = DerivedType("Percent", Num)
 
@@ -237,7 +266,8 @@ Range = StructType("Range", {{name:"first",type:Int},{name:"next",type:Int},{nam
 Range.item_type = Int
 Range.nil_value = 0
 
-primitive_types = {:Value, :Value32, :Pointer, :Int, :Int32, :Num, :Num32, :Void, :Nil, :Bool, :String, :Range, :OptionalType, :Percent, :TypeString}
+primitive_types = {:Value, :Value32, :Value16, :Value8, :Pointer, :Int, :Int32, :Int16, :Int8, :Num, :Num32,
+    :Void, :Nil, :Bool, :String, :Range, :OptionalType, :Percent, :TypeString}
 
 tuples = {}
 tuple_index = 1
@@ -876,6 +906,6 @@ get_type = memoize (node)->
 
 return {
     :parse_type, :get_type, :Type, :NamedType, :ListType, :TableType, :FnType, :StructType,
-    :Value, :Value32, :Pointer, :Int, :Int32, :Num, :Num32, :Percent, :String, :Bool, :Void, :Nil, :Range,
+    :Value, :Value32, :Value16, :Value8, :Pointer, :Int, :Int32, :Int16, :Int8, :Num, :Num32, :Percent, :String, :Bool, :Void, :Nil, :Range,
     :OptionalType, :MeasureType, :TypeString, :EnumType, :UnionType,
 }

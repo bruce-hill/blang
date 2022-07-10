@@ -258,6 +258,10 @@ class Environment
             return "$bl_tostring_int",false
         elseif t\is_a(Types.Int32)
             return "$bl_tostring_int32",false
+        elseif t\is_a(Types.Int16)
+            return "$bl_tostring_int16",false
+        elseif t\is_a(Types.Int8)
+            return "$bl_tostring_int8",false
         elseif t\is_a(Types.Percent)
             return "$bl_tostring_percent",false
         elseif t\is_a(Types.Num)
