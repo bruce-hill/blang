@@ -110,7 +110,7 @@ comparison = (env, cmp)=>
 check_truthiness = (t, env, reg, truthy_label, falsey_label)->
     if t\is_a(Types.Bool)
         return "jnz #{reg}, #{truthy_label}, #{falsey_label}\n"
-    elseif t\is_a(Types.Nil)
+    elseif t\is_a(Types.NilType)
         return "jmp #{falsey_label}\n"
     elseif t.base_type == "d"
         tmp = env\fresh_local "is.nonnil"
@@ -134,7 +134,7 @@ check_truthiness = (t, env, reg, truthy_label, falsey_label)->
         return "jmp #{truthy_label}\n"
 
 check_nil = (t, env, reg, nonnil_label, nil_label)->
-    if t == Types.Nil
+    if t == Types.NilType
         return "jmp #{nil_label}\n"
     elseif not t\is_a(Types.OptionalType)
         return "jmp #{nonnil_label}\n"
@@ -296,7 +296,7 @@ class Environment
         -- structs, not lists/tables, so cycles can only be achieved with structs.
 
         dest = @fresh_local "string"
-        if t\is_a(Types.Nil)
+        if t\is_a(Types.NilType)
             code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("nil", "nil")})\n"
         elseif t\is_a(Types.Void)
             code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("Void", "void")})\n"
@@ -1142,7 +1142,7 @@ expr_compilers =
             if parent.__tag == "Equal" or parent.__tag == "NotEqual"
                 other = (child == parent.lhs) and parent.rhs or parent.lhs
                 t = get_type(other)
-                if t\is_a(Types.OptionalType) and t != Types.Nil
+                if t\is_a(Types.OptionalType) and t != Types.NilType
                     t = t.nonnil
                 return "#{t.nil_value}",""
 
@@ -1176,8 +1176,10 @@ expr_compilers =
             else
                 get_type(parent)
 
-            if t != Types.Nil and t\is_a(Types.OptionalType)
+            if t != Types.NilType and t\is_a(Types.OptionalType)
                 return "#{t.nil_value}",""
+            elseif parent.__tag == "Declaration"
+                return "0",""
 
             parent,child = parent.__parent,parent
         return "0",""
@@ -1342,9 +1344,9 @@ expr_compilers =
         t = get_type(@value)
         b,code = env\to_reg @value
         ret = env\fresh_local "not"
-        if t\is_a(Types.OptionalType) and t != Types.Nil and t.nonnil\is_a(Types.Int)
+        if t\is_a(Types.OptionalType) and t != Types.NilType and t.nonnil\is_a(Types.Int)
             code ..= "#{ret} =w ceq#{t.base_type} #{b}, #{t.nil_value}\n"
-        elseif t\is_a(Types.OptionalType) and t != Types.Nil and t.nonnil.base_type == "d"
+        elseif t\is_a(Types.OptionalType) and t != Types.NilType and t.nonnil.base_type == "d"
             code ..= "#{ret} =w cuod #{reg}, d_0.0 # Test for NaN\n"
         elseif t\is_a(Types.Bool)
             code ..= "#{ret} =w cne#{t.base_type} #{b}, 1\n"
@@ -1361,7 +1363,7 @@ expr_compilers =
                     return "#{i}",""
             node_error @, "Couldn't find enum field: .#{@index[0]} on type #{t0}"
 
-        is_optional = t\is_a(Types.OptionalType) and t != Types.Nil
+        is_optional = t\is_a(Types.OptionalType) and t != Types.NilType
         t = t.nonnil if is_optional
         nil_guard = (check_reg, output_reg, output_type, get_nonnil_code)->
             unless is_optional
@@ -2399,14 +2401,14 @@ stmt_compilers =
     FnCall: (env)=>
         ret_type = get_type(@)
         if ret_type
-            node_assert ret_type == Types.Void or ret_type == Types.Nil, @, "Return value (#{ret_type}) is not being used"
+            node_assert ret_type == Types.Void or ret_type == Types.NilType, @, "Return value (#{ret_type}) is not being used"
         _, code = env\to_reg @, true
         code = code\gsub("[^\n]- (call [^\n]*\n)$", "%1")
         return code
     MethodCall: (env)=>
         ret_type = get_type(@)
         if ret_type
-            node_assert ret_type == Types.Void or ret_type == Types.Nil, @, "Return value (#{ret_type}) is not being used"
+            node_assert ret_type == Types.Void or ret_type == Types.NilType, @, "Return value (#{ret_type}) is not being used"
         _, code = env\to_reg @, true
         code = code\gsub("[^\n]- (call [^\n]*\n)$", "%1")
         return code

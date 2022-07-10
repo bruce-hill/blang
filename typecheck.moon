@@ -190,17 +190,17 @@ class UnionType extends Type
     id_str: => "#{@name}"
     __eq: Type.__eq
 
-Nil = NamedType("Nil")
+NilType = NamedType("Nil")
 
 class OptionalType extends Type
     new: (@nonnil)=>
-        assert @nonnil and @nonnil != Nil
+        assert @nonnil and @nonnil != NilType
         if @nonnil.__class == OptionalType
             @nonnil = assert(@nonnil.nonnil)
         @base_type = @nonnil.base_type
         @abi_type = @nonnil.abi_type
         @nil_value = @nonnil.nil_value
-    contains: (other)=> other == @ or other == Nil or (@nonnil and other\is_a(@nonnil))
+    contains: (other)=> other == @ or other == NilType or (@nonnil and other\is_a(@nonnil))
     __tostring: => @nonnil\is_a(FnType) and "(#{@nonnil})?" or "#{@nonnil}?"
     verbose_type: => @nonnil\is_a(FnType) and "(#{@nonnil\verbose_type!})?" or "#{@nonnil\verbose_type!}?"
     id_str: => "Optional.#{@nonnil\id_str!}"
@@ -267,7 +267,7 @@ Range.item_type = Int
 Range.nil_value = 0
 
 primitive_types = {:Value, :Value32, :Value16, :Value8, :Pointer, :Int, :Int32, :Int16, :Int8, :Num, :Num32,
-    :Void, :Nil, :Bool, :String, :Range, :OptionalType, :Percent, :TypeString}
+    :Void, :NilType, :Bool, :String, :Range, :OptionalType, :Percent, :TypeString}
 
 tuples = {}
 tuple_index = 1
@@ -533,7 +533,7 @@ get_type = memoize (node)->
         when "Declaration" return get_type(node.value)
         when "EnumDeclaration" then return parse_type(node)
         when "Bool" then return Bool
-        when "Nil" then return Nil
+        when "Nil" then return NilType
         when "String","Escape","Newline" then return String
         when "TypeOf" then return TypeString
         when "DSL"
@@ -620,7 +620,7 @@ get_type = memoize (node)->
                     node_error node.index, "Not a valid enum field for #{enum.name}"
 
             t = get_type node.value
-            is_optional = t\is_a(OptionalType) and t != Nil
+            is_optional = t\is_a(OptionalType) and t != NilType
             t = t.nonnil if is_optional
             if t\is_a(ListType)
                 index_type = get_type(node.index, vars)
@@ -676,7 +676,7 @@ get_type = memoize (node)->
             optional = nil
             for i,val in ipairs node
                 t = get_type val
-                continue if t == Nil
+                continue if t == NilType
                 if t == Void
                     if node.__tag == "Or"
                         node_assert optional, node, "WTF: #{concat types, ","}"
@@ -705,9 +705,9 @@ get_type = memoize (node)->
             false_type = get_type node.ifFalse
             if true_type == false_type
                 return true_type
-            elseif true_type == Nil
+            elseif true_type == NilType
                 return OptionalType(false_type)
-            elseif false_type == Nil
+            elseif false_type == NilType
                 return OptionalType(true_type)
             else
                 node_error node, "Values for true/false branches are different: #{true_type} vs #{false_type}"
@@ -787,13 +787,13 @@ get_type = memoize (node)->
             ret_type = nil
             for ret in coroutine.wrap ->find_returns(node.body)
                 if ret_type == nil
-                    ret_type = ret.value and get_type(ret.value) or Nil
+                    ret_type = ret.value and get_type(ret.value) or NilType
                 else
-                    t2 = ret.value and get_type(ret.value) or Nil
+                    t2 = ret.value and get_type(ret.value) or NilType
                     continue if t2\is_a(ret_type)
-                    if t2 == Nil
+                    if t2 == NilType
                         ret_type = OptionalType(ret_type)
-                    elseif ret_type == Nil
+                    elseif ret_type == NilType
                         ret_type = OptionalType(t2)
                     else
                         node_error ret, "Return type #{t2} doesn't match earlier return type #{ret_type}"
@@ -817,11 +817,11 @@ get_type = memoize (node)->
                     break if last.__tag == "Return"
 
             if ret_type
-                node_assert ret_type == Nil or not has_fallthrough(node.body), node, "Function is not guaranteed to return a value"
+                node_assert ret_type == NilType or not has_fallthrough(node.body), node, "Function is not guaranteed to return a value"
             else
-                ret_type = Nil
-            -- ret_type = ret_type or Nil
-            if decl_ret_type and decl_ret_type\is_a(OptionalType) and ret_type == Nil
+                ret_type = NilType
+            -- ret_type = ret_type or NilType
+            if decl_ret_type and decl_ret_type\is_a(OptionalType) and ret_type == NilType
                 ret_type = decl_ret_type
             elseif decl_ret_type
                 node_assert decl_ret_type == ret_type, node, "Conflicting return types: #{decl_ret_type} vs #{ret_type}"
@@ -843,13 +843,11 @@ get_type = memoize (node)->
             return parse_type(node.type) if node.type
             fn_type = get_type node.fn
             node_assert fn_type or node.__parent.__tag == "Block", node, "This function's return type cannot be inferred. It must be specified manually using a type annotation"
-            return Nil unless fn_type
+            return NilType unless fn_type
             node_assert fn_type\is_a(FnType), node.fn, "This is not a function, it's a #{fn_type or "???"}"
             return fn_type.return_type
         when "Block"
-            -- error "Blocks have no type"
-            return Nil
-            -- return get_type(node[#node])
+            return #node > 0 and get_type(node[#node]) or NilType
         when "Struct"
             if node.name
                 alias = find_type_alias node, node.name[0]
@@ -918,6 +916,6 @@ get_type = memoize (node)->
 
 return {
     :parse_type, :get_type, :Type, :NamedType, :ListType, :TableType, :FnType, :StructType,
-    :Value, :Value32, :Value16, :Value8, :Pointer, :Int, :Int32, :Int16, :Int8, :Num, :Num32, :Percent, :String, :Bool, :Void, :Nil, :Range,
+    :Value, :Value32, :Value16, :Value8, :Pointer, :Int, :Int32, :Int16, :Int8, :Num, :Num32, :Percent, :String, :Bool, :Void, :NilType, :Range,
     :OptionalType, :MeasureType, :TypeString, :EnumType, :UnionType,
 }
