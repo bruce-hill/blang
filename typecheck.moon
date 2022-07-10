@@ -376,20 +376,28 @@ find_declared_type = (scope, name, arg_types=nil, return_type=nil)->
         return find_declared_type(parent_scope, name, arg_types, return_type)
 
 find_type_alias = (scope, name)->
-    while scope
-        switch scope.__tag
-            when "Block"
-                for i=#scope,1,-1
-                    stmt = scope[i]
-                    if stmt.__tag == "TypeDeclaration" and stmt.name[0] == name
-                        return DerivedType(stmt.name[0], parse_type(stmt.derivesFrom))
-                    elseif stmt.__tag == "StructDeclaration" and stmt[1].name[0] == name
-                        return parse_type stmt[1]
-                    elseif stmt.__tag == "UnionDeclaration" and stmt.type.name[0] == name
-                        return parse_type stmt.type
-                    elseif stmt.__tag == "EnumDeclaration" and stmt.name[0] == name
-                        return parse_type stmt
-        scope = scope.__parent
+    if primitive_types[name]
+        return primitive_types[name]
+
+    root = scope
+    while root.__parent
+        root = root.__parent
+
+    for decl in coroutine.wrap(-> each_tag(root, "TypeDeclaration"))
+        if decl.name[0] == name
+            return DerivedType(decl.name[0], parse_type(decl.derivesFrom))
+
+    for struct in coroutine.wrap(-> each_tag(root, "StructType"))
+        if struct.name[0] == name
+            return parse_type struct
+
+    for union in coroutine.wrap(-> each_tag(root, "UnionType"))
+        if union.name[0] == name
+            return parse_type union
+
+    for enum in coroutine.wrap(-> each_tag(root, "EnumDeclaration"))
+        if enum.name[0] == name
+            return parse_type enum
 
 derived_types = {}
 
@@ -871,6 +879,7 @@ get_type = memoize (node)->
             return tuples[key]
         when "Union"
             union_type = find_type_alias node, node.name[0]
+            node_assert union_type, node.name, "Couldn't find where this union was defined"
             member = node_assert union_type.members[node.member[0]], node.member, "Not a valid union field from #{union_type\verbose_type!}"
             value_type = get_type(node.value)
             node_assert value_type\is_a(member.type), node.value,

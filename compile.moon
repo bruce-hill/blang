@@ -504,25 +504,26 @@ class Environment
 
             code ..= "#{fields_exist}\n"
 
-            tag,offset,val,tmp,name,is_tag = @fresh_locals "tag","offset","val","tmp","name","is_tag"
+            tag,offset,tmp,name,is_tag = @fresh_locals "tag","offset","tmp","name","is_tag"
             val_loc = @fresh_local "val.loc"
             code ..= "#{tag} =l loadl #{reg}\n"
             code ..= "#{offset} =l sub #{tag}, 1\n"
             code ..= "#{offset} =l mul #{offset}, 8\n"
             code ..= "#{name} =l add $#{t\id_str!}.member_names, #{offset}\n"
             code ..= "#{dest} =l loadl #{name}\n"
-            code ..= "#{dest} =l call $CORD_cat(l #{@get_string_reg "[", "lsq"}, l #{dest})\n"
-            code ..= "#{dest} =l call $CORD_cat(l #{dest}, l #{@get_string_reg ']', "rsq"})\n"
+            code ..= "#{dest} =l call $CORD_cat(l #{@get_string_reg "@", "at"}, l #{dest})\n"
+            code ..= "#{dest} =l call $CORD_cat(l #{dest}, l #{@get_string_reg ':', "colon"})\n"
             code ..= "#{val_loc} =l add #{reg}, 8\n"
             next_check,done_label = @fresh_labels "check.member","done"
             for name,info in pairs t.members
                 check,next_check = next_check, @fresh_label "check.member"
                 found_member = @fresh_label "found.member"
                 code ..= @block check, ->
-                    code = "#{is_tag} =w ceq#{info.type.base_type} #{tag}, #{info.index}\n"
+                    code = "#{is_tag} =w ceql #{tag}, #{info.index}\n"
                     code ..= "jnz #{is_tag}, #{found_member}, #{next(t.members, name) and next_check or done_label}\n"
                     return code
                 code ..= @block found_member, ->
+                    val = @fresh_local "val"
                     code = "#{val} =#{info.type.base_type} load#{info.type.abi_type} #{val_loc}\n"
                     code ..= "#{tmp} =l call #{@get_tostring_fn info.type, scope}(#{info.type.base_type} #{val}, l #{callstack})\n"
                     code ..= "#{dest} =l call $CORD_cat(l #{dest}, l #{tmp})\n"
@@ -667,7 +668,7 @@ class Environment
             @type_code ..= "data #{fieldnames} = {#{("l 0,")\rep(#t.fields)}}\n"
 
         -- Union field names
-        for u in coroutine.wrap(-> each_tag(ast, "UnionDeclaration"))
+        for u in coroutine.wrap(-> each_tag(ast, "UnionType"))
             t = parse_type(u)
             assert t\is_a(Types.UnionType), "#{t}"
             fieldnames = "$#{t\id_str!}.member_names"
@@ -1466,7 +1467,7 @@ expr_compilers =
             union_reg, code = env\to_reg @value
             is_member,tag,ret = env\fresh_locals "is.member","tag","ret"
             code ..= "#{tag} =l loadl #{union_reg}\n"
-            code ..= "#{is_member} =w ceq#{member.type.base_type} #{tag}, #{member.index}\n"
+            code ..= "#{is_member} =w ceql #{tag}, #{member.index}\n"
             if_tag,use_nil,done = env\fresh_labels "if.tag","use.nil","done"
             code ..= "jnz #{is_member}, #{if_tag}, #{use_nil}\n"
             code ..= env\block if_tag, ->
@@ -1976,14 +1977,14 @@ expr_compilers =
     Union: (env)=>
         t = get_type @
         ret = env\fresh_local "#{t.name\lower!}"
-        code = "\n\n# Union literal:\n#{ret} =l call $gc_alloc(l #{t.memory_size})\n"
+        code = "#{ret} =l call $gc_alloc(l #{t.memory_size})\n"
         member = node_assert t.members[@member[0]], @, "Not a valid union member name: #{@member[0]} in #{t\verbose_type!}"
         code ..= "storel #{member.index}, #{ret}\n"
         val_reg,val_code = env\to_reg @value
         code ..= val_code
         val_loc = env\fresh_local "val.loc"
         code ..= "#{val_loc} =l add #{ret}, 8\n"
-        code ..= "storel #{val_reg}, #{val_loc}\n\n\n"
+        code ..= "storel #{val_reg}, #{val_loc}\n"
         return ret, code
 
     If: (env)=>
