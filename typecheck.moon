@@ -200,6 +200,7 @@ class OptionalType extends Type
         @base_type = @nonnil.base_type
         @abi_type = @nonnil.abi_type
         @nil_value = @nonnil.nil_value
+        @bytes = @nonnil.bytes
     contains: (other)=> other == @ or other == NilType or (@nonnil and other\is_a(@nonnil))
     __tostring: => @nonnil\is_a(FnType) and "(#{@nonnil})?" or "#{@nonnil}?"
     verbose_type: => @nonnil\is_a(FnType) and "(#{@nonnil\verbose_type!})?" or "#{@nonnil\verbose_type!}?"

@@ -115,6 +115,9 @@ check_truthiness = (t, env, reg, truthy_label, falsey_label)->
     elseif t.base_type == "d"
         tmp = env\fresh_local "is.nonnil"
         return "#{tmp} =l cod #{reg}, d_0.0 # Test for NaN\njnz #{tmp}, #{truthy_label}, #{falsey_label}\n"
+    elseif t.base_type == "s"
+        tmp = env\fresh_local "is.nonnil"
+        return "#{tmp} =l cos #{reg}, d_0.0 # Test for NaN\njnz #{tmp}, #{truthy_label}, #{falsey_label}\n"
     elseif t\is_a(Types.OptionalType)
         if t.nonnil\is_a(Types.Bool)
             tmp = env\fresh_local "is.true"
@@ -140,9 +143,12 @@ check_nil = (t, env, reg, nonnil_label, nil_label)->
         return "jmp #{nonnil_label}\n"
     elseif t.nil_value == 0
         return "jnz #{reg}, #{nonnil_label}, #{nil_label}\n"
-    elseif t.nonnil.base_type == "s" or t.nonnil.base_type == "d"
+    elseif t.nonnil.base_type == "d"
         is_not_nan = env\fresh_local "is.not.NaN"
         return "#{is_not_nan} =w cod #{reg}, d_0.0 # Test for NaN\njnz #{is_not_nan}, #{nonnil_label}, #{nil_label}\n"
+    elseif t.nonnil.base_type == "s"
+        is_not_nan = env\fresh_local "is.not.NaN"
+        return "#{is_not_nan} =w cos #{reg}, s_0.0 # Test for NaN\njnz #{is_not_nan}, #{nonnil_label}, #{nil_label}\n"
     else
         tmp = env\fresh_local "is.nonnil"
         return "#{tmp} =w cne#{t.base_type} #{reg}, #{t.nil_value}\njnz #{tmp}, #{nonnil_label}, #{nil_label}\n"
@@ -1849,7 +1855,12 @@ expr_compilers =
         if lhs_type\is_a(rhs_type) or rhs_type\is_a(lhs_type)
             lhs_reg,rhs_reg,code = env\to_regs @lhs, @rhs
             result = env\fresh_local "comparison"
-            code ..= "#{result} =l ceq#{lhs_type.base_type} #{lhs_reg}, #{rhs_reg}\n"
+            if rhs_type == Types.NilType and (lhs_type.base_type == 's' or lhs_type.base_type == 'd')
+                code ..= "#{result} =w cuo#{lhs_type.base_type} #{lhs_reg}, #{lhs_type.base_type}_0.0\n"
+            elseif lhs_type == Types.NilType and (rhs_type.base_type == 's' or rhs_type.base_type == 'd')
+                code ..= "#{result} =w cuo#{rhs_type.base_type} #{rhs_reg}, #{rhs_type.base_type}_0.0\n"
+            else
+                code ..= "#{result} =w ceq#{lhs_type.base_type} #{lhs_reg}, #{rhs_reg}\n"
             return result,code
         return comparison @, env, "ceq#{lhs_type.base_type}"
     NotEqual: (env)=>
@@ -1857,7 +1868,12 @@ expr_compilers =
         if lhs_type\is_a(rhs_type) or rhs_type\is_a(lhs_type)
             lhs_reg,rhs_reg,code = env\to_regs @lhs, @rhs
             result = env\fresh_local "comparison"
-            code ..= "#{result} =l cne#{lhs_type.base_type} #{lhs_reg}, #{rhs_reg}\n"
+            if rhs_type == Types.NilType and (lhs_type.base_type == 's' or lhs_type.base_type == 'd')
+                code ..= "#{result} =w co#{lhs_type.base_type} #{lhs_reg}, #{lhs_type.base_type}_0.0\n"
+            elseif lhs_type == Types.NilType and (rhs_type.base_type == 's' or rhs_type.base_type == 'd')
+                code ..= "#{result} =w co#{rhs_type.base_type} #{rhs_reg}, #{rhs_type.base_type}_0.0\n"
+            else
+                code ..= "#{result} =w cne#{lhs_type.base_type} #{lhs_reg}, #{rhs_reg}\n"
             return result,code
         return comparison @, env, "cnel"
     TernaryOp: (env)=>
