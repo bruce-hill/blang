@@ -344,7 +344,7 @@ class Environment
                 code ..= "#{item_str} =l call #{fn}(#{t.item_type.base_type} #{item}, l #{callstack})\n"
                 code ..= "#{buf} =l call $CORD_cat(l #{buf}, l #{item_str})\n"
                 code ..= "#{len} =l sub #{len}, 1\n"
-                code ..= "#{item_loc} =l add #{item_loc}, 8\n"
+                code ..= "#{item_loc} =l add #{item_loc}, #{t.item_type.bytes}\n"
                 code ..= "jnz #{len}, #{body_label}, #{end_label}\n"
                 return code
 
