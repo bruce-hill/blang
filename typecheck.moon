@@ -902,6 +902,10 @@ get_type = memoize (node)->
                     return
                 elseif t\is_a(t2)
                     t = t2
+                elseif t == NilType
+                    t = OptionalType(t2)
+                elseif t2 == NilType
+                    t = OptionalType(t)
                 else
                     node_error block[#block],
                         "This expression has type #{t2}, but the earlier values for this `if` block are all #{t}"
