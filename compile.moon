@@ -802,6 +802,8 @@ class Environment
             else vardec.__parent
 
             t = vardec.type and parse_type(vardec.type) or get_type(vardec.value)
+            if vardec.__parent.__tag == "Clause" and t\is_a(Types.OptionalType)
+                t = t.nonnil
             hook_up_refs vardec.var, scope, t
 
             block = vardec.__parent

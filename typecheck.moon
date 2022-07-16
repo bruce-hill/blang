@@ -310,7 +310,10 @@ find_declared_type = (scope, name, arg_types=nil, return_type=nil)->
                 if stmt.__tag == "FnDecl" and stmt.name[0] == name and (not arg_types or get_type(stmt)\matches(arg_types,return_type))
                     return get_type(stmt)
                 elseif stmt.__tag == "Declaration" and stmt.var[0] == name
-                    return get_type stmt.value
+                    t = get_type stmt.value
+                    if stmt.__parent.__tag == "Clause" and t\is_a(OptionalType)
+                        t = t.nonnil
+                    return t
                 elseif stmt.__tag == "Use"
                     -- Naked "use"
                     t = get_module_type(stmt.name[0])
