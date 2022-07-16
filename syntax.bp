@@ -184,7 +184,7 @@ For:: (
   [between]
 )
 While:: (
-  \b"while"\b @curdent:\C _ @condition=required-extended-expr _ [@filter=loopFilter] _ [comment]
+  \b"while"\b @curdent:\C _ @condition=(Declaration/required-extended-expr) _ [@filter=loopFilter] _ [comment]
   @body=indentedBlock
   [between]
 )

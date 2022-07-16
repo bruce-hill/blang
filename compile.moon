@@ -797,12 +797,12 @@ class Environment
                 while vardec.__parent[i] != vardec
                     i += 1
                 {table.unpack(vardec.__parent, i+1)}
-            elseif vardec.__parent.__tag == "Clause"
+            elseif (vardec.__parent.__tag == "Clause" or vardec.__parent.__tag == "While") and vardec == vardec.__parent.condition
                 vardec.__parent.body
             else vardec.__parent
 
             t = vardec.type and parse_type(vardec.type) or get_type(vardec.value)
-            if vardec.__parent.__tag == "Clause" and t\is_a(Types.OptionalType)
+            if (vardec.__parent.__tag == "Clause" or vardec.__parent.__tag == "While") and vardec == vardec.__parent.condition and t\is_a(Types.OptionalType)
                 t = t.nonnil
             hook_up_refs vardec.var, scope, t
 

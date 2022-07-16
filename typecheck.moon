@@ -311,7 +311,7 @@ find_declared_type = (scope, name, arg_types=nil, return_type=nil)->
                     return get_type(stmt)
                 elseif stmt.__tag == "Declaration" and stmt.var[0] == name
                     t = get_type stmt.value
-                    if stmt.__parent.__tag == "Clause" and t\is_a(OptionalType)
+                    if (stmt.__parent.__tag == "Clause" or stmt.__parent.__tag == "While") and stmt == stmt.__parent.condition and t\is_a(OptionalType)
                         t = t.nonnil
                     return t
                 elseif stmt.__tag == "Use"
@@ -336,7 +336,7 @@ find_declared_type = (scope, name, arg_types=nil, return_type=nil)->
                         arg_types[arg.name[0]] = get_type(arg.value)
                     else
                         table.insert arg_types, get_type(arg)
-        when "Clause"
+        when "Clause","While"
             if scope.condition.__tag == "Declaration" and scope.condition.var[0] == name
                 t = get_type(scope.condition.value)
                 if t\is_a(OptionalType)
