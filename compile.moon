@@ -1198,7 +1198,7 @@ expr_compilers =
         reg,code = env\to_reg @expr
         cast_type = parse_type @type
         actual_type = get_type(@expr)
-        if actual_type and cast_type.base_type == actual_type.base_type
+        if not actual_type or (actual_type and cast_type.base_type == actual_type.base_type)
             return reg,code
         c = env\fresh_local "casted"
         abt = actual_type.base_type
