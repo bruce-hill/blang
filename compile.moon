@@ -1636,7 +1636,7 @@ expr_compilers =
             code ..= "#{range} =l call $range_new_first_last(l #{first_reg}, l 999999999999999999)\n"
         elseif not @first and not @next and @last
             last_reg,code = env\to_reg @last
-            code = "#{range} =l call $range_new_first_last(l -999999999999999999, l #{last_reg})\n"
+            code ..= "#{range} =l call $range_new_first_last(l -999999999999999999, l #{last_reg})\n"
         elseif not @first and not @next and not @last
             code = "#{range} =l call $range_new_first_last(l -999999999999999999, l 999999999999999999)\n"
         else
