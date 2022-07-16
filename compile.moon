@@ -856,7 +856,7 @@ class Environment
 
                 node_assert #candidates > 0, call.fn, "There is no function with this name"
                 node_assert #candidates > 1, call.fn, "This function is being called with: #{call.fn[0]}#{call_sig} which doesn't match the definition: #{candidates[1]}"
-                node_error call.fn, "This function is being called with: #{@fn[0]}#{call_sig} which doesn't match any of the definitions:\n  - #{concat candidates, "\n  - "}"
+                node_error call.fn, "This function is being called with: #{call.fn[0]}#{call_sig} which doesn't match any of the definitions:\n  - #{concat candidates, "\n  - "}"
 
         -- Compile functions:
         for fndec in coroutine.wrap(-> each_tag(ast, "FnDecl", "Lambda"))
@@ -1249,7 +1249,7 @@ expr_compilers =
                 if t == Types.String
                     code ..= "#{chunk_reg} =l copy #{val_reg}\n"
                 else
-                    fn,needs_loading = env\get_tostring_fn t, scope
+                    fn,needs_loading = env\get_tostring_fn t, @
                     code ..= "#{fn} =l loadl #{fn}\n" if needs_loading
                     code ..= "#{chunk_reg} =l call #{fn}(#{t.base_type} #{val_reg}, l 0)\n"
 
