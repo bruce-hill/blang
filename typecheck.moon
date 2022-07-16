@@ -290,11 +290,12 @@ find_returns = (node)->
             for k,child in pairs node
                 find_returns(child) if type(child) == 'table' and not (type(k) == 'string' and k\match("^__"))
 
-enclosing_scope = (scope)->
+enclosing_scope = (scope, exclude_self)->
     if scope.__parent and scope.__parent.__tag == "Block"
         i = 1
         while scope.__parent[i] != (scope.__original or scope)
             i += 1
+        i -= 1 if exclude_self
         t = {k,v for k,v in pairs scope.__parent when type(k) != 'number' or k <= i}
         t.__original = scope.__parent
         return t
@@ -375,7 +376,13 @@ find_declared_type = (scope, name, arg_types=nil, return_type=nil)->
             t = find_declared_type(loop.body, name, arg_types, return_type)
             return t if t
 
-    parent_scope = enclosing_scope scope
+    parent_scope = if scope.__parent and scope.__parent.__tag == "Declaration" and scope == scope.__parent.value
+        -- Special case to handle referencing a shadowed variable while declaring its shadow:
+        -- foo := foo or 1234
+        enclosing_scope scope.__parent, true
+    else
+        enclosing_scope scope
+        
     if parent_scope
         return find_declared_type(parent_scope, name, arg_types, return_type)
 
