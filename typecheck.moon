@@ -532,6 +532,7 @@ load_module = memoize (path)->
     return t
 
 get_type = memoize (node)->
+    return node.__type if node.__type
     switch node.__tag
         when "Int" then return Int
         when "Float" then return Num

@@ -715,6 +715,7 @@ class Environment
                             node.__register = var.__register
                             node.__location = var.__location
                             node.__decl = var
+                            node.__type = var_type
                     when "FnDecl","Lambda"
                         if (var.__register and var.__register\match("^%$")) or var.__location
                             hook_up_refs var, node.body, var_type
