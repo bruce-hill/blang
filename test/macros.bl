@@ -34,3 +34,49 @@ macro usefn(x)
 def foo(y:String):
     fail "Check fndec hygiene"
 usefn "asdf"
+
+macro best(xs, x, expr)
+    if x := xs[1]
+        best := x
+        best_score := expr
+        for x in xs[2..]
+            score := expr
+            if score > best_score
+                best = x
+                best_score = score
+        best
+
+struct Foo { height:Int }
+things := [Foo{1}, Foo{5}, Foo{2}, Foo{-99}]
+
+tallest := best(things, x, x.height)
+$puts "Tallest of $things: $tallest"
+fail unless "$tallest" == "Foo{height=5}"
+
+macro max(xs)
+    if best := xs[1]
+        for x in xs[2..]
+            if x > best
+                best = x
+        best
+
+nums := [5,4,1,99,0]
+max_num := max nums
+$puts "max of $nums: $(max nums)"
+fail unless max_num == 99
+
+def local_macro(things:[Foo]):
+    macro any(xs, x, expr)
+        ret := no
+        for x in xs
+            if expr
+                ret = yes
+                stop
+        ret
+
+    result := any(things, x, x.height > 2)
+    $puts "any x.height > 2 for x in $things: $result"
+    fail unless result
+
+local_macro(things)
+
