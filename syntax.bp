@@ -2,7 +2,7 @@ prog: ^^__ @:Block=(statements) __ [@:ParseError=(+(./\n)=>"Invalid code")]$$
 
 term: (
     Bool / Nil
-    / Fail / Return / Skip / Stop / Use / TypeOf
+    / Fail / Return / Skip / Stop / Use / TypeOf / SizeOf
     / Lambda / Cast
     / unaryOp
     / Global !(_`(,{) / Var !(_`(,{)
@@ -198,13 +198,14 @@ Return:: \b"return"\b _ [@value=extended-expr]
 Use:: \b"use"\b _ `" @name=.. `"
 Export:: \b"export"\b _ +Var %(_`,__)
 TypeOf:: \b"typeof"\b _ @expression=(expr)
+SizeOf:: \b"sizeof"\b _ @expression=(expr)
 Range:: (
   @first=maybe-index-term [`,@next=maybe-index-term] ".." [@last=maybe-index-term] # 0,2..4 x..y 1..
   / ".." [@last=maybe-index-term]) # ..5 ..
 comment: "//" *.
 
 # Keep keywords reverse-alphabetically sorted so you don't get spurious prefix matches (e.g. "no" instead of "not")
-keyword: \b("yes"/"xor"/"with"/"while"/"when"/"use"/"unless"/"unit"/"typeof"/"stop"/"skip"/"return"/"repeat"/"pass"/"or"
+keyword: \b("yes"/"xor"/"with"/"while"/"when"/"use"/"unless"/"unit"/"typeof"/"stop"/"skip"/"sizeof"/"return"/"repeat"/"pass"/"or"
   /"not"/"no"/"nil"/"mod"/"macro"/"is"/"if"/"for"/"fail"/"export"/"elseif"/"else"/"do"/"deftype"/"between"/"as"/"and")\b
 hex: `0-9,a-f,A-F
 nl: +\n % (*(` /\t) [comment])

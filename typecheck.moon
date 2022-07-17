@@ -466,6 +466,8 @@ parse_type = memoize (type_node)->
         when "OptionalType"
             t = parse_type(type_node.nonnil)
             return OptionalType(t)
+        when "TypeOf"
+            return get_type(type_node.expression)
         else
             error "Not a type node: #{viz type_node}"
 
@@ -556,6 +558,7 @@ get_type = memoize (node)->
         when "Nil" then return NilType
         when "String","Escape","Newline" then return String
         when "TypeOf" then return TypeString
+        when "SizeOf" then return Int
         when "DSL"
             return String unless node.name
             name = node.name[0]

@@ -605,6 +605,8 @@ class Environment
 
             if ast.__tag == "Var" and replacements[ast[0]]
                 return replacements[ast[0]]
+            elseif ast.__tag == "NamedType" and replacements[ast[0]]
+                return replacements[ast[0]]
 
             return {k,(if type(k) == 'string' and k\match("^__") then v else substitute(v, replacements)) for k,v in pairs ast}
 
@@ -619,7 +621,8 @@ class Environment
                 macro_vars[dec.name[0]] = {[0]:"#{dec.name[0]}.hygienic.#{h}", __tag:"Var"}
                 h += 1
 
-            macros[m.name[0]] = substitute(m, macro_vars)
+            macros[m.name[0]] or= {}
+            macros[m.name[0]][#m.args] = substitute(m, macro_vars)
 
         apply_macros = (ast)->
             return ast unless type(ast) == 'table'
@@ -628,6 +631,7 @@ class Environment
 
             if ast.__tag == "FnCall"
                 mac = macros[ast.fn[0]]
+                mac = mac and mac[#ast]
                 if mac
                     body = mac.body
                     while body.__tag == "Block" and #body == 1
@@ -1215,8 +1219,10 @@ expr_compilers =
             code ..= "#{c} =#{cast_type.base_type} cast #{reg}\n"
         return c,code
     TypeOf: (env)=>
-        assert @expression
         return env\get_string_reg(get_type(@expression)\verbose_type!, "typename"), ""
+    SizeOf: (env)=>
+        t = get_type(@expression)
+        return "#{t.bytes}", ""
     String: (env)=>
         str = env\fresh_local "str"
         if #@content == 0
