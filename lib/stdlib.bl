@@ -1,0 +1,274 @@
+deftype BP:String
+
+def escape(str:String):BP
+    return ("\"$(str | $bl_string_replace(%BP{`",\}, '\@0'):String)\""):BP
+
+def replace(str:String, pat:String, replacement:String):String
+    return str|$bl_string_replace(%BP[$pat], replacement):String
+
+def multiply(s:String,i:Int) := $bl_string_repeat(s,i):String
+def multiply(i:Int,s:String) := $bl_string_repeat(s,i):String
+
+def parse_int(s:String, base:Int?):Int?
+    endptr := {0:Pointer?}
+    base := base or 10
+    i := $strtol(s, endptr, base):Int
+    if endptr[1] != s:Pointer?
+        return i:Int?
+    else
+        return (nil):Int?
+
+def parse_num(s:String):Num?
+    endptr := {0:Pointer?}
+    n := $strtod(s, endptr):Num
+    if endptr[1] != s:Pointer?
+        return n:Num?
+    else
+        return (nil):Num?
+
+// macro say(s) $puts(s):NilType
+def say(s:String,skip_nl:Bool?):
+    if skip_nl == yes
+        $printf("%s", s)
+    else
+        $puts(s)
+
+macro max(xs, x, expr)
+    if x := xs[1]
+        best := x
+        best_score := expr
+        for x in xs[2..]
+            score := expr
+            if score > best_score
+                best = x
+                best_score = score
+        best
+
+macro min(xs, x, expr)
+    if x := xs[1]
+        best := x
+        best_score := expr
+        for x in xs[2..]
+            score := expr
+            if score < best_score
+                best = x
+                best_score = score
+        best
+
+macro max(xs)
+    if best := xs[1]
+        for x in xs[2..]
+            if x > best
+                best = x
+        best
+
+macro min(xs)
+    if best := xs[1]
+        for x in xs[2..]
+            if x < best
+                best = x
+        best
+
+macro any(xs, x, expr)
+    ret := no
+    for x in xs
+        if expr
+            ret = yes
+            stop
+    ret
+
+macro all(xs, x, expr)
+    ret := yes
+    for x in xs
+        if not expr
+            ret = no
+            stop
+    ret
+
+macro sum(xs)
+    if total := xs[1]
+        for x in xs[2..]
+            total += x
+        total
+
+macro product(xs)
+    if total := xs[1]
+        for x in xs[2..]
+            total *= x
+        total
+
+deftype Path:String
+struct File {
+    path:Path
+    file_pointer:Pointer
+}
+struct Directory {
+    path:Path
+    dir_pointer:Pointer
+}
+
+enum FileMode { Read, Write, ReadWrite }
+
+def open_file(path:Path, mode:FileMode?):File?
+    mode := mode or FileMode.Read
+    modestr := if mode == FileMode.Read
+        "r"
+    elseif mode == FileMode.Write
+        "w"
+    elseif mode == FileMode.ReadWrite
+        "rw"
+    else
+        fail "Invalid file mode: $mode"
+
+    fp := $fopen(path, modestr):File? or return nil
+    file := File{path,fp}
+    $GC_register_finalizer(file, (_:File, fp:Pointer)=> $fclose(fp):NilType, fp, 0, 0)
+    return file
+
+def open_directory(path:Path):Directory?
+    dir_ptr := $opendir(path):Pointer? or return nil
+    dir := Directory{path,dir_ptr}
+    $GC_register_finalizer(dir, (_:Directory, dirp:Pointer)=> $closedir(dirp):NilType, dir_ptr, 0, 0)
+    return dir
+
+def contents(dir:Directory):[Path]
+    ret := [:Path]
+    path := dir.path
+    while entry := $readdir_str(dir.dir_pointer):String
+        ret += ("$path/$entry"):Path
+    return ret
+    
+def make_directory(path:Path,mode:String?):Bool
+    mode := mode or "755"
+    mode_int := parse_int(mode, base=8) or return no
+    return $mkdir(path, mode_int:Int8):Int32 == 0:Int32
+
+def parent(path:Path):Path?
+    return nil if path == %Path[/]
+
+def real(path:Path):Path?
+    if path[1..1] == "~" and (path[2..2] == "" or path[2..2] == "/")
+        path = ("$($getenv("HOME"):Path? or return nil)$(path[2..])"):Path
+    buf := $realpath(path, 0:Pointer):Path? or return nil
+    realpath := ("$buf"):Path
+    $free(buf):NilType
+    return realpath
+
+def delete(path:Path):Bool
+    return $unlink(path):Int32 == 0:Int32
+
+def delete(file:File):Bool
+    $fclose(file.file_pointer)
+    return $unlink(file.path):Int32 == 0:Int32
+
+def delete(dir:Directory):Bool
+    $fclose(dir.dir_pointer)
+    return $rmdir(dir.path):Int32 == 0:Int32
+
+def contents(f:File):String
+    return "$($CORD_to_char_star($CORD_from_file_eager(f.file_pointer):String):String)"
+
+def rewind(f:File,amount:Int):NilType
+    if amount
+        $fseek(f.file_pointer, -amount, 1)
+    else
+        $rewind(f.file_pointer)
+
+def fast_forward(f:File,amount:Int):NilType
+    if amount
+        $fseek(f.file_pointer, amount, 1)
+    else
+        $fseek(f.file_pointer, 0, 2)
+
+def seek(f:File,pos:Int):NilType
+    $fseek(f.file_pointer, pos, 0)
+
+def next_line(f:File,keep_nl:Bool?):String?
+    len := {0}
+    buf := {0:String?}
+    nread := $getline(buf, len, f.file_pointer):Int
+    ret := if nread < 0
+        (nil):String?
+    else
+        s := "$(buf[1] or fail)"
+        if s[#s] == 10 and keep_nl != yes
+            s = s[..(#s-1)]
+        s
+    $free(buf[1]) if buf[1]
+    return ret
+
+def tostring(f:File):String
+    return "File{$(f.path)}"
+
+def tostring(f:Directory):String
+    return "Directory{$(f.path)}"
+
+struct Time {
+    seconds:Int
+    nanoseconds:Int
+}
+
+def tostring(t:Time):String
+    // return "Date{$($bl_tostring_time("%Y-%m-%d %H:%M:%S", t.seconds):String)}"
+    return "Date{$($bl_tostring_time("%b %e, %Y %l:%M:%S%P", t.seconds):String)}"
+
+deftype DeviceID:Int
+deftype INode:Int
+deftype _FileMode:Int
+deftype UserID:Int
+deftype GroupID:Int
+
+struct FileInfo {
+    device,rdevice:DeviceID
+    inode:INode
+    mode:_FileMode
+    links:Int
+    user:UserID
+    group:GroupID
+    size:Int
+    block_size:Int
+    block_count:Int
+    accessed,modified,moved:Time
+}
+
+def info(file:File):FileInfo?
+    return $bl_fstat(file.file_pointer):FileInfo?
+
+deftype Shell:String 
+def escape(str:String):Shell
+    return ("'" + (str | replace("'", "'\"'\"'")) + "'"):Shell
+
+def escape(strings:[String]):Shell
+    ret := %Shell""
+    for str in strings
+        ret += %Shell[$str]
+    between ret += %Shell[ ]
+    return ret
+
+def escape(path:Path):Shell
+    return escape(path:String):Shell
+
+def escape(paths:[Path]):Shell
+    return escape(paths:[String]):Shell
+
+def run(cmd:Shell):String?
+    fp := $popen(cmd, "r"):File? or return nil
+    cord := 0:Pointer
+    repeat
+        buf_size := 1000
+        buf := $GC_malloc(buf_size):Pointer
+        len := $fread(buf, 1, buf_size, fp):Int
+        stop if len == 0
+        cord = $CORD_cat_char_star(cord, buf, len):Pointer
+
+    return nil if $ferror(fp):Int32 != 0:Int32
+
+    output := "$($CORD_to_char_star(cord):String)"
+    status := $pclose(fp):Int32
+    // return nil if status != 0:Int32
+    return output
+
+paths := [%Path[dir space], %Path[lib]]
+cmd := %Shell[false]
+output := cmd|run() or fail "Command failed: $($last_err():String)"
+say output, skip_nl=yes
