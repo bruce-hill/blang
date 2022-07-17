@@ -246,10 +246,51 @@ def escape(strings:[String]):Shell
     return ret
 
 def escape(path:Path):Shell
-    return escape(path:String):Shell
+    if path == "~"
+        return path:Shell
+    elseif path[1..2] == "~/"
+        return %Shell[~/] + %Shell[$((path[3..]):String)]
+    else
+        return %Shell[$(path:String)]
 
 def escape(paths:[Path]):Shell
-    return escape(paths:[String]):Shell
+    ret := %Shell""
+    for path in paths
+        ret += %Shell[$path]
+    between ret += %Shell[ ]
+    return ret
+
+deftype Glob:String
+def escape(glob:Glob):Shell
+    return glob:Shell
+
+def escape(globs:[Glob]):Shell
+    ret := %Shell[]
+    for glob in globs
+        ret += %Shell[$glob]
+    between ret += %Shell[ ]
+    return ret
+
+def escape(str:String):Glob
+    pat := %BP{`*,?,[,#}
+    return ("$(str | $bl_string_replace(%BP{`*,?,[,#,\}, '\@0'):String)"):Glob
+
+def escape(path:Path):Glob
+    return %Glob[$(path:String)]
+
+def paths(glob:Glob,flags:Int32?):[Path]?
+    struct glob_buf {
+        gl_pathc:Int, gl_pathv:Pointer, gl_offs:Int
+        _1,_2,_3,_4,_5:Pointer? // Padding
+    }
+
+    buf := glob_buf{0, mem_ptr{0:Pointer}, 0}
+    status := $glob(glob, flags or 0:Int32, 0:Pointer, buf):Int32
+    return nil if status != 0:Int32
+    mem := buf.gl_pathv
+    my_paths := [("$(((mem:Int + 8*i):struct{str:String}).str)"):Path for i in 0..(buf.gl_pathc-1)]
+    $globfree(buf)
+    return my_paths
 
 def run(cmd:Shell):String?
     fp := $popen(cmd, "r"):File? or return nil
@@ -268,7 +309,9 @@ def run(cmd:Shell):String?
     // return nil if status != 0:Int32
     return output
 
-paths := [%Path[dir space], %Path[lib]]
-cmd := %Shell[false]
-output := cmd|run() or fail "Command failed: $($last_err():String)"
-say output, skip_nl=yes
+// paths := [%Path[dir space], %Path[lib], %Path[~/.config], %Path[foo*]]
+// glob := %Glob[*.ch]
+// say "$(glob|paths)"
+// cmd := %Shell[whatargs $paths $glob]
+// output := cmd|run() or fail "Command failed: $($last_err():String)"
+// say output, skip_nl=yes
