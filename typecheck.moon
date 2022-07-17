@@ -248,7 +248,7 @@ Int8 = NamedType("Int8")
 Int8.base_type = 'w'
 Int8.abi_type = 'b'
 Int8.bytes = 1
-Int8.nil_value = 0xFF
+Int8.nil_value = 0x7F
 
 Percent = DerivedType("Percent", Num)
 
@@ -546,7 +546,20 @@ load_module = memoize (path)->
 get_type = memoize (node)->
     return node.__type if node.__type
     switch node.__tag
-        when "Int" then return Int
+        when "Int"
+            switch node.__parent.__tag
+                when "Assignment","AddUpdate","SubUpdate","MulUpdate","DivUpdate","AndUpdate","OrUpdate","XorUpdate","Equal","NotEqual","Less","LessEq","Greater","GreaterEq"
+                    other = if node == node.__parent.rhs
+                        node.__parent.lhs
+                    else
+                        node.__parent.rhs
+                    return Int if other.__tag == "Int"
+                    t = get_type(other)
+                    if t\is_a(OptionalType)
+                        t = t.nonnil
+                    if t\is_a(Int) or t\is_a(Int32) or t\is_a(Int16) or t\is_a(Int8)
+                        return t
+            return Int
         when "Float" then return Num
         when "Percent" then return Percent
         when "Measure"

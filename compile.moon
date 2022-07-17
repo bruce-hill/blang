@@ -1125,11 +1125,20 @@ expr_compilers =
     Global: (env)=>
         return "#{@[0]}", ""
     Int: (env)=>
+        t = get_type(@)
         s = @[0]\gsub("_","")
-        if s\match("^0x")
-            return "#{tonumber(s\sub(3), 16)}",""
+        n = if s\match("^0x")
+            tonumber(s\sub(3), 16)
         else
-            return "#{tonumber(s)}",""
+            tonumber(s)
+        min,max = -(2^(t.bytes*8-1)), 2^(t.bytes*8-1)-2
+        if n == t.nil_value
+            node_error @, "This value is reserved for represeting `nil` and can't be used as an integer. Consider using a larger integer type."
+        elseif n > max
+            node_error @, "This value is too large to fit into a #{t.bytes}-byte signed integer (max value: #{math.floor(max)})"
+        elseif n < min
+            node_error @, "This value is too small to fit into a #{t.bytes}-byte signed integer (min value: #{math.floor(min)})"
+        return "#{n}",""
     Float: (env)=>
         s = @[0]\gsub("_","")
         return "d_#{tonumber(s)}",""
