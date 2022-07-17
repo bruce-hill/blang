@@ -2408,12 +2408,13 @@ stmt_compilers =
             code ..= "#{empty_label}\n"
             code ..= "#{msg} =l copy #{env\get_string_reg("Unexpected failure!", "default.failure")}\n"
             code ..= "jmp #{fail_label}\n#{fail_label}\n"
-            full_msg = env\fresh_local "failure.message"
-            code ..= "#{full_msg} =l call $bl_string_append_string(l #{env\get_string_reg("["..get_node_pos(@)..'] ', "failure.location")}, l #{msg})\n"
-            code ..= "call $errx(l 1, l #{full_msg})\n"
+            code ..= "call $dprintf(l 2, l #{env\get_string_reg(get_node_pos(@)..': %s\n', "failure.location")}, l #{msg})\n"
+            code ..= "call $_exit(l 1)\n"
             return code
         else
-            return "call $errx(l 1, l #{env\get_string_reg("["..get_node_pos(@)..'] Unexpected failure!', "failure.message")})\n"
+            code = "call $dprintf(l 2, l #{env\get_string_reg(get_node_pos(@)..': A failure occurred!\n', "failure.location")})\n"
+            code ..= "call $_exit(l 1)\n"
+            return code
     TypeDeclaration: (env)=> ""
     StructDeclaration: (env)=> ""
     EnumDeclaration: (env)=> ""
