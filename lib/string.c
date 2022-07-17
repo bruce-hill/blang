@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/param.h>
+#include <time.h>
 
 #include "types.h"
 
@@ -43,6 +44,18 @@ const char *bl_tostring_range(range_t *r) {
         RETURN_FMT("%ld..%ld", r->first, r->last);
     else
         RETURN_FMT("%ld,%ld..%ld", r->first, r->next, r->last);
+}
+const char *bl_tostring_time(const char *fmt, int64_t seconds)
+{
+    size_t strftime(char *restrict s, size_t max,
+                    const char *restrict format,
+                    const struct tm *restrict tm);
+    time_t t = seconds;
+    struct tm tm;
+    localtime_r(&t, &tm);
+    char buf[128];
+    strftime(buf, 127, fmt, &tm);
+    return intern_str(buf);
 }
 
 const char *bl_string_join(int64_t count, char **strings, char *sep) {
