@@ -1131,6 +1131,12 @@ expr_compilers =
             tonumber(s\sub(3), 16)
         else
             tonumber(s)
+
+        if t\is_a(Types.Num)
+            return "d_#{n}",""
+        elseif t\is_a(Types.Num32)
+            return "d_#{n}",""
+
         min,max = -(2^(t.bytes*8-1)), 2^(t.bytes*8-1)-2
         if n == t.nil_value
             node_error @, "This value is reserved for represeting `nil` and can't be used as an integer. Consider using a larger integer type."
@@ -1141,7 +1147,9 @@ expr_compilers =
         return "#{n}",""
     Float: (env)=>
         s = @[0]\gsub("_","")
-        return "d_#{tonumber(s)}",""
+        t = get_type(@)
+        prefix = t\is_a(Types.Num) and "d" or "s"
+        return "#{prefix}_#{tonumber(s)}",""
     Measure: (env)=>
         n = tonumber((@amount[0]\gsub("_","")))
         m = Measure(n, @units[0]\gsub("[<>]",""))
@@ -1695,7 +1703,7 @@ expr_compilers =
         t_lhs,t_rhs = get_type(@lhs),get_type(@rhs)
         tl_nn, tr_nn = (t_lhs.nonnil or t_lhs), (t_rhs.nonnil or t_rhs)
         if @op[0] == "+"
-            if tl_nn == tr_nn and (tl_nn\is_a(Types.Int) or tl_nn\is_a(Types.Num) or tl_nn\is_a(Types.MeasureType))
+            if tl_nn == tr_nn and tl_nn\is_numeric!
                 return infixop @, env, "add"
             elseif t_lhs == t_rhs and t_lhs\is_a(Types.String)
                 return infixop @, env, (ret,lhs,rhs)->
@@ -1773,14 +1781,14 @@ expr_compilers =
         t_lhs,t_rhs = get_type(@lhs),get_type(@rhs)
         tl_nn, tr_nn = (t_lhs.nonnil or t_lhs), (t_rhs.nonnil or t_rhs)
         if @op[0] == "*"
-            if tl_nn == tr_nn and (tl_nn\is_a(Types.Int) or tl_nn\is_a(Types.Num))
+            if tl_nn == tr_nn and tl_nn\is_numeric!
                 return infixop @, env, "mul"
             elseif (tl_nn\is_a(Types.MeasureType) and tr_nn\is_a(Types.Num)) or (tl_nn\is_a(Types.Num) and tr_nn\is_a(Types.MeasureType)) or (tl_nn\is_a(Types.MeasureType) and tr_nn\is_a(Types.MeasureType))
                 return infixop @, env, "mul"
             else
                 return overload_infix @, env, "multiply", "product"
         else -- "/"
-            if tl_nn == tr_nn and (tl_nn\is_a(Types.Int) or tl_nn\is_a(Types.Num))
+            if tl_nn == tr_nn and tl_nn\is_numeric!
                 return infixop @, env, "div"
             elseif (tl_nn\is_a(Types.MeasureType) and tr_nn\is_a(Types.Num)) or (tl_nn\is_a(Types.Num) and tr_nn\is_a(Types.MeasureType)) or (tl_nn\is_a(Types.MeasureType) and tr_nn\is_a(Types.MeasureType))
                 return infixop @, env, "div"
@@ -2222,7 +2230,7 @@ stmt_compilers =
         lhs_type,rhs_type = get_type(@lhs),get_type(@rhs)
         lhs_reg,rhs_reg,code = env\to_regs @lhs, @rhs
         store_code = @lhs.__location and "store#{lhs_type.base_type} #{lhs_reg}, #{@lhs.__location}\n" or ""
-        if nonnil_eq(lhs_type, rhs_type) and (lhs_type\is_a(Types.Int) or lhs_type\is_a(Types.Num))
+        if nonnil_eq(lhs_type, rhs_type) and lhs_type\is_numeric!
             return code.."#{lhs_reg} =#{lhs_type.base_type} add #{lhs_reg}, #{rhs_reg}\n"..store_code
         elseif lhs_type == rhs_type and lhs_type\is_a(Types.String)
             return code.."#{lhs_reg} =l call $bl_string_append_string(l #{lhs_reg}, l #{rhs_reg})\n"..store_code
@@ -2274,7 +2282,7 @@ stmt_compilers =
         lhs_type,rhs_type = get_type(@lhs),get_type(@rhs)
         lhs_reg,rhs_reg,code = env\to_regs @lhs, @rhs
         store_code = @lhs.__location and "store#{lhs_type.base_type} #{lhs_reg}, #{@lhs.__location}\n" or ""
-        if nonnil_eq(lhs_type, rhs_type) and (lhs_type\is_a(Types.Int) or lhs_type\is_a(Types.Num))
+        if nonnil_eq(lhs_type, rhs_type) and lhs_type\is_numeric!
             return code.."#{lhs_reg} =#{lhs_type.base_type} sub #{lhs_reg}, #{rhs_reg}\n"..store_code
         else
             fn_reg, needs_loading, t2 = get_function_reg @__parent, "subtract", {lhs_type,rhs_type}, lhs_type
@@ -2285,7 +2293,7 @@ stmt_compilers =
         lhs_type,rhs_type = get_type(@lhs),get_type(@rhs)
         lhs_reg,rhs_reg,code = env\to_regs @lhs, @rhs
         store_code = @lhs.__location and "store#{lhs_type.base_type} #{lhs_reg}, #{@lhs.__location}\n" or ""
-        if nonnil_eq(lhs_type, rhs_type) and (lhs_type\is_a(Types.Int) or lhs_type\is_a(Types.Num))
+        if nonnil_eq(lhs_type, rhs_type) and lhs_type\is_numeric!
             return code.."#{lhs_reg} =#{lhs_type.base_type} mul #{lhs_reg}, #{rhs_reg}\n"..store_code
         else
             fn_reg, needs_loading, t2 = get_function_reg @__parent, "multiply", {lhs_type,rhs_type}, lhs_type
@@ -2296,7 +2304,7 @@ stmt_compilers =
         lhs_type,rhs_type = get_type(@lhs),get_type(@rhs)
         lhs_reg,rhs_reg,code = env\to_regs @lhs, @rhs
         store_code = @lhs.__location and "store#{lhs_type.base_type} #{lhs_reg}, #{@lhs.__location}\n" or ""
-        if nonnil_eq(lhs_type, rhs_type) and (lhs_type\is_a(Types.Int) or lhs_type\is_a(Types.Num))
+        if nonnil_eq(lhs_type, rhs_type) and lhs_type\is_numeric!
             return code.."#{lhs_reg} =#{lhs_type.base_type} div #{lhs_reg}, #{rhs_reg}\n"..store_code
         else
             fn_reg, needs_loading, t2 = get_function_reg @__parent, "divide", {lhs_type,rhs_type}, lhs_type

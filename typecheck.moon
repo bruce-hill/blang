@@ -5,9 +5,11 @@ import Measure, register_unit_alias from require 'units'
 parse = require 'parse'
 
 local get_type, parse_type, get_module_type
+local Int,Int32,Int16,Int8,Num,Num32
 
 class Type
     is_a: (cls)=> @ == cls or @.__class == cls or cls\contains @
+    is_numeric: => @is_a(Int) or @is_a(Num) or @is_a(Int32) or @is_a(Int16) or @is_a(Int8) or @is_a(Num32)
     contains: (other)=> @ == other
     base_type: 'l'
     abi_type: 'l'
@@ -61,7 +63,6 @@ class DerivedType extends Type
     __eq: Type.__eq
     is_a: (cls)=> @ == cls or @derived_from\is_a(cls) or @.__class == cls or cls\contains(@)
 
-local Num
 class MeasureType extends Type
     new: (@units)=>
     normalized: => @units == "" and assert(Num) or @
@@ -557,10 +558,35 @@ get_type = memoize (node)->
                     t = get_type(other)
                     if t\is_a(OptionalType)
                         t = t.nonnil
-                    if t\is_a(Int) or t\is_a(Int32) or t\is_a(Int16) or t\is_a(Int8)
+                    if t\is_a(Int) or t\is_a(Int32) or t\is_a(Int16) or t\is_a(Int8) or t\is_a(Num) or t\is_a(Num32)
+                        return t
+                when "Cast"
+                    t = parse_type(node.__parent.type)
+                    if t\is_a(OptionalType)
+                        t = t.nonnil
+                    if t\is_a(Int) or t\is_a(Int32) or t\is_a(Int16) or t\is_a(Int8) or t\is_a(Num) or t\is_a(Num32)
                         return t
             return Int
-        when "Float" then return Num
+        when "Float"
+            switch node.__parent.__tag
+                when "Assignment","AddUpdate","SubUpdate","MulUpdate","DivUpdate","AndUpdate","OrUpdate","XorUpdate","Equal","NotEqual","Less","LessEq","Greater","GreaterEq"
+                    other = if node == node.__parent.rhs
+                        node.__parent.lhs
+                    else
+                        node.__parent.rhs
+                    return Num if other.__tag == "Float" or other.__tag == "Int"
+                    t = get_type(other)
+                    if t\is_a(OptionalType)
+                        t = t.nonnil
+                    if t\is_a(Num) or t\is_a(Num32)
+                        return t
+                when "Cast"
+                    t = parse_type(node.__parent.type)
+                    if t\is_a(OptionalType)
+                        t = t.nonnil
+                    if t\is_a(Num) or t\is_a(Num32)
+                        return t
+            return Num
         when "Percent" then return Percent
         when "Measure"
             m = Measure(1, node.units[0]\gsub("[<>]",""))
