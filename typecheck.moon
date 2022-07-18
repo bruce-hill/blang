@@ -499,26 +499,25 @@ get_op_type = (t1, op, t2)=>
                 m2 = Measure(1,t1.units)/Measure(1,t2.units)
                 return MeasureType(m2.str)\normalized!
 
-    if (t1.nonnil or t1) == (t2.nonnil or t2) and (t1.nonnil or t1)\is_a(Num) and t1.base_type == "d"
-        switch op
-            when "Add","Sub","Mul","Div","Mod","Pow"
-                return t1
+    -- if (t1.nonnil or t1) == (t2.nonnil or t2) and (t1.nonnil or t1)\is_a(Num) and t1.base_type == "d"
+    --     switch op
+    --         when "Add","Sub","Mul","Div","Mod","Pow"
+    --             return t1
 
     if op == "Add"
         if t1\is_a(ListType) and t2\is_a(t1.item_type)
             return t1
         elseif t2\is_a(ListType) and t1\is_a(t2.item_type)
             return t2
+        elseif t1 == t2 and t1\is_a(ListType)
+            return t1
+        elseif t1 == t2 and t1\is_a(String)
+            return t1
 
-    if t1 == t2
-        if t1\is_a(Int)
-            switch op
-                when "Add","Sub","Mul","Div","Mod","Pow"
-                    return t1
-        elseif t1\is_a(ListType) and op == "Add"
-            return t1
-        elseif t1\is_a(String) and op == "Add"
-            return t1
+    if t1 == t2 and t1\is_numeric!
+        switch op
+            when "Add","Sub","Mul","Div","Mod","Pow"
+                return t1
 
     overload_names = Add:"add", Sub:"subtract", Mul:"multiply", Div:"divide", Mod:"modulus", Pow:"raise"
     return unless overload_names[op]
@@ -549,7 +548,7 @@ get_type = memoize (node)->
     switch node.__tag
         when "Int"
             switch node.__parent.__tag
-                when "Assignment","AddUpdate","SubUpdate","MulUpdate","DivUpdate","AndUpdate","OrUpdate","XorUpdate","Equal","NotEqual","Less","LessEq","Greater","GreaterEq"
+                when "Assignment","AddSub","MulDiv","AddUpdate","SubUpdate","MulUpdate","DivUpdate","AndUpdate","OrUpdate","XorUpdate","Equal","NotEqual","Less","LessEq","Greater","GreaterEq"
                     other = if node == node.__parent.rhs
                         node.__parent.lhs
                     else
@@ -569,7 +568,7 @@ get_type = memoize (node)->
             return Int
         when "Float"
             switch node.__parent.__tag
-                when "Assignment","AddUpdate","SubUpdate","MulUpdate","DivUpdate","AndUpdate","OrUpdate","XorUpdate","Equal","NotEqual","Less","LessEq","Greater","GreaterEq"
+                when "Assignment","AddSub","MulDiv","AddUpdate","SubUpdate","MulUpdate","DivUpdate","AndUpdate","OrUpdate","XorUpdate","Equal","NotEqual","Less","LessEq","Greater","GreaterEq"
                     other = if node == node.__parent.rhs
                         node.__parent.lhs
                     else

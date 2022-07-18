@@ -1703,7 +1703,7 @@ expr_compilers =
         t_lhs,t_rhs = get_type(@lhs),get_type(@rhs)
         tl_nn, tr_nn = (t_lhs.nonnil or t_lhs), (t_rhs.nonnil or t_rhs)
         if @op[0] == "+"
-            if tl_nn == tr_nn and tl_nn\is_numeric!
+            if tl_nn == tr_nn and (tl_nn\is_numeric! or tl_nn\is_a(Types.MeasureType))
                 return infixop @, env, "add"
             elseif t_lhs == t_rhs and t_lhs\is_a(Types.String)
                 return infixop @, env, (ret,lhs,rhs)->
@@ -1773,7 +1773,7 @@ expr_compilers =
             else
                 return overload_infix @, env, "add", "sum"
         else -- "-"
-            if tl_nn == tr_nn and (tl_nn\is_a(Types.Int) or tl_nn\is_a(Types.Num) or tl_nn\is_a(Types.MeasureType))
+            if tl_nn == tr_nn and (tl_nn\is_numeric! or tl_nn\is_a(Types.MeasureType))
                 return infixop @, env, "sub"
             else
                 return overload_infix @, env, "subtract", "difference"
@@ -1850,32 +1850,20 @@ expr_compilers =
             node_error @, "| operator is only supported for List and Struct types"
     Less: (env)=>
         t = get_type(@lhs)
-        if t\is_a(Types.Int) or t\is_a(Types.String)
-            return comparison @, env, "cslt#{t.base_type}"
-        elseif t\is_a(Types.Num)
-            return comparison @, env, "clt#{t.base_type}"
-        else node_error @, "Comparison is not supported for #{t}"
+        sign = (t.base_type == 's' or t.base_type == 'd') and "" or "s"
+        return comparison @, env, "c#{sign}lt#{t.base_type}"
     LessEq: (env)=>
         t = get_type(@lhs)
-        if t\is_a(Types.Int) or t\is_a(Types.String)
-            return comparison @, env, "csle#{t.base_type}"
-        elseif t\is_a(Types.Num)
-            return comparison @, env, "cle#{t.base_type}"
-        else node_error @, "Comparison is not supported for #{t}"
+        sign = (t.base_type == 's' or t.base_type == 'd') and "" or "s"
+        return comparison @, env, "c#{sign}le#{t.base_type}"
     Greater: (env)=>
         t = get_type(@lhs)
-        if t\is_a(Types.Int) or t\is_a(Types.String)
-            return comparison @, env, "csgt#{t.base_type}"
-        elseif t\is_a(Types.Num)
-            return comparison @, env, "cgt#{t.base_type}"
-        else node_error @, "Comparison is not supported for #{t}"
+        sign = (t.base_type == 's' or t.base_type == 'd') and "" or "s"
+        return comparison @, env, "c#{sign}gt#{t.base_type}"
     GreaterEq: (env)=>
         t = get_type(@lhs)
-        if t\is_a(Types.Int) or t\is_a(Types.String)
-            return comparison @, env, "csge#{t.base_type}"
-        elseif t\is_a(Types.Num)
-            return comparison @, env, "cge#{t.base_type}"
-        else node_error @, "Comparison is not supported for #{t}"
+        sign = (t.base_type == 's' or t.base_type == 'd') and "" or "s"
+        return comparison @, env, "c#{sign}ge#{t.base_type}"
     Equal: (env)=>
         lhs_type, rhs_type = get_type(@lhs), get_type(@rhs)
         if lhs_type\is_a(rhs_type) or rhs_type\is_a(lhs_type)
