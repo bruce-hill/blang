@@ -605,8 +605,6 @@ class Environment
 
             if ast.__tag == "Var" and replacements[ast[0]]
                 return replacements[ast[0]]
-            elseif ast.__tag == "NamedType" and replacements[ast[0]]
-                return replacements[ast[0]]
 
             return {k,(if type(k) == 'string' and k\match("^__") then v else substitute(v, replacements)) for k,v in pairs ast}
 
@@ -620,6 +618,7 @@ class Environment
             for dec in coroutine.wrap(-> each_tag(m.body, "FnDecl"))
                 macro_vars[dec.name[0]] = {[0]:"#{dec.name[0]}.hygienic.#{h}", __tag:"Var"}
                 h += 1
+            -- TODO: struct, union, enum, etc.
 
             macros[m.name[0]] or= {}
             macros[m.name[0]][#m.args] = substitute(m, macro_vars)

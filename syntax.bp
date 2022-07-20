@@ -92,7 +92,7 @@ splatFnCall: @:FnCall=(@fn=(FnCall / IndexedTerm / Global / Var / `(__required-e
 splatMethodCall: @:FnCall=((splatMethodCall / IndexedTerm / term) _ `| _
   (@fn=(Global / Var / `(__required-extended-expr__`)) +(` /\t) +(KeywordArg/expr) % +(` ,,/\t)))
 Var:: id !~ keyword
-FieldName:: id !~ keyword
+FieldName:: Var
 Global:: `$ Var
 id: \b(\I *\i)
 statements: @curdent:\C +(
