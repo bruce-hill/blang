@@ -55,7 +55,7 @@ String:: (
   / `' @content=@.. `'
   / @:ParseError=(`",'..$ => "Missing closing quote")
   )
-DSL:: `% [@name=id] @string=(
+DSL:: `% [@name=Var] @string=(
   String
   / @:String=(`[ @content=@..%(Escape/Interp) `]) / @:ParseError=(`[..$ =>"Missing closing ]")
   / @:String=(`< @content=@..%(Escape/Interp) `>) / @:ParseError=(`<..$ =>"Missing closing >")
@@ -71,7 +71,7 @@ List:: `[__`:__@type=@:ListType=(@itemtype=type)__`] / `[ __ +listItem % (__`,__
 listItem: PostfixFor / PostfixWhile / PostfixIf / extended-expr
 Table:: `{ __ `:__ @type=@:TableType=(@keyType=type __ `= __ @valueType=type) __ `} / `{ __ +tableEntry % (__`,__) __ [`,__] `}
 tableEntry: PostfixFor / PostfixWhile / PostfixIf / TableEntry
-TableEntry:: ((`[__@key=required-extended-expr__`] / @key=@:String=(@content=id) / @key=String) __`= __ @value=required-extended-expr)
+TableEntry:: ((`[__@key=required-extended-expr__`] / @key=@:String=(@content=Var) / @key=String) __`= __ @value=required-extended-expr)
 PostfixConditional: \b"if"\b _ @condition=required-extended-expr / \b"unless"\b_ @condition=@:Not=(@value=required-extended-expr)
 Cast:: @expr=(methodCall / Measure / Float / Percent / Int / Global / Var / `(__extended-expr__`))_`:_@type=type
 Interp:: `$ @value=(Var / `(__ extended-expr __`) / @:ParseError=(`(..`) => "Cannot parse this string interpolation") / @:String=@content=`$)
@@ -79,7 +79,7 @@ AtInterp: @:Interp=(`@ @value=(Var / `(__ required-extended-expr __`) / @:String
 Escape:: `\ (`x 2 hex / `a,b,t,n,r,v / 3 `0-8 / .)
 Float:: [`-,+] (`0-9 *`0-9,_ (`. !`. *`0-9,_ / >`e) / `. `0-9 *`0-9,_) [`e [`+,-] `0-9 *`0-9,_]
 Measure:: @amount=(Float/Int) @units=MeasureType
-MeasureType:: `< +@(@unit=id [`^ @power=([`-] +`0-9)]) % (`*,/) `>
+MeasureType:: `< +@(@unit=Var [`^ @power=([`-] +`0-9)]) % (`*,/) `>
 Percent:: (`0-9 *`0-9,_ [`. *`0-9] / `. +`0-9) `%
 Int:: "0x" +`0-9,a-f,A-F,_ / [`-,+] `0-9 *`0-9,_
 Struct:: [@name=Var] _ `{ __ *@:StructField=([`. @name=FieldName __`=__] @value=extended-expr) % (__`,__) __[`, __] `}
@@ -93,7 +93,7 @@ splatMethodCall: @:FnCall=((splatMethodCall / IndexedTerm / term) _ `| _
   (@fn=(Global / Var / `(__required-extended-expr__`)) +(` /\t) +(KeywordArg/expr) % +(` ,,/\t)))
 Var:: id !~ keyword
 FieldName:: id !~ keyword
-Global:: `$ id
+Global:: `$ Var
 id: \b(\I *\i)
 statements: @curdent:\C +(
     comment
@@ -115,8 +115,8 @@ line-statement: (
   / extended-expr) _ [comment]
 Fail:: \b"fail"\b _ [@message=extended-expr]
 Declaration:: @var=Var _":=" _ @value=required-extended-expr
-TypeDeclaration:: \b"deftype"\b _ @name=@:NamedType=(id) _ `: _ @derivesFrom=(type / @:ParseError=(..$ =>"Not a valid type"))
-UnitDeclaration:: \b"unit"\b _ @name=@:NamedType=(id) _ `= _ @measure=Measure
+TypeDeclaration:: \b"deftype"\b _ @name=@:NamedType=(Var) _ `: _ @derivesFrom=(type / @:ParseError=(..$ =>"Not a valid type"))
+UnitDeclaration:: \b"unit"\b _ @name=@:NamedType=(Var) _ `= _ @measure=Measure
 StructDeclaration:: \b"struct"\b _ (StructType / @:ParseError=((braces /..$) =>"Not a valid struct declaration"))
 UnionDeclaration:: @type=UnionType
 EnumDeclaration:: \b"enum"\b _ @name=Var _ (`{__+(@Var) % (__`,__) __ [`,__] `} / @:ParseError=((braces /..$) =>"Not a valid enum declaration"))
@@ -155,13 +155,13 @@ nonoptional-type: (
     @:TableType=(`{__ @keyType=type __`=__ @valueType=type __`})
   / MeasureType
   / StructType / UnionType
-  / @:DerivedType=(@name=id ":" @derivesFrom=(type / @:ParseError=(..$ =>"Not a valid type")))
-  / @:NamedType=(id)
+  / @:DerivedType=(@name=Var ":" @derivesFrom=(type / @:ParseError=(..$ =>"Not a valid type")))
+  / @:NamedType=(Var)
   / @:ListType=(`[@itemtype=type`])
   / @:FnType=(`(__ @args=@(*type % (__`,__)) __ `) _ "=>" __ @return=type)
 )
-StructType:: @name=[id] _ `{__ @members=@(*@:StructField=(UnionType / [@names=@*(FieldName)%(__`,__) _`:]_@type=type) % ((__`,__/__)~(`,/\n))) [__`,] __`}
-UnionType:: \b"union"\b _ @name=(id / @:ParseError=(=>"Expected an identifier for this union")) _ `{__ @members=@(+@:StructField=([@names=@*(FieldName)%(__`,__) _`:]_@type=type) % ((__`,__/__)~(`,/\n))) [__`,] __`}
+StructType:: @name=[Var] _ `{__ @members=@(*@:StructField=(UnionType / [@names=@*(FieldName)%(__`,__) _`:]_@type=type) % ((__`,__/__)~(`,/\n))) [__`,] __`}
+UnionType:: \b"union"\b _ @name=(Var / @:ParseError=(=>"Expected an identifier for this union")) _ `{__ @members=@(+@:StructField=([@names=@*(FieldName)%(__`,__) _`:]_@type=type) % ((__`,__/__)~(`,/\n))) [__`,] __`}
 If:: \b"if"\b @curdent:\C _ (
     @:Clause=(@condition=(Declaration / required-extended-expr) [_comment] @body=indentedBlock)
     *@:Clause=(nl curdent \b"elseif"\b _ @condition=(Declaration / required-extended-expr) [_comment] @body=indentedBlock)
