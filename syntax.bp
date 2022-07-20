@@ -74,7 +74,7 @@ tableEntry: PostfixFor / PostfixWhile / PostfixIf / TableEntry
 TableEntry:: ((`[__@key=required-extended-expr__`] / @key=@:String=(@content=id) / @key=String) __`= __ @value=required-extended-expr)
 PostfixConditional: \b"if"\b _ @condition=required-extended-expr / \b"unless"\b_ @condition=@:Not=(@value=required-extended-expr)
 Cast:: @expr=(methodCall / Measure / Float / Percent / Int / Global / Var / `(__extended-expr__`))_`:_@type=type
-Interp:: `$ @value=(Var / `(__ required-extended-expr __`) / @:String=@content=`$)
+Interp:: `$ @value=(Var / `(__ extended-expr __`) / @:ParseError=(`(..`) => "Cannot parse this string interpolation") / @:String=@content=`$)
 AtInterp: @:Interp=(`@ @value=(Var / `(__ required-extended-expr __`) / @:String=@content=`@))
 Escape:: `\ (`x 2 hex / `a,b,t,n,r,v / 3 `0-8 / .)
 Float:: [`-,+] (`0-9 *`0-9,_ (`. !`. *`0-9,_ / >`e) / `. `0-9 *`0-9,_) [`e [`+,-] `0-9 *`0-9,_]
