@@ -190,7 +190,7 @@ While:: (
 )
 Repeat:: \b"repeat"\b [@filter=loopFilter] @curdent:\C _ [comment] @body=maybeIndentedBlock [between]
 loopFilter: @:If=(@:Clause=(
-  (@body=@:Block=@@:Skip=("") _ \b"if"\b _ @condition=@:Not=(@value=required-extended-expr) / \b"unless"\b_ @condition=required-extended-expr)
+  (@body=@:Block=@@:Skip=("") _ (\b"if"\b _ @condition=@:Not=(@value=required-extended-expr) / \b"unless"\b_ @condition=required-extended-expr))
   / @body=(Skip/Stop) _ PostfixConditional))
 maybeIndentedBlock: indentedBlock / @:Block=@(_line-statement_)
 between: nl curdent \b"between"\b _ [comment] @between=(maybeIndentedBlock / @:ParseError=(..$ => "Invalid 'between' body"))
