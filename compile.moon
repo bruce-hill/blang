@@ -825,7 +825,7 @@ class Environment
                 fndec.name.__register = fndec.__register
                 fndec.name.__decl = fndec
                 t = get_type(fndec)
-                hook_up_refs fndec.name, fndec.__parent, get_type(fndec)
+                hook_up_refs fndec.name, fndec.__parent, t
                     
         for fn in coroutine.wrap(-> each_tag(ast, "FnDecl", "Lambda"))
             for a in *fn.args
