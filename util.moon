@@ -34,6 +34,9 @@ get_node_pos = (ast)->
         return "#{cur_filename}:#{line}-#{last}"
 
 print_err = (ast, msg, context=1)->
+    while ast and not ast.start
+        ast = ast.__parent
+    assert ast, "Couldn't find AST source code information for printing error message: "..msg
     startline = get_line_num cur_source, ast.start
     lastline = get_line_num cur_source, ast.after-1
     text = msg or ast[0]
