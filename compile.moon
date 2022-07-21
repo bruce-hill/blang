@@ -1980,12 +1980,13 @@ expr_compilers =
                 t.members[i] or t.sorted_members[i]
 
             node_assert memb, field, "Not a valid struct member"
+            m_t = get_type field.value
+            node_assert m_t\is_a(memb.type), field, "Expected this value to have type #{memb.type}, but got #{m_t}"
 
             loc = env\fresh_local "#{t\id_str!\lower!}.#{memb.name}.loc"
             code ..= "#{loc} =l add #{ret}, #{memb.offset}\n"
             val_reg,val_code = env\to_reg field.value
             code ..= val_code
-            m_t = get_type field.value
             code ..= "store#{m_t.base_type} #{val_reg}, #{loc}\n"
             unpopulated[memb.name] = nil
 
