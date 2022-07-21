@@ -443,7 +443,12 @@ parse_type = memoize (type_node)->
             arg_types = [parse_type(a) for a in *type_node.args]
             return FnType(arg_types, parse_type(type_node.return))
         when "StructType"
-            t = StructType(type_node.name[0])
+            name = if type_node.name.__tag == "Var"
+                type_node.name[0]
+            else
+                node_assert parse_type(type_node.name).name, type_node, "Couldn't parse this struct name"
+
+            t = StructType(name)
             type_node.__type = t
             for m in *type_node.members
                 continue unless m.names
@@ -917,7 +922,13 @@ get_type = memoize (node)->
 
             key = "{#{concat ["#{m.name and "#{m.name[0]}=" or ""}#{get_type m.value}" for m in *node], ","}}"
             unless tuples[key]
-                name = node.name and node.name[0] or "Tuple.#{tuple_index}"
+                name = if not node.name
+                    "Tuple.#{tuple_index}"
+                elseif node.name.__tag == "Var"
+                    node.name[0]
+                else
+                    node_assert parse_type(node.name).name, node, "Couldn't parse this struct name"
+
                 tuple_type = StructType(name)
                 i = 0
                 for memb in *node
