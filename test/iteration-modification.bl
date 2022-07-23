@@ -1,0 +1,37 @@
+$puts "Modifying while iterating:"
+xs := [1,2,3,4]
+for x in xs
+    $puts "$x"
+    xs += [10*x]
+
+$puts "$xs"
+fail unless "$xs" == "[1, 2, 3, 4, 10, 20, 30, 40]"
+
+$puts "Modifying while iterating:"
+xs := [1,2,3,4]
+for x in xs
+    $puts "$x"
+    xs += [10*x]
+
+$puts "$xs"
+fail unless "$xs" == "[1, 2, 3, 4, 10, 20, 30, 40]"
+
+
+$puts "Modifying while iterating:"
+xs := [1,2,3,4]
+for x in xs[2..]
+    $puts "$x"
+    xs += [10*x]
+
+$puts "$xs"
+fail unless "$xs" == "[1, 2, 3, 4, 20, 30, 40]"
+
+$puts "Modifying while iterating:"
+xs := [1,2,3,4]
+for x in xs[2..]
+    $puts "$x"
+    xs += [10*x]
+
+$puts "$xs"
+fail unless "$xs" == "[1, 2, 3, 4, 20, 30, 40]"
+// Don't need to test tables, they work, but you may run into recently inserted keys
