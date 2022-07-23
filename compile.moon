@@ -2306,56 +2306,53 @@ stmt_compilers =
         elseif lhs_type == rhs_type and lhs_type\is_a(Types.String)
             return code.."#{lhs_reg} =l call $bl_string_append_string(l #{lhs_reg}, l #{rhs_reg})\n"..store_code
         elseif lhs_type\is_a(Types.ListType) and rhs_type\is_a(lhs_type.item_type)
-            len,size,items,tmp = env\fresh_locals "len","size","items","tmp"
+            old_len,new_len,old_size,new_size,old_items,new_items,tmp = env\fresh_locals "old_len","new_len","old_size","new_size","old_items","new_items","tmp"
             code ..= "\n# Append\n"
-            code ..= "#{len} =l loadl #{lhs_reg}\n"
+            code ..= "#{old_len} =l loadl #{lhs_reg}\n"
+            code ..= "#{old_size} =l mul #{old_len}, #{lhs_type.item_type.bytes}\n"
             code ..= "#{tmp} =l add #{lhs_reg}, 8\n"
-            code ..= "#{items} =l loadl #{tmp}\n"
-            code ..= "#{len} =l add #{len}, 1\n"
-            code ..= "storel #{len}, #{lhs_reg}\n"
-            code ..= "#{size} =l mul #{len}, #{lhs_type.item_type.bytes}\n"
+            code ..= "#{old_items} =l loadl #{tmp}\n"
+            code ..= "#{new_len} =l add #{old_len}, 1\n"
+            code ..= "storel #{new_len}, #{lhs_reg}\n"
+            code ..= "#{new_size} =l mul #{new_len}, #{lhs_type.item_type.bytes}\n"
 
             -- code ..= "#{items} =l call $gc_realloc(l #{items}, l #{size})\n"
             -- NOTE: for correctness, this is deliberately *not* using realloc, but instead
             -- using allocation and copying. This is to handle situations where a list
             -- is being modified while it's being iterated over.
-            new_items = env\fresh_local "new_items"
-            code ..= "#{new_items} =l call $gc_alloc(l #{size})\n"
-            code ..= "call $memcpy(l #{new_items}, l #{items}, l #{size})\n"
+            code ..= "#{new_items} =l call $gc_alloc(l #{new_size})\n"
+            code ..= "call $memcpy(l #{new_items}, l #{old_items}, l #{old_size})\n"
 
             code ..= "#{tmp} =l add #{lhs_reg}, 8\n"
             code ..= "storel #{new_items}, #{tmp}\n"
-            code ..= "#{tmp} =l add #{new_items}, #{size}\n"
-            code ..= "#{tmp} =l sub #{tmp}, #{lhs_type.item_type.bytes}\n"
+            code ..= "#{tmp} =l add #{new_items}, #{old_size}\n"
             code ..= "storel #{rhs_reg}, #{tmp}\n"
             code ..= "\n"
             return code
         elseif lhs_type == rhs_type and lhs_type\is_a(Types.ListType)
-            len1,len2,new_len,size,items1,items2,tmp = env\fresh_locals "len1","len2","new_len","size","items1","items2","tmp"
+            len1,len2,new_len,size1,size2,new_size,items1,items2,new_items,tmp = env\fresh_locals "len1","len2","new_len","size1","size2","new_size","items1","items2","new_items","tmp"
             code ..= "\n# Add Update\n"
             code ..= "#{len1} =l loadl #{lhs_reg}\n"
             code ..= "#{tmp} =l add #{lhs_reg}, 8\n"
             code ..= "#{items1} =l loadl #{tmp}\n"
             code ..= "#{len2} =l loadl #{rhs_reg}\n"
             code ..= "#{new_len} =l add #{len1}, #{len2}\n"
-            code ..= "#{size} =l mul #{new_len}, #{lhs_type.item_type.bytes}\n"
+            code ..= "#{new_size} =l mul #{new_len}, #{lhs_type.item_type.bytes}\n"
 
             -- code ..= "#{items1} =l call $gc_realloc(l #{items1}, l #{size})\n"
             -- NOTE: this uses gc_alloc instead of gc_realloc intentionally, see previous note
-            new_items = env\fresh_local "new_items"
-            code ..= "#{new_items} =l call $gc_alloc(l #{size})\n"
-            code ..= "#{size} =l mul #{len1}, #{lhs_type.item_type.bytes}\n"
-            code ..= "call $memcpy(l #{new_items}, l #{items1}, l #{size})\n"
+            code ..= "#{new_items} =l call $gc_alloc(l #{new_size})\n"
+            code ..= "#{size1} =l mul #{len1}, #{lhs_type.item_type.bytes}\n"
+            code ..= "call $memcpy(l #{new_items}, l #{items1}, l #{size1})\n"
 
             p = env\fresh_local "p"
             code ..= "#{tmp} =l add #{lhs_reg}, 8\n"
             code ..= "storel #{new_items}, #{tmp}\n"
-            code ..= "#{p} =l mul #{len1}, #{lhs_type.item_type.bytes}\n"
-            code ..= "#{p} =l add #{p}, #{new_items}\n"
-            code ..= "#{size} =l mul #{len2}, #{lhs_type.item_type.bytes}\n"
             code ..= "#{tmp} =l add #{rhs_reg}, 8\n"
             code ..= "#{items2} =l loadl #{tmp}\n"
-            code ..= "call $memcpy(l #{p}, l #{items2}, l #{size})\n"
+            code ..= "#{p} =l add #{new_items}, #{size1}\n"
+            code ..= "#{size2} =l mul #{len2}, #{rhs_type.item_type.bytes}\n"
+            code ..= "call $memcpy(l #{p}, l #{items2}, l #{size2})\n"
             code ..= "storel #{new_len}, #{lhs_reg}\n"
             code ..= "\n"
             return code
