@@ -1471,10 +1471,11 @@ expr_compilers =
                 slice = env\fresh_local "slice"
                 code ..= nil_guard list_reg, slice, t, ->
                     range,code = env\to_reg @index
-                    use_aliasing = if @__parent.__tag == "For" and @ == @__parent.iterable
-                        "1"
-                    else
-                        "0"
+                    -- use_aliasing = if @__parent.__tag == "For" and @ == @__parent.iterable
+                    --     "1"
+                    -- else
+                    --     "0"
+                    use_aliasing = "1" -- Should always be safe
                     code ..= "#{slice} =l call $bl_list_slice(l #{list_reg}, l #{range}, l #{t.item_type.bytes}, w #{use_aliasing})\n"
                     return code
                 return slice,code
