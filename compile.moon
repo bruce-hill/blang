@@ -2212,18 +2212,24 @@ stmt_compilers =
                 if index_type\is_a(Types.Int) or index_type == Types.OptionalType(Types.Int)
                     table.insert lhs_stores, (rhs_reg)->
                         nonnil_label, end_label = env\fresh_labels "if.nonnil", "if.nonnil.done"
+                        local code
                         code = check_nil get_type(lhs.value), env, list_reg, nonnil_label, end_label
                         code ..= env\block nonnil_label, ->
                             not_too_low,not_too_high = env\fresh_labels "not.too.low", "not.too.high"
                             len, bounds_check = env\fresh_locals "len", "bounds.check"
-                            code = "#{bounds_check} =w csgel #{index_reg}, 1\n"
-                            code ..= "jnz #{bounds_check}, #{not_too_low}, #{end_label}\n"
-                            code ..= env\block not_too_low, ->
-                                code = "#{len} =l loadl #{list_reg}\n"
-                                code ..= "#{bounds_check} =w cslel #{index_reg}, #{len}\n"
-                                return code.."jnz #{bounds_check}, #{not_too_high}, #{end_label}\n"
+                            local code
+                            code = ""
+                            unless index_reg\match("^%d+$")
+                                code ..= "#{bounds_check} =w csgel #{index_reg}, 1\n"
+                                code ..= "jnz #{bounds_check}, #{not_too_low}, #{end_label}\n"
+                                code ..= "#{not_too_low}\n"
+
+                            code ..= "#{len} =l loadl #{list_reg}\n"
+                            code ..= "#{bounds_check} =w cslel #{index_reg}, #{len}\n"
+                            code ..= "jnz #{bounds_check}, #{not_too_high}, #{end_label}\n"
 
                             code ..= env\block not_too_high, ->
+                                local code
                                 p = env\fresh_local "p"
                                 code = "#{p} =l add #{list_reg}, 8\n"
                                 code ..= "#{p} =l loadl #{p}\n"
@@ -2252,6 +2258,7 @@ stmt_compilers =
 
                 table.insert lhs_stores, (rhs_reg)->
                     key_setter = env\fresh_local "key.setter"
+                    local code
                     code = hash_prep t.key_type, key_reg, key_setter
                     value_setter = env\fresh_local "value.setter"
                     code ..= hash_prep t.value_type, rhs_reg, value_setter
@@ -2280,6 +2287,7 @@ stmt_compilers =
 
                 table.insert lhs_stores, (rhs_reg)->
                     nonnil_label, end_label = env\fresh_labels "if.nonnil", "if.nonnil.done"
+                    local code
                     code = check_nil get_type(lhs.value), env, struct_reg, nonnil_label, end_label
                     code ..= env\block nonnil_label, ->
                         loc = env\fresh_local "member.loc"
@@ -2292,10 +2300,18 @@ stmt_compilers =
             else
                 node_error lhs.value, "Only Lists and Structs are mutable, not #{t}"
 
+        assignments = ""
         for i=1,#@rhs
             rhs_reg,rhs_code = env\to_reg @rhs[i]
             code ..= rhs_code
-            code ..= lhs_stores[i](rhs_reg)
+            if #@rhs > 1
+                rhs_copy = env\fresh_local "rhs.#{i}.copy"
+                code ..= "#{rhs_copy} =#{get_type(@rhs[i]).base_type} copy #{rhs_reg}\n"
+                assignments ..= lhs_stores[i](rhs_copy)
+            else
+                assignments ..= lhs_stores[i](rhs_reg)
+
+        code ..= assignments
         return code
     AddUpdate: (env)=>
         lhs_type,rhs_type = get_type(@lhs),get_type(@rhs)
