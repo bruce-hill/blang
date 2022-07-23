@@ -1867,6 +1867,44 @@ expr_compilers =
             return ret, code
         else
             node_error @, "| operator is only supported for List and Struct types"
+    In: (env)=>
+        haystack_type = get_type(@haystack)
+        needle_type = get_type(@needle)
+        if haystack_type\is_a(Types.ListType) and needle_type\is_a(haystack_type.item_type)
+            found = env\fresh_locals "found"
+            done = env\fresh_label "in.done"
+            needle_reg,code = env\to_reg @needle
+            code ..= "#{found} =w copy 0\n"
+            item_reg = env\fresh_local("item")
+            code ..= for_loop {iterable: @haystack, val:{__register:item_reg}}, env, ->
+                base_type = haystack_type.item_type.base_type
+                code = if needle_type == Types.NilType and (base_type == 's' or base_type == 'd')
+                    "#{found} =w cuo#{base_type} #{item_reg}, #{base_type}_0.0\n"
+                else
+                    "#{found} =w ceq#{base_type} #{item_reg}, #{needle_reg}\n"
+                keep_going = env\fresh_label "keep_going"
+                code ..= "jnz #{found}, #{done}, #{keep_going}\n"
+                code ..= "#{keep_going}\n"
+                return code
+            code ..= "#{done}\n"
+            return found, code
+        elseif haystack_type\is_a(Types.TableType) and needle_type\is_a(haystack_type.key_type)
+            needle_reg,haystack_reg,code = env\to_regs @needle, @haystack
+            key_getter = env\fresh_local "key.getter"
+            code ..= hash_prep haystack_type.key_type, needle_reg, key_getter
+            found = env\fresh_local "found"
+            code ..= "#{found} =l call $hashmap_get(l #{haystack_reg}, l #{key_getter})\n"
+            code ..= "#{found} =l cnel #{found}, 0\n"
+            return found, code
+        elseif haystack_type == needle_type and haystack_type\is_a(Types.String)
+            needle_reg,haystack_reg,code = env\to_regs @needle, @haystack
+            found = env\fresh_local "found"
+            code ..= "#{found} =l call $strstr(l #{haystack_reg}, l #{needle_reg})\n"
+            code ..= "#{found} =l cnel #{found}, 0\n"
+            return found, code
+        else
+            -- TODO: support `Int in Range`, `[Foo] in [Foo]`, `Range in Range` etc.
+            node_error @, "Checking if #{needle_type} is in #{haystack_type} is not supported"
     Less: (env)=>
         t = get_type(@lhs)
         sign = (t.base_type == 's' or t.base_type == 'd') and "" or "s"

@@ -1,0 +1,37 @@
+nums := [5,6,7,8,9]
+
+found := 7 in nums
+$puts "7 in $nums: $found"
+fail unless found
+
+found = 99 in nums
+$puts "99 in $nums: $found"
+fail if found
+
+table := {"hello"=5, "goodbye"=0}
+
+found = "hello" in table
+$puts "'hello' in $table: $found"
+fail unless found
+
+found = "goodbye" in table
+$puts "'goodbye' in $table: $found"
+fail unless found
+
+found = "missing" in table
+$puts "'missing' in $table: $found"
+fail if found
+
+string := "hello world"
+
+found = "hello" in string
+$puts "'hello' in '$string': $found"
+fail unless found
+
+found = "goodbye" in string
+$puts "'goodbye' in '$string': $found"
+fail if found
+
+found = "" in string
+$puts "'' in '$string': $found"
+fail unless found

@@ -15,7 +15,7 @@ term: (
 IndexedTerm:: (!`0-9 @value=(methodCall / IndexedTerm / term)
   @index=(`. FieldName / `[ __ required-extended-expr __ `] / @:ParseError=(`[ => "Unclosed bracket")))
 maybe-index-term: methodCall / IndexedTerm / term
-expr: Range / ButWith / Mod / AddSub / MulDiv / Pow / methodCall / IndexedTerm / term
+expr: Range / ButWith / Mod / In / AddSub / MulDiv / Pow / methodCall / IndexedTerm / term
 extended-expr: TernaryOp / And / Or / Xor / If / comparison / splatFnCall / splatMethodCall / expr
 unaryOp: Negative / Len / Not
 Negative:: `- !`0-9,. @value=maybe-index-term
@@ -28,6 +28,7 @@ Pow:: @base=maybe-index-term _ `^ _ @exponent=maybe-index-term
 ButWith:: (@base=maybe-index-term _ `& _
   *@:ButWithAssign=((`. @field=FieldName / `[__@index=required-extended-expr__`])
      _`=_ @value=required-extended-expr) % (_`,,|_) [_`,])
+In:: @needle=(Range / ButWith / Mod / AddSub / MulDiv / Pow / methodCall / IndexedTerm / term) _\b"in"\b_ @haystack=(expr / @:ParseError=(=> "Expected an expression here"))
 And:: 2+(comparison / expr) % (__\b"and"\b_)
 Or:: 2+(comparison / expr) % (__\b"or"\b_)
 Xor:: @lhs=(comparison / expr) __\b"xor"\b_ @rhs=(Xor / comparison / expr)

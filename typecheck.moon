@@ -767,7 +767,7 @@ get_type = (node)->
                 else
                     optional = OptionalType(t)
             return optional
-        when "Equal","NotEqual","Less","LessEq","Greater","GreaterEq"
+        when "Equal","NotEqual","Less","LessEq","Greater","GreaterEq","In"
             return Bool
         when "TernaryOp"
             cond_type = get_type node.condition
