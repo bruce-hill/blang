@@ -555,14 +555,22 @@ load_module = memoize (path)->
 
 get_type = (node)->
     return node.__type if node.__type
+    get_binop_other = (node, parent)->
+        if parent.__tag == "Assignment"
+            for i,lhs in ipairs parent.lhs
+                return parent.rhs[i] if lhs == node
+            for i,rhs in ipairs parent.rhs
+                return parent.lhs[i] if rhs == node
+        elseif node == parent.lhs
+            return parent.rhs
+        else
+            return parent.lhs
+
     switch node.__tag
         when "Int"
             switch node.__parent.__tag
                 when "Assignment","AddSub","MulDiv","AddUpdate","SubUpdate","MulUpdate","DivUpdate","AndUpdate","OrUpdate","XorUpdate","Equal","NotEqual","Less","LessEq","Greater","GreaterEq"
-                    other = if node == node.__parent.rhs
-                        node.__parent.lhs
-                    else
-                        node.__parent.rhs
+                    other = get_binop_other node, node.__parent
                     return Int if other.__tag == "Int"
                     t = get_type(other)
                     if t\is_a(OptionalType)
@@ -579,10 +587,7 @@ get_type = (node)->
         when "Float"
             switch node.__parent.__tag
                 when "Assignment","AddSub","MulDiv","AddUpdate","SubUpdate","MulUpdate","DivUpdate","AndUpdate","OrUpdate","XorUpdate","Equal","NotEqual","Less","LessEq","Greater","GreaterEq"
-                    other = if node == node.__parent.rhs
-                        node.__parent.lhs
-                    else
-                        node.__parent.rhs
+                    other = get_binop_other node, node.__parent
                     return Num if other.__tag == "Float" or other.__tag == "Int"
                     t = get_type(other)
                     if t\is_a(OptionalType)

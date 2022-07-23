@@ -1195,7 +1195,12 @@ expr_compilers =
             t = if parent.__tag == "Declaration"
                 get_type parent.value
             elseif parent.__tag == "Assignment"
-                get_type parent.lhs
+                t = nil
+                for i,rhs in ipairs parent.rhs
+                    if rhs == child
+                        t = get_type parent.lhs[i]
+                        break
+                t
             elseif parent.__tag == "StructField"
                 field = parent
                 while parent.__tag != "Struct"
@@ -2175,102 +2180,121 @@ stmt_compilers =
             node_error @var, "Undefined variable"
         return code
     Assignment: (env)=>
-        lhs_type,rhs_type = get_type(@lhs), get_type(@rhs)
-        if @lhs.__tag == "Var"
-            node_assert rhs_type\is_a(lhs_type), @rhs, "Assignment value is type #{rhs_type}, but it's being assigned to something with type #{lhs_type}"
-            rhs_reg,code = env\to_reg @rhs
-            if @lhs.__register
-                return code.."#{@lhs.__register} =#{lhs_type.base_type} copy #{rhs_reg}\n"
-            elseif @lhs.__location
-                return code.."store#{lhs_type.base_type} #{rhs_reg}, #{@lhs.__location}\n"
-            node_assert @lhs.__register or @lhs.__location, @lhs, "Undefined variable"
-        
-        node_assert @lhs.__tag == "IndexedTerm", @lhs, "Expected a Var or an indexed value"
-        t = get_type(@lhs.value)
-        is_optional = t\is_a(Types.OptionalType)
-        t = t.nonnil if is_optional
-        if t\is_a(Types.ListType)
-            index_type = get_type(@lhs.index)
-            list_reg,index_reg,rhs_reg,code = env\to_regs @lhs.value, @lhs.index, @rhs
-            if index_type\is_a(Types.Int) or index_type == Types.OptionalType(Types.Int)
-                if rhs_type.base_type == "d"
-                    rhs_casted = env\fresh_local "list.item.float"
-                    code ..= "#{rhs_casted} =d cast #{rhs_reg}\n"
-                    rhs_reg = rhs_casted
-                nonnil_label, end_label = env\fresh_labels "if.nonnil", "if.nonnil.done"
-                code ..= check_nil get_type(@lhs.value), env, list_reg, nonnil_label, end_label
-                code ..= env\block nonnil_label, ->
-                    not_too_low,not_too_high = env\fresh_labels "not.too.low", "not.too.high"
-                    len, bounds_check = env\fresh_locals "len", "bounds.check"
-                    code = "#{bounds_check} =w csgel #{index_reg}, 1\n"
-                    code ..= "jnz #{bounds_check}, #{not_too_low}, #{end_label}\n"
-                    code ..= env\block not_too_low, ->
-                        code = "#{len} =l loadl #{list_reg}\n"
-                        code ..= "#{bounds_check} =w cslel #{index_reg}, #{len}\n"
-                        return code.."jnz #{bounds_check}, #{not_too_high}, #{end_label}\n"
+        node_assert #@lhs == #@rhs, @rhs, "Incorrect number of values on right hand side of assignment. Expected #{#@lhs}, but got #{#@rhs}"
+        code = ""
+        lhs_stores = {}
 
-                    code ..= env\block not_too_high, ->
-                        p = env\fresh_local "p"
-                        code = "#{p} =l add #{list_reg}, 8\n"
-                        code ..= "#{p} =l loadl #{p}\n"
-                        offset = env\fresh_local "offset"
-                        code ..= "#{offset} =l sub #{index_reg}, 1\n"
-                        code ..= "#{offset} =l mul #{offset}, #{t.item_type.bytes}\n"
-                        code ..= "#{p} =l add #{p}, #{offset}\n"
-                        code ..= "store#{t.item_type.abi_type} #{rhs_reg}, #{p}\n"
-                        return code.."jmp #{end_label}\n"
+        for i,lhs in ipairs @lhs
+            rhs = @rhs[i]
 
+            lhs_type,rhs_type = get_type(lhs), get_type(rhs)
+            if lhs.__tag == "Var"
+                node_assert rhs_type\is_a(lhs_type), rhs, "Assignment value is type #{rhs_type}, but it's being assigned to something with type #{lhs_type}"
+                node_assert lhs.__register or lhs.__location, lhs, "Undefined variable"
+                if lhs.__register
+                    table.insert lhs_stores, (rhs_reg)->
+                        "#{lhs.__register} =#{lhs_type.base_type} copy #{rhs_reg}\n"
+                elseif lhs.__location
+                    table.insert lhs_stores, (rhs_reg)->
+                        "store#{lhs_type.base_type} #{rhs_reg}, #{lhs.__location}\n"
+                continue
+            
+            node_assert lhs.__tag == "IndexedTerm", lhs, "Expected a Var or an indexed value"
+            t = get_type(lhs.value)
+            is_optional = t\is_a(Types.OptionalType)
+            t = t.nonnil if is_optional
+            if t\is_a(Types.ListType)
+                index_type = get_type(lhs.index)
+                list_reg,index_reg,new_code = env\to_regs lhs.value, lhs.index
+                code ..= new_code
+                if index_type\is_a(Types.Int) or index_type == Types.OptionalType(Types.Int)
+                    table.insert lhs_stores, (rhs_reg)->
+                        nonnil_label, end_label = env\fresh_labels "if.nonnil", "if.nonnil.done"
+                        code = check_nil get_type(lhs.value), env, list_reg, nonnil_label, end_label
+                        code ..= env\block nonnil_label, ->
+                            not_too_low,not_too_high = env\fresh_labels "not.too.low", "not.too.high"
+                            len, bounds_check = env\fresh_locals "len", "bounds.check"
+                            code = "#{bounds_check} =w csgel #{index_reg}, 1\n"
+                            code ..= "jnz #{bounds_check}, #{not_too_low}, #{end_label}\n"
+                            code ..= env\block not_too_low, ->
+                                code = "#{len} =l loadl #{list_reg}\n"
+                                code ..= "#{bounds_check} =w cslel #{index_reg}, #{len}\n"
+                                return code.."jnz #{bounds_check}, #{not_too_high}, #{end_label}\n"
+
+                            code ..= env\block not_too_high, ->
+                                p = env\fresh_local "p"
+                                code = "#{p} =l add #{list_reg}, 8\n"
+                                code ..= "#{p} =l loadl #{p}\n"
+                                offset = env\fresh_local "offset"
+                                code ..= "#{offset} =l sub #{index_reg}, 1\n"
+                                code ..= "#{offset} =l mul #{offset}, #{t.item_type.bytes}\n"
+                                code ..= "#{p} =l add #{p}, #{offset}\n"
+                                if rhs_type.base_type == "d"
+                                    rhs_casted = env\fresh_local "list.item.float"
+                                    code ..= "#{rhs_casted} =d cast #{rhs_reg}\n"
+                                    rhs_reg = rhs_casted
+                                code ..= "store#{t.item_type.abi_type} #{rhs_reg}, #{p}\n"
+                                return code.."jmp #{end_label}\n"
+
+                            return code
+                        code ..= "#{end_label}\n"
+                        return code
+                elseif index_type\is_a(Types.Range)
+                    node_error lhs.index, "Assigning to list slices is not supported."
+                else
+                    node_error lhs.index, "Index is #{index_type} instead of Int or Range"
+            elseif t\is_a(Types.TableType)
+                key_type = get_type(lhs.index)
+                tab_reg,key_reg,new_code = env\to_regs lhs.value, lhs.index
+                code ..= new_code
+
+                table.insert lhs_stores, (rhs_reg)->
+                    key_setter = env\fresh_local "key.setter"
+                    code = hash_prep t.key_type, key_reg, key_setter
+                    value_setter = env\fresh_local "value.setter"
+                    code ..= hash_prep t.value_type, rhs_reg, value_setter
+
+                    nonnil_label, end_label = env\fresh_labels "if.nonnil", "if.nonnil.done"
+                    code ..= check_nil lhs_type, env, tab_reg, nonnil_label, end_label
+
+                    code ..= env\block nonnil_label, ->
+                        ("call $hashmap_set(l #{tab_reg}, l #{key_setter}, l #{value_setter})\n"..
+                         "jmp #{end_label}\n")
+                    code ..= "#{end_label}\n"
                     return code
-                code ..= "#{end_label}\n"
-                return code
-            elseif index_type\is_a(Types.Range)
-                node_error @lhs.index, "Assigning to list slices is not supported."
+            elseif t\is_a(Types.StructType)
+                memb = if lhs.index.__tag == "FieldName"
+                    member_name = lhs.index[0]
+                    node_assert t.members[member_name], lhs.index, "Not a valid struct member of #{t}"
+                    t.members[member_name]
+                elseif lhs.index.__tag == "Int"
+                    i = tonumber(lhs.index[0])
+                    node_assert t.members, lhs.index, "#{t} only has members between 1 and #{#t.members}"
+                    t.members[i]
+                else
+                    node_error lhs.index, "Structs can only be indexed by a field name or Int literal"
+                struct_reg,new_code = env\to_regs lhs.value
+                code ..= new_code
+
+                table.insert lhs_stores, (rhs_reg)->
+                    nonnil_label, end_label = env\fresh_labels "if.nonnil", "if.nonnil.done"
+                    code = check_nil get_type(lhs.value), env, struct_reg, nonnil_label, end_label
+                    code ..= env\block nonnil_label, ->
+                        loc = env\fresh_local "member.loc"
+                        code = "#{loc} =l add #{struct_reg}, #{memb.offset}\n"
+                        code ..= "store#{rhs_type.base_type} #{rhs_reg}, #{loc}\n"
+                        code ..= "jmp #{end_label}\n"
+                        return code
+                    code ..= "#{end_label}\n"
+                    return code
             else
-                node_error @lhs.index, "Index is #{index_type} instead of Int or Range"
-            return
-        elseif t\is_a(Types.TableType)
-            key_type = get_type(@lhs.index)
-            tab_reg,key_reg,val_reg,code = env\to_regs @lhs.value, @lhs.index, @rhs
+                node_error lhs.value, "Only Lists and Structs are mutable, not #{t}"
 
-            key_setter = env\fresh_local "key.setter"
-            code ..= hash_prep t.key_type, key_reg, key_setter
-            value_setter = env\fresh_local "value.setter"
-            code ..= hash_prep t.value_type, val_reg, value_setter
-
-            nonnil_label, end_label = env\fresh_labels "if.nonnil", "if.nonnil.done"
-            code ..= check_nil get_type(@lhs.value), env, tab_reg, nonnil_label, end_label
-
-            code ..= env\block nonnil_label, ->
-                ("call $hashmap_set(l #{tab_reg}, l #{key_setter}, l #{value_setter})\n"..
-                 "jmp #{end_label}\n")
-            code ..= "#{end_label}\n"
-            return code
-        elseif t\is_a(Types.StructType)
-            memb = if @lhs.index.__tag == "FieldName"
-                member_name = @lhs.index[0]
-                node_assert t.members[member_name], @lhs.index, "Not a valid struct member of #{t}"
-                t.members[member_name]
-            elseif @lhs.index.__tag == "Int"
-                i = tonumber(@lhs.index[0])
-                node_assert t.members, @lhs.index, "#{t} only has members between 1 and #{#t.members}"
-                t.members[i]
-            else
-                node_error @lhs.index, "Structs can only be indexed by a field name or Int literal"
-            struct_reg,rhs_reg,code = env\to_regs @lhs.value, @rhs
-            nonnil_label, end_label = env\fresh_labels "if.nonnil", "if.nonnil.done"
-            code ..= check_nil get_type(@lhs.value), env, struct_reg, nonnil_label, end_label
-            code ..= env\block nonnil_label, ->
-                loc = env\fresh_local "member.loc"
-                code = "#{loc} =l add #{struct_reg}, #{memb.offset}\n"
-                code ..= "store#{rhs_type.base_type} #{rhs_reg}, #{loc}\n"
-                code ..= "jmp #{end_label}\n"
-                return code
-            code ..= "#{end_label}\n"
-
-            return code
-        else
-            node_error @lhs.value, "Only Lists and Structs are mutable, not #{t}"
-            return
+        for i=1,#@rhs
+            rhs_reg,rhs_code = env\to_reg @rhs[i]
+            code ..= rhs_code
+            code ..= lhs_stores[i](rhs_reg)
+        return code
     AddUpdate: (env)=>
         lhs_type,rhs_type = get_type(@lhs),get_type(@rhs)
         lhs_reg,rhs_reg,code = env\to_regs @lhs, @rhs

@@ -137,7 +137,7 @@ Lambda:: (@curdent:\C
       / @:Return=(@value=required-extended-expr)_ [comment]))
    / ("->"_ [comment] (@body=maybeIndentedBlock / @:ParseError=(..$ =>"Invalid lambda body"))))
 )
-Assignment:: @lhs=(IndexedTerm / Var) _ `= _ @rhs=required-extended-expr
+Assignment:: @lhs=@(1+(IndexedTerm / Var) % (_`,__)) _ `= _ @rhs=@(*extended-expr % (__`,__))
 AddUpdate:: @lhs=Var _ "+=" _ @rhs=required-extended-expr
 SubUpdate:: @lhs=Var _ "-=" _ @rhs=required-extended-expr
 MulUpdate:: @lhs=Var _ "*=" _ @rhs=required-extended-expr
