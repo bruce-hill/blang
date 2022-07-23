@@ -80,7 +80,10 @@ list_t *bl_list_slice(list_t *list, range_t *r, size_t list_item_size) {
     int64_t len = ((last+step) - first) / step;
     if (len <= 0) len = 0;
     slice->len = len;
-    if (len > 0) {
+
+    if (step == 1) {
+        slice->items = &list->items[first-1];
+    } else if (len > 0) {
         void *p = gc_alloc(len * list_item_size);
         slice->items = p;
         void *src_items = list->items;
