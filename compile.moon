@@ -693,6 +693,7 @@ class Environment
         for v in coroutine.wrap(-> each_tag(ast, "Var"))
             if v[0] == "args"
                 v.__location = "$args"
+                v.__type = Types.ListType(Types.String)
 
         is_file_scope = (scope)->
             while scope

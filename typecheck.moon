@@ -907,8 +907,6 @@ get_type = (node)->
             if find_type_alias node, node[0]
                 return TypeString
             var_type = node.__type or find_declared_type(node, node[0])
-            if not var_type and node[0] == "args"
-                return ListType(String)
             if not var_type and node.__decl
                 return get_type(node.__decl)
             node_assert var_type, node, "Cannot determine type for undefined variable"
