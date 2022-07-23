@@ -5,11 +5,11 @@ def max(x:Int,y:Int):Int
 def max(x:Num,y:Num):Num
     return x >= y ? x ; y
 
-def say_max(x:Int,y:Int):
+def say_max(x:Int,y:Int)
     m := max(x, y)
     $puts "$m"
 
-def say_max(x:Num,y:Num):
+def say_max(x:Num,y:Num)
     m := max(x, y)
     $puts "$m"
 
@@ -21,6 +21,6 @@ def map(list:[Int], fn:(Int)=>Int):[Int]
     return [x|fn for x in list]
 
 to_map := ["hello","world"]
-def bye(s:String):= s == "hello" ? "bye" ; s
+def bye(s:String) return s == "hello" ? "bye" ; s
 mapped := map(to_map:[Int], bye:(Int)=>Int):[String]
 $puts "map($to_map, bye) => $mapped"

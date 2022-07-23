@@ -18,7 +18,7 @@ $printf("\n")
 
 $printf("%ld\n", i) for i in 100..102
 
-def retry():
+def retry()
     r := $random():Int
     $puts "rng = $r"
     return r mod 4 != 0

@@ -123,7 +123,7 @@ EnumDeclaration:: \b"enum"\b _ @name=Var _ (`{__+(@Var) % (__`,__) __ [`,__] `} 
 Macro:: @curdent:\C "macro"\b _ @name=Var _ `( __ @args=@(*Var%(__`,__))__[`,__]`)_ [comment] @body=maybeIndentedBlock
 FnDecl:: @curdent:\C "def"\b _ (@name=Var _
   `( __ @args=@(*((@:FnArg=(@arg=Var_`:_@type=type) / @:ParseError=(Var =>"This argument doesn't have a type")))%(__`,__))__[`,__]`)_
-  (`: / @:ParseError=(=>"Expected a colon here"))_[@return=type]_ [comment]
+  [`: _ @return=type]_ [comment]
   ((`= _ @body=(@:Block=(
       [_comment] nl curdent +(` /\t) @curdent:\C @:Return=(@value=required-extended-expr)
       / @:Return=(@value=required-extended-expr) _ [comment])))

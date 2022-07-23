@@ -1,4 +1,4 @@
-def shuffle(list:[Value]):
+def shuffle(list:[Value])
     for i in 1..(#list-1)
         r := i + ($rand():Int mod (#list - i))
         tmp := list[i]

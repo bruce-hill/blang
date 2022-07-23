@@ -1,5 +1,5 @@
 
-def sqr(self:Num):= self*self
+def sqr(self:Num) = self*self
 
 x := 5.
 s := x|sqr

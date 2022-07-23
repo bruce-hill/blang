@@ -1,5 +1,5 @@
 
-def doop(x:Int):
+def doop(x:Int)
     when x is 1,2,3,4
         $printf("smol\n")
     is 5

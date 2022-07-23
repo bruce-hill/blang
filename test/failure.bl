@@ -1,4 +1,4 @@
-def say(s:String): $puts(s)
+def say(s:String) $puts(s)
 
 maybe_nil := yes ? "safe"; nil
 say "maybe: $maybe_nil"

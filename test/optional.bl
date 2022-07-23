@@ -12,7 +12,7 @@ fn := should_nil ? nil; (s:String)-> $puts(s)
 maybe_log := fn or (s:String)-> $puts("...")
 maybe_log("Hello")
 
-def maybe_str(s:String,nil_it:Bool):
+def maybe_str(s:String,nil_it:Bool)
     return nil if nil_it
     return s
 

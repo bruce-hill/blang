@@ -27,11 +27,11 @@ fail unless withconst("hi") == "CONST:hi"
 $puts "$(withconst "hi")"
 
 macro usefn(x)
-    def foo(y:String):
+    def foo(y:String)
         $puts "$y"
     foo(x)
 
-def foo(y:String):
+def foo(y:String)
     fail "Check fndec hygiene"
 usefn "asdf"
 
@@ -65,7 +65,7 @@ max_num := max nums
 $puts "max of $nums: $(max nums)"
 fail unless max_num == 99
 
-def local_macro(things:[Foo]):
+def local_macro(things:[Foo])
     macro any(xs, x, expr)
         ret := no
         for x in xs

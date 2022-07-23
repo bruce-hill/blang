@@ -7,7 +7,7 @@ backend IR, and compiles from there to assembly code and then to a binary.
 ## Example
 
 ```
-def sing_bottles_song(n:Int):
+def sing_bottles_song(n:Int)
     for i in n..0
         when i is 0
             $puts "No more bottles of beer on the wall! :("

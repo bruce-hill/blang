@@ -3,7 +3,7 @@ union Foo {
     z:String
 }
 
-def show(foo:Foo):
+def show(foo:Foo)
     $puts "$foo: .x=$(foo.x) .y=$(foo.y) .z=$(foo.z)"
     if x := foo.x
         $puts "It was an x: $x"
@@ -12,7 +12,7 @@ def show(foo:Foo):
     elseif z := foo.z
         $puts "It was a z: $z"
 
-def doop():
+def doop()
     tmp := @Foo.z "hi"
     show(@Foo.x 5)
     show(@Foo.y 6)

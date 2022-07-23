@@ -1,7 +1,7 @@
-def foo(x:Int, y:Int, z:Int):
+def foo(x:Int, y:Int, z:Int)
     return "$x,$y,$z"
 
-def check(given:String,correct:String):
+def check(given:String,correct:String)
     fail "$given is not $correct" unless given == correct
     $puts "Test: $given ok"
 
@@ -11,7 +11,7 @@ check foo(1,z=2,3), "1,3,2"
 check foo(y=1,z=2,3), "3,1,2"
 check foo(x=3,y=2,z=1), "3,2,1"
 
-def optional_args(a:Int, b:Int?, c:Num?):
+def optional_args(a:Int, b:Int?, c:Num?)
     return "a=$a b=$b c=$c"
 
 check optional_args(1), "a=1 b=nil c=nil"

@@ -5,7 +5,7 @@ rand := $random():Int
 
 $puts "wip loaded!"
 
-def bloop(s:String):= "bloop $s"
+def bloop(s:String) = "bloop $s"
 
 struct CustomStruct{x:Int, y:Int}
 

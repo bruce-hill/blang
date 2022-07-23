@@ -1,9 +1,9 @@
 
 top := "Hello"
 $puts "Outside: $top"
-def foo():
+def foo()
     mid := "world"
-    def baz():
+    def baz()
         inner := "!"
         $puts "$top $inner"
     baz()

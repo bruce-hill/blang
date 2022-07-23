@@ -1,17 +1,17 @@
 
-def selfrec(i:Int):
+def selfrec(i:Int)
     return unless i > 0
     $puts "Selfrec $i"
     selfrec(i-1)
 
 selfrec(4)
 
-def ping(i:Int):
+def ping(i:Int)
     return unless i > 0
     $puts "Ping $i"
     pong(i-1)
 
-def pong(i:Int):
+def pong(i:Int)
     return unless i > 0
     $puts "Pong $i"
     ping(i-1)
