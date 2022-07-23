@@ -1438,12 +1438,14 @@ expr_compilers =
                 code = nil_guard list_reg, item, item_type, ->
                     not_too_low,not_too_high,outside_bounds,done = env\fresh_labels "not.too.low", "not.too.high", "outside.bounds", "done"
                     len, bounds_check = env\fresh_locals "len", "bounds.check"
-                    code ..= "#{bounds_check} =w csgel #{index_reg}, 1\n"
-                    code ..= "jnz #{bounds_check}, #{not_too_low}, #{outside_bounds}\n"
-                    code ..= env\block not_too_low, ->
-                        code = "#{len} =l loadl #{list_reg}\n"
-                        code ..= "#{bounds_check} =w cslel #{index_reg}, #{len}\n"
-                        return code.."jnz #{bounds_check}, #{not_too_high}, #{outside_bounds}\n"
+                    unless index_reg\match("^%d+$")
+                        code ..= "#{bounds_check} =w csgel #{index_reg}, 1\n"
+                        code ..= "jnz #{bounds_check}, #{not_too_low}, #{outside_bounds}\n"
+                        code ..= "#{not_too_low}\n"
+
+                    code ..= "#{len} =l loadl #{list_reg}\n"
+                    code ..= "#{bounds_check} =w cslel #{index_reg}, #{len}\n"
+                    code ..= "jnz #{bounds_check}, #{not_too_high}, #{outside_bounds}\n"
 
                     code ..= env\block not_too_high, ->
                         code = ""
