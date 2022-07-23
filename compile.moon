@@ -29,6 +29,12 @@ get_function_reg = (scope, name, arg_types, return_type=nil)->
                     if mem and mem.type\is_a(Types.FnType) and mem.type\matches(arg_types, return_type)
                         t = stmt.orElse and mem.type or OptionalType(mem.type)
                         return mem.__location, true, t
+                elseif stmt.__tag == "StructDeclaration"
+                    for method in *(stmt[1].methods or {})
+                        t = get_type(method)
+                        if t\matches(arg_types, return_type)
+                            return node_assert(stmt.__register, stmt, "Function without a name"), false, get_type(stmt)
+
         when "FnDecl","Lambda"
             for a in *scope.args
                 if a.arg[0] == name
@@ -700,7 +706,6 @@ class Environment
         file_scope_vars = {}
         -- Set up variable registers:
         hook_up_refs = (var, scope, var_type)->
-            assert var.__tag == "Var" and scope and scope != var
             if not var.__register and not var.__location
                 if var.__parent and var.__parent.__tag == "Declaration" and is_file_scope var
                     var.__location = @fresh_global var[0]
@@ -708,32 +713,33 @@ class Environment
                 else
                     var.__register = @fresh_local var[0]
 
-            assert scope.__tag != "Var"
-            for k,node in pairs scope
-                continue unless type(node) == 'table' and not (type(k) == 'string' and k\match("^__"))
-                switch node.__tag
-                    when "Var"
-                        if node[0] == var[0]
-                            -- node_assert not node.__register and not node.__location, var, "Variable shadows earlier declaration #{node.__decl}"
-                            node.__register = var.__register
-                            node.__location = var.__location
-                            node.__decl = var
-                            node.__type = var_type
-                    when "FnDecl","Lambda"
-                        if (var.__register and var.__register\match("^%$")) or var.__location
-                            hook_up_refs var, node.body, var_type
-                    when "FnCall","MethodCall","MethodCallUpdate"
-                        arg_types = {}
-                        for arg in *node
-                            if arg.__tag == "KeywordArg"
-                                arg_types[arg.name[0]] = get_type(arg.value)
-                            else
-                                table.insert arg_types, get_type(arg)
-                        if var_type and var_type\is_a(Types.FnType) and var_type\matches(arg_types)
-                            hook_up_refs var, {node.fn}, var_type
-                        hook_up_refs var, {table.unpack(node)}, var_type
-                    else
-                        hook_up_refs var, node, var_type
+            switch scope.__tag
+                when "Var"
+                    if scope[0] == var[0]
+                        -- node_assert not scope.__register and not scope.__location, var, "Variable shadows earlier declaration #{scope.__decl}"
+                        scope.__register = var.__register
+                        scope.__location = var.__location
+                        scope.__decl = var
+                        scope.__type = var_type
+                when "Declaration"
+                    hook_up_refs var, scope.value, var_type
+                when "FnDecl","Lambda"
+                    if (var.__register and var.__register\match("^%$")) or var.__location
+                        hook_up_refs var, scope.body, var_type
+                when "FnCall","MethodCallUpdate"
+                    arg_types = {}
+                    for arg in *scope
+                        hook_up_refs var, arg, var_type
+                        if arg.__tag == "KeywordArg"
+                            arg_types[arg.name[0]] = get_type(arg.value)
+                        else
+                            table.insert arg_types, get_type(arg)
+                    if var_type and var_type\is_a(Types.FnType) and var_type\matches(arg_types)
+                        hook_up_refs var, scope.fn, var_type
+                else
+                    for k,node in pairs scope
+                        if type(node) == 'table' and not (type(k) == 'string' and k\match("^__"))
+                            hook_up_refs var, node, var_type
 
         for glob in coroutine.wrap(-> each_tag(ast, "Global"))
             glob.__register = glob[0]
@@ -748,6 +754,14 @@ class Environment
             t = s[1] or s.type
             var = {__tag:"Var", [0]: t.name[0], __location: @get_string_reg(t.name[0], "typestring"), __parent:s.__parent}
             hook_up_refs var, scope, parse_type(t)
+
+            for method in *(t.methods or {})
+                method.__register = @fresh_global(method.name[0])
+                method.__decl = method
+                method.name.__register = method.__register
+                method.name.__decl = method
+                m_t = get_type(method)
+                hook_up_refs method.name, s.__parent, m_t
 
         -- Compile modules:
         for use in coroutine.wrap(-> each_tag(ast, "Use"))
@@ -819,7 +833,7 @@ class Environment
 
         -- Set up function names (global):
         for fndec in coroutine.wrap(-> each_tag(ast, "FnDecl", "Lambda"))
-            fndec.__register = @fresh_global(fndec.name and fndec.name[0] or "lambda")
+            fndec.__register or= @fresh_global(fndec.name and fndec.name[0] or "lambda")
             fndec.__decl = fndec
             if fndec.name
                 fndec.name.__register = fndec.__register
@@ -847,7 +861,7 @@ class Environment
                 hook_up_refs for_block.index, for_block.filter, t if for_block.filter
 
         -- Look up which function to use for each callsite:
-        for call in coroutine.wrap(-> each_tag(ast, "FnCall","MethodCall","MethodCallUpdate"))
+        for call in coroutine.wrap(-> each_tag(ast, "FnCall","MethodCallUpdate"))
             if call.fn.__tag == "Var" and not (call.fn.__register or call.fn.__location)
                 call_sig = "(#{concat [tostring(get_type(a)) for a in *call], ","})"
                 top = call.__parent
@@ -1960,8 +1974,6 @@ expr_compilers =
         code ..= "#{ret_reg} =#{ret_type.base_type} call #{fn_reg}(#{concat arg_list, ", "})\n"
         return ret_reg, code
 
-    MethodCall: (env, skip_ret=false)=> expr_compilers.FnCall(@, env, skip_ret)
-
     Lambda: (env)=>
         node_assert @__register, @, "Unreferenceable lambda"
         return @__register,""
@@ -2433,13 +2445,6 @@ stmt_compilers =
     UnitDeclaration: (env)=> ""
     Export: (env)=> ""
     FnCall: (env)=>
-        ret_type = get_type(@)
-        if ret_type
-            node_assert ret_type == Types.Void or ret_type == Types.NilType, @, "Return value (#{ret_type}) is not being used"
-        _, code = env\to_reg @, true
-        code = code\gsub("[^\n]- (call [^\n]*\n)$", "%1")
-        return code
-    MethodCall: (env)=>
         ret_type = get_type(@)
         if ret_type
             node_assert ret_type == Types.Void or ret_type == Types.NilType, @, "Return value (#{ret_type}) is not being used"

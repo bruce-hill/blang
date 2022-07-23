@@ -160,7 +160,9 @@ nonoptional-type: (
   / @:ListType=(`[@itemtype=type`])
   / @:FnType=(`(__ @args=@(*type % (__`,__)) __ `) _ "=>" __ @return=type)
 )
-StructType:: @name=[Var] _ `{__ @members=@(*@:StructField=(UnionType / [@names=@*(FieldName)%(__`,__) _`:]_@type=type) % ((__`,__/__)~(`,/\n))) [__`,] __`}
+StructType:: @name=[Var] _ `{(__
+  @members=@(*@:StructField=(UnionType / [@names=@*(FieldName)%(__`,__) _`:]_@type=type) % ((__`,__/__)~(`,/\n))) [__`,] __
+  @methods=@(*FnDecl%__) __ )`}
 UnionType:: \b"union"\b _ @name=(Var / @:ParseError=(=>"Expected an identifier for this union")) _ `{__ @members=@(+@:StructField=([@names=@*(FieldName)%(__`,__) _`:]_@type=type) % ((__`,__/__)~(`,/\n))) [__`,] __`}
 If:: \b"if"\b @curdent:\C _ (
     @:Clause=(@condition=(Declaration / required-extended-expr) [_comment] @body=indentedBlock)
@@ -205,8 +207,8 @@ Range:: (
 comment: "//" *.
 
 # Keep keywords reverse-alphabetically sorted so you don't get spurious prefix matches (e.g. "no" instead of "not")
-keyword: \b("yes"/"xor"/"with"/"while"/"when"/"use"/"unless"/"unit"/"typeof"/"stop"/"skip"/"sizeof"/"return"/"repeat"/"pass"/"or"
-  /"not"/"no"/"nil"/"mod"/"macro"/"is"/"if"/"for"/"fail"/"export"/"elseif"/"else"/"do"/"deftype"/"between"/"as"/"and")\b
+keyword: \b("yes"/"xor"/"with"/"while"/"when"/"use"/"unless"/"unit"/"union"/"typeof"/"struct"/"stop"/"skip"/"sizeof"/"return"/"repeat"/"pass"/"or"
+  /"not"/"no"/"nil"/"mod"/"macro"/"is"/"if"/"for"/"fail"/"export"/"enum"/"elseif"/"else"/"do"/"deftype"/"def"/"between"/"as"/"and")\b
 hex: `0-9,a-f,A-F
 nl: +\n % (*(` /\t) [comment])
 __: *(` /\t/\n/\r/comment)

@@ -315,7 +315,8 @@ find_declared_type = (scope, name, arg_types=nil, return_type=nil)->
                     t = get_type stmt.value
                     if (stmt.__parent.__tag == "Clause" or stmt.__parent.__tag == "While") and stmt == stmt.__parent.condition and t\is_a(OptionalType)
                         t = t.nonnil
-                    return t
+                    if not arg_types or t\matches(arg_types,return_type)
+                        return t
                 elseif stmt.__tag == "Use"
                     -- Naked "use"
                     t = get_module_type(stmt.name[0])
@@ -324,6 +325,10 @@ find_declared_type = (scope, name, arg_types=nil, return_type=nil)->
                         return mem.type
                     elseif mem and mem.type\is_a(FnType) and mem.type\matches(arg_types,return_type)
                         return mem.type
+        when "StructDeclaration"
+            for method in *(scope[1].methods or {})
+                if method.name[0] == name and (not arg_types or get_type(method)\matches(arg_types,return_type))
+                    return get_type(method)
         when "Macro"
             return nil
         when "FnDecl","Lambda"
@@ -548,7 +553,7 @@ load_module = memoize (path)->
     log "Module type #{node.name[0]} = {#{concat ["#{m.name}=#{m.type}" for m in *t.sorted_members], ", "}}"
     return t
 
-get_type = memoize (node)->
+get_type = (node)->
     return node.__type if node.__type
     switch node.__tag
         when "Int"
