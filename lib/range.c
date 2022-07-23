@@ -53,7 +53,7 @@ range_t *range_backwards(range_t *src) {
     return range_new(src->last, src->last - step, src->first);
 }
 
-list_t *bl_list_slice(list_t *list, range_t *r, size_t list_item_size) {
+list_t *bl_list_slice(list_t *list, range_t *r, size_t list_item_size, bool allow_aliasing) {
     list_t *slice = gc_alloc(sizeof(list_t));
     int64_t first = r->first;
     int64_t step = r->next - r->first;
@@ -81,7 +81,7 @@ list_t *bl_list_slice(list_t *list, range_t *r, size_t list_item_size) {
     if (len <= 0) len = 0;
     slice->len = len;
 
-    if (step == 1) {
+    if (step == 1 && allow_aliasing) {
         slice->items = &list->items[first-1];
     } else if (len > 0) {
         void *p = gc_alloc(len * list_item_size);

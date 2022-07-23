@@ -962,7 +962,9 @@ for_loop = (env, make_body)=>
     len = env\fresh_local "len"
     is_done = env\fresh_local "for.is_done"
 
-    iter_reg,code = env\to_reg @iterable
+    code = "# For loop:\n"
+    iter_reg,iter_code = env\to_reg @iterable
+    code ..= iter_code
     code ..= "#{i} =l copy 0\n"
     local list_item
     if iter_type\is_a(Types.Range)
@@ -1469,7 +1471,11 @@ expr_compilers =
                 slice = env\fresh_local "slice"
                 code ..= nil_guard list_reg, slice, t, ->
                     range,code = env\to_reg @index
-                    code ..= "#{slice} =l call $bl_list_slice(l #{list_reg}, l #{range}, l #{t.item_type.bytes})\n"
+                    use_aliasing = if @__parent.__tag == "For" and @ == @__parent.iterable
+                        "1"
+                    else
+                        "0"
+                    code ..= "#{slice} =l call $bl_list_slice(l #{list_reg}, l #{range}, l #{t.item_type.bytes}, w #{use_aliasing})\n"
                     return code
                 return slice,code
             else
