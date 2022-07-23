@@ -609,7 +609,7 @@ get_type = (node)->
         when "EnumDeclaration" then return parse_type(node)
         when "Bool" then return Bool
         when "Nil" then return NilType
-        when "String","Escape","Newline" then return String
+        when "String","Escape","Newline","FieldName" then return String
         when "TypeOf" then return TypeString
         when "SizeOf" then return Int
         when "DSL"

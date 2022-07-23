@@ -1341,6 +1341,11 @@ expr_compilers =
             code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{env\get_string_reg chunk})\n"
 
         return str,code
+    
+    FieldName: (env)=>
+        name = env\fresh_local @[0]
+        code = "#{name} =l call $bl_string(l #{env\get_string_reg @[0], @[0]})\n"
+        return name, code
 
     Interp: (env)=> env\to_reg @value
 
