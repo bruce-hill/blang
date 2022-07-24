@@ -924,6 +924,12 @@ class Environment
         code ..= "export function l $load() {\n"
         code ..= "@start\n"
         code ..= body_code
+
+        for fndec in coroutine.wrap(-> each_tag(ast, "FnDecl"))
+            if fndec.name[0] == "main" and #fndec.args == 0
+                code ..= "call #{fndec.__register}()\n"
+                break
+
         for i,e in ipairs exports
             var_reg,var_code = @to_reg e
             code ..= var_code
