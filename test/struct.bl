@@ -69,4 +69,7 @@ do
     $puts "Updated inline member: $vec"
     fail unless "$inline" == "Inline{first=hello, vec=Vec<100,200>, last=bye}"
 
-
+    inline = Inline{"xxx", Vec{0.,0.}, "xxx"}
+    $GC_gcollect():NilType
+    $puts "Extracted inline member persists and keeps updates: $vec"
+    fail unless "$vec" == "Vec<100,200>"
