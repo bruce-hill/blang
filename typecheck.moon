@@ -466,6 +466,8 @@ parse_type = memoize (type_node)->
                 continue unless m.names
                 mt = parse_type(m.type)
                 for name in *m.names
+                    if name.inline
+                        node_assert mt\is_a(StructType), name, "Only structs are allowed to be inlined"
                     t\add_member name[1][0], mt, (name.inline != nil)
             return t
         when "UnionDeclaration"
