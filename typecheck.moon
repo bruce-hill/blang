@@ -104,7 +104,9 @@ class FnType extends Type
     id_str: => "Fn"
     arg_signature: => "(#{concat ["#{a}" for a in *@arg_types], ","})"
     matches: (arg_types, return_type=nil)=>
-        if @arg_names
+        if arg_types == "*"
+            _=0 -- Free pass
+        elseif @arg_names
             unmatched = {name,@arg_types[i] for i,name in ipairs @arg_names}
             for name,t in pairs arg_types
                 continue unless type(name) == 'string'
@@ -128,7 +130,7 @@ class FnType extends Type
                 return false unless arg_types[i]\is_a(@arg_types[i])
 
         if return_type
-            return false unless @return_type\is_a(return_type)
+            return false unless return_type == "*" or @return_type\is_a(return_type)
         return true
 
 class StructType extends Type
@@ -309,19 +311,21 @@ find_declared_type = (scope, name, arg_types=nil, return_type=nil)->
         when "Block"
             for i=#scope,1,-1
                 stmt = scope[i]
-                if stmt.__tag == "FnDecl" and stmt.name[0] == name and (not arg_types or get_type(stmt)\matches(arg_types,return_type))
+                if stmt.__tag == "FnDecl" and stmt.name[0] == name and arg_types and get_type(stmt)\matches(arg_types,return_type)
                     return get_type(stmt)
                 elseif stmt.__tag == "Declaration" and stmt.var[0] == name
                     t = get_type stmt.value
                     if (stmt.__parent.__tag == "Clause" or stmt.__parent.__tag == "While") and stmt == stmt.__parent.condition and t\is_a(OptionalType)
                         t = t.nonnil
-                    if not arg_types or t\matches(arg_types,return_type)
+                    if not arg_types and not t\is_a(FnType)
+                        return t
+                    elseif arg_types and t\is_a(FnType) and t\matches(arg_types,return_type)
                         return t
                 elseif stmt.__tag == "Use"
                     -- Naked "use"
                     t = get_module_type(stmt.name[0])
                     mem = t.members[name]
-                    if mem and not arg_types
+                    if mem and not arg_types and not mem.type\is_a(FnType)
                         return mem.type
                     elseif mem and mem.type\is_a(FnType) and mem.type\matches(arg_types,return_type)
                         return mem.type
@@ -904,12 +908,22 @@ get_type = (node)->
             node.__pending = nil
             return FnType([parse_type a.type for a in *node.args], ret_type, [a.arg[0] for a in *node.args])
         when "Var"
+            return node.__type if node.__type
             if find_type_alias node, node[0]
                 return TypeString
-            var_type = node.__type or find_declared_type(node, node[0])
+
+            if node.__parent.__tag == "Cast"
+                parent_cast = parse_type node.__parent.type
+                return parent_cast
+                
+            var_type = find_declared_type(node, node[0])
             if not var_type and node.__decl
                 return get_type(node.__decl)
-            node_assert var_type, node, "Cannot determine type for undefined variable"
+
+            if not var_type
+                var_type = find_declared_type(node, node[0], "*")
+
+            node_assert var_type, node, "Cannot determine type for this variable. Either it's undefined or you need to provide its type."
             return var_type
         when "Global"
             return nil

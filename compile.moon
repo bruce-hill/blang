@@ -707,6 +707,8 @@ class Environment
         file_scope_vars = {}
         -- Set up variable registers:
         hook_up_refs = (var, scope, var_type)->
+            if not var.__type
+                var.__type = var_type
             if not var.__register and not var.__location
                 if var.__parent and var.__parent.__tag == "Declaration" and is_file_scope var
                     var.__location = @fresh_global var[0]
@@ -717,11 +719,31 @@ class Environment
             switch scope.__tag
                 when "Var"
                     if scope[0] == var[0]
-                        -- node_assert not scope.__register and not scope.__location, var, "Variable shadows earlier declaration #{scope.__decl}"
-                        scope.__register = var.__register
-                        scope.__location = var.__location
-                        scope.__decl = var
-                        scope.__type = var_type
+                        ok = if var_type\is_a(Types.FnType)
+                            if (scope.__parent.__tag == "FnCall" or scope.__parent.__tag == "MethodCallUpdate") and scope == scope.__parent.fn
+                                arg_types = {}
+                                fncall = scope.__parent
+                                for arg in *fncall
+                                    if arg.__tag == "KeywordArg"
+                                        arg_types[arg.name[0]] = get_type(arg.value)
+                                    else
+                                        table.insert arg_types, get_type(arg)
+                                return_type = fncall.type and parse_type(fncall.type) or nil
+                                var_type\matches(arg_types, return_type)
+                            elseif scope.__parent.__tag == "Cast"
+                                cast_type = parse_type scope.__parent.type
+                                (var_type == cast_type)
+                            else
+                                false
+                        else
+                            true
+
+                        if ok or not (scope.__register or scope.__location)
+                            -- node_assert not scope.__register and not scope.__location, var, "Variable shadows earlier declaration #{scope.__decl}"
+                            scope.__register = var.__register
+                            scope.__location = var.__location
+                            scope.__decl = var
+                            scope.__type = var_type
                 when "Declaration"
                     hook_up_refs var, scope.value, var_type
                 when "FnDecl","Lambda"
