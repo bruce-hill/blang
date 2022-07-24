@@ -1,0 +1,36 @@
+// Do/when/if expressions
+
+do_values := [:String?]
+when_values := [:String?]
+if_values := [:String?]
+
+for i in 1..3
+    do_values += do
+        skip if i >= 2
+        "one"
+    else
+        stop if i == 3
+        "etc"
+
+    when_values += when i is 1
+        "one"
+    is 2
+        "two"
+    else
+        "etc"
+
+    if_values += if i == 1
+        "one"
+    elseif i == 2
+        "two"
+    else
+        "etc"
+
+$puts "do_values: $do_values"
+fail unless "$do_values" == "[one, etc, nil]"
+
+$puts "when_values: $when_values"
+fail unless "$when_values" == "[one, two, etc]"
+
+$puts "if_values: $if_values"
+fail unless "$if_values" == "[one, two, etc]"

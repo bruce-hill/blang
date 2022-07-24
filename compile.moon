@@ -2110,7 +2110,8 @@ expr_compilers =
         return ret, code
 
     If: (env)=>
-        ret = env\fresh_local "if.value"
+        t = get_type(@)
+        ret = t != Types.Void and env\fresh_local("if.value") or nil
         code = ""
         end_label,false_label = env\fresh_labels "if.end", "if.else"
         for cond in *@
@@ -2119,32 +2120,128 @@ expr_compilers =
             true_label = env\fresh_label "if.true"
             code ..= check_truthiness get_type(cond.condition), env, r, true_label, false_label
             code ..= "#{true_label}\n"
-            t = get_type(cond.body)
-            if t == Types.Void
+            block_type = get_type(cond.body)
+            if block_type == Types.Void
                 code ..= env\compile_stmt cond.body
+            elseif block_type == Types.NilType
+                code ..= env\compile_stmt cond.body
+                code ..= set_nil t, env, ret
             else
                 block_reg,block_code = env\to_reg cond.body
                 code ..= block_code
-                code ..= "#{ret} =#{t.base_type} copy #{block_reg}\n"
+                code ..= "#{ret} =#{block_type.base_type} copy #{block_reg}\n"
             unless has_jump\match(code)
                 code ..= "jmp #{end_label}\n"
             code ..= "#{false_label}\n"
             false_label = env\fresh_label "if.else"
 
         if @elseBody
-            t = get_type(@elseBody)
-            if t == Types.Void
+            else_type = get_type(@elseBody)
+            if else_type == Types.Void
                 code ..= env\compile_stmt @elseBody
+            elseif else_type == Types.NilType
+                code ..= env\compile_stmt @elseBody
+                code ..= set_nil(t, env, ret) unless t == Types.Void
             else
                 block_reg,block_code = env\to_reg @elseBody
                 code ..= block_code
-                code ..= "#{ret} =#{t.base_type} copy #{block_reg}\n"
+                code ..= "#{ret} =#{else_type.base_type} copy #{block_reg}\n"
                 
             unless has_jump\match(code)
                 code ..= "jmp #{end_label}\n"
         else
-            code ..= set_nil get_type(@), env, ret
+            code ..= set_nil(t, env, ret) unless t == Types.Void
 
+        code ..= "#{end_label}\n"
+        return ret,code
+
+    Do: (env)=>
+        end_label,next_label = env\fresh_labels "do.end", "do.else"
+        t = get_type(@)
+        ret = t != Types.Void and env\fresh_local("do.value") or nil
+        code = ""
+        code ..= set_nil(t, env, ret) if t != Types.Void and t\is_a(Types.OptionalType)
+        for i,block in ipairs @
+            for jmp in coroutine.wrap(-> each_tag(block, "Stop"))
+                if not jmp.target or jmp.target[0] == "do"
+                    jmp.jump_label = end_label
+            for jmp in coroutine.wrap(-> each_tag(block, "Skip"))
+                if not jmp.target or jmp.target[0] == "do"
+                    jmp.jump_label = next_label
+
+            block_type = get_type(block)
+            if block_type == Types.Void
+                code ..= env\compile_stmt block
+            elseif block_type == Types.NilType
+                code ..= env\compile_stmt block
+                code ..= set_nil t, env, ret
+            else
+                block_reg,block_code = env\to_reg block
+                code ..= block_code
+                code ..= "#{ret} =#{block_type.base_type} copy #{block_reg}\n"
+            unless has_jump\match(code)
+                code ..= "jmp #{end_label}\n"
+            if i < #@
+                code ..= "#{next_label}\n"
+                next_label = env\fresh_label "do.else"
+        code ..= "#{next_label}\n"
+        code ..= "jmp #{end_label}\n"
+        code ..= "#{end_label}\n"
+        return ret,code
+
+    When: (env)=>
+        t = get_type(@)
+        what_type = get_type @what
+        ret = t != Types.Void and env\fresh_local("when.value") or nil
+        what_reg,code = env\to_reg @what
+        end_label,next_case,next_body = env\fresh_labels "when.end","when.case","when.body"
+        match_reg = env\fresh_local "when.matches"
+        code ..= "jmp #{next_case}\n"
+        for branch in *@
+            for case in *branch.cases
+                node_assert get_type(case)\is_a(what_type), case, "'when' value is not a #{what_type}"
+                code ..= "#{next_case}\n"
+                next_case = env\fresh_label "when.case"
+                case_reg,case_code = env\to_reg case
+                code ..= "#{case_code}#{match_reg} =l ceql #{what_reg}, #{case_reg}\n"
+                code ..= "jnz #{match_reg}, #{next_body}, #{next_case}\n"
+            code ..= "#{next_body}\n"
+            next_body = env\fresh_label "when.body"
+
+            block_type = get_type(branch.body)
+            if block_type == Types.Void
+                code ..= env\compile_stmt branch.body
+            elseif block_type == Types.NilType
+                code ..= env\compile_stmt branch.body
+                code ..= set_nil t, env, ret
+            else
+                block_reg,block_code = env\to_reg branch.body
+                code ..= block_code
+                code ..= "#{ret} =#{block_type.base_type} copy #{block_reg}\n" unless t == Types.Void
+
+            unless has_jump\match(code)
+                code ..= "jmp #{end_label}\n"
+
+        if @elseBody
+            code ..= "#{next_case}\n"
+
+            else_type = get_type(@elseBody)
+            if else_type == Types.Void
+                code ..= env\compile_stmt @elseBody
+            elseif else_type == Types.NilType
+                code ..= env\compile_stmt @elseBody
+                code ..= set_nil(t, env, ret) unless t == Types.Void
+            else
+                block_reg,block_code = env\to_reg @elseBody
+                code ..= block_code
+                code ..= "#{ret} =#{else_type.base_type} copy #{block_reg}\n"
+
+            unless has_jump\match(code)
+                code ..= "jmp #{end_label}\n"
+        else
+            code ..= "#{next_case}\n"
+            code ..= set_nil(t, env, ret)
+            code ..= "jmp #{end_label}\n"
         code ..= "#{end_label}\n"
         return ret,code
 
@@ -2593,74 +2690,13 @@ stmt_compilers =
         node_assert @jump_label, @, "'skip' statement should only be used inside a loop"
         return "jmp #{@jump_label}\n"
     Do: (env)=>
-        end_label,next_label = env\fresh_labels "do.end", "do.else"
-        code = ""
-        for i,block in ipairs @
-            for jmp in coroutine.wrap(-> each_tag(block, "Stop"))
-                if not jmp.target or jmp.target[0] == "do"
-                    jmp.jump_label = end_label
-            for jmp in coroutine.wrap(-> each_tag(block, "Skip"))
-                if not jmp.target or jmp.target[0] == "do"
-                    jmp.jump_label = next_label
-
-            code ..= env\compile_stmt(block)
-            unless has_jump\match(code)
-                code ..= "jmp #{end_label}\n"
-            if i < #@
-                code ..= "#{next_label}\n"
-                next_label = env\fresh_label "do.else"
-        code ..= "#{next_label}\n"
-        code ..= "jmp #{end_label}\n"
-        code ..= "#{end_label}\n"
+        _,code = env\to_reg @
         return code
     If: (env)=>
-        code = ""
-        end_label,false_label = env\fresh_labels "if.end", "if.else"
-        for cond in *@
-            r,cond_code = env\to_reg cond.condition
-            code ..= cond_code
-            true_label = env\fresh_label "if.true"
-            code ..= check_truthiness get_type(cond.condition), env, r, true_label, false_label
-            code ..= "#{true_label}\n"
-            code ..= env\compile_stmt cond.body
-            unless has_jump\match(code)
-                code ..= "jmp #{end_label}\n"
-            code ..= "#{false_label}\n"
-            false_label = env\fresh_label "if.else"
-        if @elseBody
-            code ..= env\compile_stmt @elseBody
-            unless has_jump\match(code)
-                code ..= "jmp #{end_label}\n"
-        code ..= "#{end_label}\n"
+        _,code = env\to_reg @
         return code
     When: (env)=>
-        t = get_type @what
-        what_reg,code = env\to_reg @what
-        end_label,next_case,next_body = env\fresh_labels "when.end","when.case","when.body"
-        match_reg = env\fresh_local "when.matches"
-        code ..= "jmp #{next_case}\n"
-        for branch in *@
-            for case in *branch.cases
-                node_assert get_type(case)\is_a(t), case, "'when' value is not a #{t}"
-                code ..= "#{next_case}\n"
-                next_case = env\fresh_label "when.case"
-                case_reg,case_code = env\to_reg case
-                code ..= "#{case_code}#{match_reg} =l ceql #{what_reg}, #{case_reg}\n"
-                code ..= "jnz #{match_reg}, #{next_body}, #{next_case}\n"
-            code ..= "#{next_body}\n"
-            next_body = env\fresh_label "when.body"
-            code ..= env\compile_stmt branch.body
-            unless has_jump\match(code)
-                code ..= "jmp #{end_label}\n"
-        if @elseBody
-            code ..= "#{next_case}\n"
-            code ..= env\compile_stmt @elseBody
-            unless has_jump\match(code)
-                code ..= "jmp #{end_label}\n"
-        else
-            code ..= "#{next_case}\n"
-            code ..= "jmp #{end_label}\n"
-        code ..= "#{end_label}\n"
+        _,code = env\to_reg @
         return code
     Repeat: (env)=> repeat_loop(@, env)
     While: (env)=> while_loop(@, env)

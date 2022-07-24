@@ -610,8 +610,10 @@ get_type = (node)->
             m = Measure(1, node.units[0]\gsub("[<>]",""))
             return MeasureType(m.str)\normalized!
         when "Declaration" return get_type(node.value)
+        when "Assignment","AddUpdate","SubUpdate","MulUpdate","DivUpdate","AndUpdate","OrUpdate","ButWithUpdate","MethodCallUpdate" return NilType
         when "EnumDeclaration" then return parse_type(node)
         when "Bool" then return Bool
+        when "Pass" return NilType
         when "Nil" then return NilType
         when "String","Escape","Newline","FieldName" then return String
         when "TypeOf" then return TypeString
@@ -973,9 +975,9 @@ get_type = (node)->
             return union_type
         when "Interp"
             return get_type(node.value)
-        when "If"
-            t = get_type(node[1].body[#node[1].body])
-            node_assert t != Void, node[1].body[#node[1].body]
+        when "If","When"
+            first_block = node[1].body
+            t = Void
 
             check_block = (block)->
                 t2 = get_type(block[#block])
@@ -993,15 +995,48 @@ get_type = (node)->
                     t = OptionalType(t)
                 else
                     node_error block[#block],
-                        "This expression has type #{t2}, but the earlier values for this `if` block are all #{t}"
+                        "This expression has type #{t2}, but the earlier values for this `#{node.__Tage}` expression are all #{t}"
 
-            for i=2,#node
-                check_block node[i].body
+            for clause in *node
+                check_block clause.body
 
             if node.elseBody
                 check_block node.elseBody
             elseif not t\is_a(OptionalType)
                 t = OptionalType(t)
+
+            return t
+        when "Do"
+            t = Void
+            check_block = (block)->
+                t2 = get_type(block[#block])
+                if t == Void
+                    t = t2
+                elseif t2 == Void
+                    return
+                elseif t2\is_a(t)
+                    return
+                elseif t\is_a(t2)
+                    t = t2
+                elseif t == NilType
+                    t = OptionalType(t2)
+                elseif t2 == NilType
+                    t = OptionalType(t)
+                else
+                    node_error block[#block],
+                        "This expression has type #{t2}, but the earlier values for this `do` expression are all #{t}"
+
+            for block in *node
+                check_block block
+
+            -- TODO: this is overly conservative, some skip/stops might not be referring to this `do`:
+            for stop in coroutine.wrap(-> each_tag(node, "Stop"))
+                t = OptionalType(t) unless t\is_a(OptionalType)
+                break
+
+            for stop in coroutine.wrap(-> each_tag(node[#node], "Skip"))
+                t = OptionalType(t) unless t\is_a(OptionalType)
+                break
 
             return t
         else

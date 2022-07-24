@@ -16,7 +16,7 @@ IndexedTerm:: (!`0-9 @value=(methodCall / IndexedTerm / term)
   @index=(`. FieldName / `[ __ required-extended-expr __ `] / @:ParseError=(`[ => "Unclosed bracket")))
 maybe-index-term: methodCall / IndexedTerm / term
 expr: Range / ButWith / Mod / In / AddSub / MulDiv / Pow / methodCall / IndexedTerm / term
-extended-expr: TernaryOp / And / Or / Xor / If / comparison / splatFnCall / splatMethodCall / expr
+extended-expr: TernaryOp / And / Or / Xor / If / Do / When / comparison / splatFnCall / splatMethodCall / expr
 unaryOp: Negative / Len / Not
 Negative:: `- !`0-9,. @value=maybe-index-term
 Len:: `# _ @value=maybe-index-term
@@ -194,7 +194,7 @@ While:: (
 Repeat:: \b"repeat"\b [@filter=loopFilter] @curdent:\C _ [comment] @body=maybeIndentedBlock [between]
 loopFilter: @:If=(@:Clause=(
   (@body=@:Block=@@:Skip=("") _ (\b"if"\b _ @condition=@:Not=(@value=required-extended-expr) / \b"unless"\b_ @condition=required-extended-expr))
-  / @body=(Skip/Stop) _ PostfixConditional))
+  / @body=@:Block=@(Skip/Stop) _ PostfixConditional))
 maybeIndentedBlock: indentedBlock / @:Block=@(_line-statement_)
 between: nl curdent \b"between"\b _ [comment] @between=(maybeIndentedBlock / @:ParseError=(..$ => "Invalid 'between' body"))
 Return:: \b"return"\b _ [@value=extended-expr]
