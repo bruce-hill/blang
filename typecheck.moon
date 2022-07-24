@@ -214,8 +214,19 @@ class OptionalType extends Type
     __eq: Type.__eq
 
 class EnumType extends Type
-    new: (@name, @fields={})=>
-    add_field: (name)=> table.insert @fields, name
+    new: (@name, fields={})=>
+        @next_value = 0
+        @field_values = {}
+        @fields = {}
+        for f in *fields
+            @add_field(f.name, f.value)
+    add_field: (name, value=nil)=>
+        assert value >= 0 if value
+        table.insert @fields, name
+        value or= @next_value
+        @next_value = value + 1
+        @nil_value = @next_value
+        @field_values[name] = value
     nil_value: 0
     __tostring: => @name
     id_str: => @name
@@ -482,7 +493,7 @@ parse_type = memoize (type_node)->
                     t\add_member name[0], mt
             return t
         when "EnumDeclaration"
-            return EnumType(type_node.name[0], [f[0] for f in *type_node])
+            return EnumType(type_node.name[0], [{name:f.name[0], value:f.value and tonumber(f.value[0])} for f in *type_node])
         when "OptionalType"
             t = parse_type(type_node.nonnil)
             return OptionalType(t)
@@ -671,7 +682,16 @@ get_type = (node)->
 
             for i=2,#node
                 t_i = item_type(node[i])
-                node_assert t_i == t, node[i], "Earlier items have type #{t}, but this item is a #{t_i}"
+                continue if t_i == t
+                if t\is_a(OptionalType)
+                    node_assert t_i == t.nonnil or t_i == NilType, node[i], "Earlier items have type #{t}, but this item is a #{t_i}"
+                elseif t_i == NilType
+                    t = OptionalType(t)
+                elseif t == NilType
+                    t = OptionalType(t_i)
+                elseif t_i\is_a(OptionalType)
+                    node_assert t == t_i.nonnil, node[i], "Earlier items have type #{t}, but this item is a #{t_i}"
+                    t = t_i
 
             return ListType(t)
         when "Table"
@@ -701,10 +721,8 @@ get_type = (node)->
             if node.value.__tag == "Var"
                 enum = find_type_alias node, node.value[0]
                 if enum and enum\is_a(EnumType)
-                    for f in *enum.fields
-                        if f == node.index[0]
-                            return enum
-                    node_error node.index, "Not a valid enum field for #{enum.name}"
+                    node_assert enum.field_values[node.index[0]], node.index, "Not a valid enum field for #{enum.name}. Valid fields are: #{concat enum.fields, ", "}"
+                    return enum
 
             t = get_type node.value
             is_optional = t\is_a(OptionalType) and t != NilType

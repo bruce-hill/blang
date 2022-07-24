@@ -11,3 +11,18 @@ for c in [Color.Red, Color.Green, Color.Blue]
     else
         $puts "Other: $c"
     $puts "$c == $x? $(c == x)"
+
+enum FooType {
+    Zero,
+    One = 5,
+    Two = 7,
+    Three,
+    Four,
+}
+
+vals := [FooType.Zero, FooType.One, FooType.Two, FooType.Three, FooType.Four, nil]
+expected := [0, 5, 7, 8, 9, 10]
+for i,val in vals
+    $puts "$val = $(val:Int)"
+    fail unless val:Int == expected[i]
+

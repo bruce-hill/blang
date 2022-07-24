@@ -312,6 +312,21 @@ class Environment
             code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("nil", "nil")})\n"
         elseif t\is_a(Types.Void)
             code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("Void", "void")})\n"
+        elseif t\is_a(Types.OptionalType)
+            nil_label,nonnil_label,end_label = @fresh_labels "optional.nil", "optional.nonnil", "optional.end"
+            code ..= check_nil t, @, reg, nonnil_label, nil_label
+            code ..= @block nil_label, ->
+                code = "#{dest} =l call $bl_string(l #{@get_string_reg("nil", "nil")})\n"
+                code ..= "jmp #{end_label}\n"
+                return code
+            code ..= @block nonnil_label, ->
+                fn,needs_loading = @get_tostring_fn t.nonnil, scope
+                code = ""
+                code ..= "#{fn} =l loadl #{fn}\n" if needs_loading
+                code ..= "#{dest} =l call #{fn}(#{t.nonnil.base_type} #{reg}, l #{callstack})\n"
+                code ..= "jmp #{end_label}\n"
+                return code
+            code ..= "#{end_label}\n"
         elseif t == Types.Value or t == Types.Value32 or t == Types.Value16 or t == Types.Value8
             code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("<#{t.name}>", t.name)})\n"
         elseif t\is_a(Types.EnumType)
@@ -321,16 +336,15 @@ class Environment
             code ..= "jnz #{tmp}, #{fields_exist}, #{init_fields}\n"
             code ..= @block init_fields, ->
                 code = ""
-                for i,field in ipairs(t.fields)
+                for field in *t.fields
                     -- str = @fresh_local "str"
                     -- code ..= "#{str} =l call $bl_string(l #{@get_string_reg "#{t.name}.#{field}", "#{t.name}.#{field}"})\n"
-                    code ..= "#{tmp} =l add $#{t\id_str!}.fields, #{8*(i-1)}\n"
+                    code ..= "#{tmp} =l add $#{t\id_str!}.fields, #{8*t.field_values[field]}\n"
                     code ..= "storel #{@get_string_reg "#{t.name}.#{field}", "#{t.name}.#{field}"}, #{tmp}\n"
                 code ..= "jmp #{fields_exist}\n"
                 return code
 
             code ..= "#{fields_exist}\n"
-            code ..= "#{reg} =l sub #{reg}, 1\n"
             code ..= "#{reg} =l mul #{reg}, 8\n"
             code ..= "#{tmp} =l add $#{t\id_str!}.fields, #{reg}\n"
             code ..= "#{dest} =l loadl #{tmp}\n"
@@ -546,21 +560,6 @@ class Environment
 
         elseif t\is_a(Types.FnType)
             code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("#{t}")})\n"
-        elseif t\is_a(Types.OptionalType)
-            nil_label,nonnil_label,end_label = @fresh_labels "optional.nil", "optional.nonnil", "optional.end"
-            code ..= check_nil t, @, reg, nonnil_label, nil_label
-            code ..= @block nil_label, ->
-                code = "#{dest} =l call $bl_string(l #{@get_string_reg("nil", "nil")})\n"
-                code ..= "jmp #{end_label}\n"
-                return code
-            code ..= @block nonnil_label, ->
-                fn,needs_loading = @get_tostring_fn t.nonnil, scope
-                code = ""
-                code ..= "#{fn} =l loadl #{fn}\n" if needs_loading
-                code ..= "#{dest} =l call #{fn}(#{t.nonnil.base_type} #{reg}, l #{callstack})\n"
-                code ..= "jmp #{end_label}\n"
-                return code
-            code ..= "#{end_label}\n"
         elseif t\is_a(Types.MeasureType)
             code ..= "#{dest} =l call $bl_tostring_float(d #{reg})\n"
             code ..= "#{dest} =l call $bl_string_append_string(l #{dest}, l #{@get_string_reg("<"..t.units..">", "units")})\n"
@@ -679,7 +678,7 @@ class Environment
             t = get_type(e)
             assert t\is_a(Types.EnumType), "#{t}"
             fieldnames = "$#{t\id_str!}.fields"
-            @type_code ..= "data #{fieldnames} = {#{("l 0,")\rep(#t.fields)}}\n"
+            @type_code ..= "data #{fieldnames} = {#{("l 0,")\rep(t.next_value)}}\n"
 
         -- Union field names
         for u in coroutine.wrap(-> each_tag(ast, "UnionType"))
@@ -1243,6 +1242,8 @@ expr_compilers =
                             field_type = node_assert(struct_type.members[i] or struct_type.sorted_members[i], @, "Not a #{struct_type} field").type
                             break
                     field_type
+            elseif parent.__tag == "List"
+                get_type(parent).item_type
             elseif parent.__tag == "TableEntry"
                 entry = parent
                 tab = parent.__parent
@@ -1443,10 +1444,8 @@ expr_compilers =
         t = get_type @value
         t0 = get_type @
         if t0\is_a(Types.EnumType) and t == Types.TypeString
-            for i,field in ipairs(t0.fields)
-                if field == @index[0]
-                    -- Enum values start with 1, so nil is 0
-                    return "#{i}",""
+            value = t0.field_values[@index[0]]
+            return "#{value}","" if value
             node_error @, "Couldn't find enum field: .#{@index[0]} on type #{t0}"
 
         is_optional = t\is_a(Types.OptionalType) and t != Types.NilType
