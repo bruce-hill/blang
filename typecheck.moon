@@ -134,21 +134,24 @@ class FnType extends Type
         return true
 
 class StructType extends Type
-    new: (@name, members)=> -- Members: {{type=t, name="Foo"}, {type=t2, name="Baz"}, ...}
+    new: (@name, members)=> -- Members: {{type=t, name="Foo"}, {type=t2, name="Baz", inline=true}, ...}
         @members = {}
         @sorted_members = {}
         @memory_size = 0
         if members
             for memb in *members
-                @add_member memb.name, memb.type
-    add_member: (name, memtype)=>
+                @add_member memb.name, memb.type, memb.inline
+    add_member: (name, memtype, inline)=>
         offset = @memory_size
         -- Align memory:
         if offset % memtype.bytes != 0
             offset = offset - (offset % memtype.bytes) + memtype.bytes
-        @members[name] = {name: name, type: memtype, offset: offset}
+        @members[name] = {name: name, type: memtype, offset: offset, inline: inline}
         table.insert @sorted_members, @members[name]
-        @memory_size = offset + memtype.bytes
+        if inline
+            @memory_size = offset + (memtype.memory_size or memtype.bytes)
+        else
+            @memory_size = offset + memtype.bytes
     __tostring: => "#{@name}"
     nil_value: 0
     verbose_type: =>
@@ -463,7 +466,7 @@ parse_type = memoize (type_node)->
                 continue unless m.names
                 mt = parse_type(m.type)
                 for name in *m.names
-                    t\add_member name[0], mt
+                    t\add_member name[1][0], mt, (name.inline != nil)
             return t
         when "UnionDeclaration"
             return parse_type(type_node.type)
@@ -718,7 +721,7 @@ get_type = (node)->
                 return OptionalType(t.value_type)
             elseif t\is_a(StructType)
                 if node.index.__tag == "FieldName"
-                    member_name = node.index[0]
+                    member_name = node.index[1][0]
                     node_assert t.members[member_name], node.index, "Not a valid struct member of #{t}{#{concat ["#{memb.name}=#{memb.type}" for memb in *t.sorted_members], ", "}}"
                     ret_type = t.members[member_name].type
                     return is_optional and OptionalType(ret_type) or ret_type
@@ -731,7 +734,7 @@ get_type = (node)->
                     node_error node.index, "Structs can only be indexed by a field name or Int literal"
             elseif t\is_a(UnionType)
                 node_assert node.index.__tag == "FieldName", node, "Not a union field"
-                member_name = node.index[0]
+                member_name = node.index[1][0]
                 node_assert t.members[member_name], node.index, "Not a valid union member of #{t}"
                 member = t.members[member_name]
                 return OptionalType(member.type)

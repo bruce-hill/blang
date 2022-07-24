@@ -47,3 +47,26 @@ struct Tree {
 t := Tree{5, Tree{0, nil, nil}, nil}
 t.right = t
 $puts "Recursive struct with cyclical references: $t"
+
+
+// Inline structs
+do
+    struct Inline {
+        first:String
+        ..vec:Vec
+        last:String
+    }
+
+    inline := Inline{"hello", Vec{1.,2.}, "bye"}
+    $puts "Inline struct: $inline"
+    fail unless "$inline" == "Inline{first=hello, vec=Vec<1,2>, last=bye}"
+
+    vec := inline.vec
+    $puts "Extracted inline member: $vec"
+    fail unless "$vec" == "Vec<1,2>"
+
+    inline.vec = Vec{100.,200.}
+    $puts "Updated inline member: $vec"
+    fail unless "$inline" == "Inline{first=hello, vec=Vec<100,200>, last=bye}"
+
+

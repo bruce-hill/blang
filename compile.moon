@@ -428,7 +428,10 @@ class Environment
                 return code
 
         elseif t\is_a(Types.StructType)
-            content = @fresh_local "struct.content"
+            if t.name\match "^Tuple%.[0-9]+$"
+                code ..= "#{dest} =l call $CORD_from_char_star(l #{@get_string_reg("{", "curly")})\n"
+            else
+                code ..= "#{dest} =l call $CORD_from_char_star(l #{@get_string_reg("#{t.name}{", "#{t\id_str!}.name")})\n"
 
             -- Check callstack for cyclical references
             cycle_next,cycle_check,cycle_found,cycle_notfound,conclusion = @fresh_labels(
@@ -441,6 +444,7 @@ class Environment
                 return "jnz #{walker}, #{cycle_check}, #{cycle_notfound}\n"
             code ..= @block cycle_check, ->
                 cycle_parent = @fresh_local "cycle.parent"
+                local code
                 code = "#{cycle_parent} =l add #{walker}, 8\n"
                 code ..= "#{cycle_parent} =l loadl #{cycle_parent}\n"
                 code ..= "#{walker} =l loadl #{walker}\n"
@@ -450,53 +454,48 @@ class Environment
                 return code
 
             code ..= @block cycle_found, ->
-                code = "#{content} =l copy #{@get_string_reg "...", "ellipsis"}\n"
+                local code
+                code = "#{dest} =l call $CORD_cat(l #{dest}, l #{@get_string_reg "...", "ellipsis"})\n"
                 code ..= "jmp #{conclusion}\n"
                 return code
 
             code ..= @block cycle_notfound, ->
                 new_callstack = @fresh_local "new.callstack"
+                local code
                 code = "#{new_callstack} =l alloc8 #{2*8}\n"
                 code ..= "storel #{callstack}, #{new_callstack}\n"
                 p = @fresh_local "p"
                 code ..= "#{p} =l add #{new_callstack}, 8\n"
                 code ..= "storel #{reg}, #{p}\n"
-                chunks = @fresh_local "chunks"
-                code ..= "#{chunks} =l alloc8 #{8*#t.sorted_members}\n"
                 for i,mem in ipairs t.sorted_members
+                    if i > 1
+                        code ..= "#{dest} =l call $CORD_cat(l #{dest}, l #{@get_string_reg ", ", "comma.space"})\n"
+
                     member_loc = @fresh_local "#{t\id_str!\lower!}.#{mem.name}.loc"
-                    code ..= "#{member_loc} =l add #{reg}, #{8*(i-1)}\n"
+                    code ..= "#{member_loc} =l add #{reg}, #{mem.offset}\n"
                     member_reg = @fresh_local "#{t\id_str!\lower!}.#{mem.name}"
-                    code ..= "#{member_reg} =#{mem.type.base_type} load#{mem.type.base_type} #{member_loc}\n"
+                    if mem.inline
+                        code ..= "#{member_reg} =#{mem.type.base_type} copy #{member_loc}\n"
+                    else
+                        code ..= "#{member_reg} =#{mem.type.base_type} load#{mem.type.base_type} #{member_loc}\n"
+
+                    if mem.name
+                        code ..= "#{dest} =l call $CORD_cat(l #{dest}, l #{@get_string_reg("#{mem.name}=")})\n"
 
                     member_str = @fresh_local "#{t\id_str!\lower!}.#{mem.name}.string"
                     fn,needs_loading = @get_tostring_fn mem.type, scope
                     code ..= "#{fn} =l loadl #{fn}\n" if needs_loading
                     code ..= "#{member_str} =l call #{fn}(#{mem.type.base_type} #{member_reg}, l #{new_callstack})\n"
 
-                    if mem.name
-                        code ..= "#{member_str} =l call $bl_string_append_string(l #{@get_string_reg("#{mem.name}=")}, l #{member_str})\n"
-                    chunk_loc = @fresh_local "string.chunk.loc"
-                    code ..= "#{chunk_loc} =l add #{chunks}, #{8*(i-1)}\n"
-                    code ..= "storel #{member_str}, #{chunk_loc}\n"
-                code ..= "#{content} =l call $bl_string_join(l #{#t.sorted_members}, l #{chunks}, l #{@get_string_reg(", ", "comma.space")})\n"
+                    code ..= "#{dest} =l call $CORD_cat(l #{dest}, l #{member_str})\n"
                 code ..= "jmp #{conclusion}\n"
                 return code
 
             code ..= @block conclusion, ->
-                final_chunks = @fresh_local "surrounding.chunks"
-                code = "#{final_chunks} =l alloc8 #{8*3}\n"
-                chunk_loc = @fresh_local "chunk.loc"
-                code ..= "#{chunk_loc} =l add #{final_chunks}, #{8*0}\n"
-                if t.name\match "^Tuple%.[0-9]+$"
-                    code ..= "storel #{@get_string_reg("{", "curly")}, #{chunk_loc}\n"
-                else
-                    code ..= "storel #{@get_string_reg("#{t.name}{", "#{t\id_str!}.name")}, #{chunk_loc}\n"
-                code ..= "#{chunk_loc} =l add #{final_chunks}, #{8*1}\n"
-                code ..= "storel #{content}, #{chunk_loc}\n"
-                code ..= "#{chunk_loc} =l add #{final_chunks}, #{8*2}\n"
-                code ..= "storel #{@get_string_reg("}","closecurly")}, #{chunk_loc}\n"
-                code ..= "#{dest} =l call $bl_string_join(l 3, l #{final_chunks}, l 0)\n"
+                local code
+                code = "#{dest} =l call $CORD_cat(l #{dest}, l #{@get_string_reg "}", "close.curly"})\n"
+                code ..= "#{dest} =l call $CORD_to_const_char_star(l #{dest})\n"
+                code ..= "#{dest} =l call $bl_string(l #{dest})\n"
                 return code
 
         elseif t\is_a(Types.UnionType)
@@ -1550,8 +1549,11 @@ expr_compilers =
             ret = env\fresh_local "member"
             code ..= nil_guard struct_reg, ret, member.type, ->
                 loc = env\fresh_local "member.loc"
-                code = "#{loc} =l add #{struct_reg}, #{member.offset}\n"
-                return code.."#{ret} =#{member.type.base_type} load#{member.type.base_type} #{loc}\n"
+                if member.inline
+                    return "#{ret} =l add #{struct_reg}, #{member.offset}\n"
+                else
+                    code = "#{loc} =l add #{struct_reg}, #{member.offset}\n"
+                    return code.."#{ret} =#{member.type.base_type} load#{member.type.base_type} #{loc}\n"
             return ret,code
         elseif t\is_a(Types.UnionType)
             node_assert @index.__tag == "FieldName", @, "Not a valid union field name"
@@ -2085,7 +2087,10 @@ expr_compilers =
             code ..= "#{loc} =l add #{ret}, #{memb.offset}\n"
             val_reg,val_code = env\to_reg field.value
             code ..= val_code
-            code ..= "store#{m_t.base_type} #{val_reg}, #{loc}\n"
+            if memb.inline
+                code ..= "call $memcpy(l #{loc}, l #{val_reg}, l #{memb.type.memory_size})\n"
+            else
+                code ..= "store#{m_t.base_type} #{val_reg}, #{loc}\n"
             unpopulated[memb.name] = nil
 
         for name,memb in pairs unpopulated
@@ -2423,7 +2428,10 @@ stmt_compilers =
                     code ..= env\block nonnil_label, ->
                         loc = env\fresh_local "member.loc"
                         code = "#{loc} =l add #{struct_reg}, #{memb.offset}\n"
-                        code ..= "store#{rhs_type.base_type} #{rhs_reg}, #{loc}\n"
+                        if memb.inline
+                            code ..= "call $memcpy(l #{loc}, l #{rhs_reg}, l #{assert memb.type.memory_size})\n"
+                        else
+                            code ..= "store#{rhs_type.base_type} #{rhs_reg}, #{loc}\n"
                         code ..= "jmp #{end_label}\n"
                         return code
                     code ..= "#{end_label}\n"

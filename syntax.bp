@@ -162,7 +162,7 @@ nonoptional-type: (
   / @:FnType=(`(__ @args=@(*type % (__`,__)) __ `) _ "=>" __ @return=type)
 )
 StructType:: @name=[Var] _ `{(__
-  @members=@(*@:StructField=(UnionType / [@names=@*(FieldName)%(__`,__) _`:]_@type=type) % ((__`,__/__)~(`,/\n))) [__`,] __
+  @members=@(*@:StructField=(UnionType / [@names=@*(@:FieldName=([@inline=".."_]Var))%(__`,__) _`:]_@type=type) % ((__`,__/__)~(`,/\n))) [__`,] __
   @methods=@(*FnDecl%__) __ )`}
 UnionType:: \b"union"\b _ @name=(Var / @:ParseError=(=>"Expected an identifier for this union")) _ `{__ @members=@(+@:StructField=([@names=@*(FieldName)%(__`,__) _`:]_@type=type) % ((__`,__/__)~(`,/\n))) [__`,] __`}
 If:: \b"if"\b @curdent:\C _ (
