@@ -17,3 +17,18 @@ def pong(i:Int)
     ping(i-1)
 
 ping(5)
+
+
+def foo(x:Int):Int
+    if x == 5
+        return baz(x)
+    return x - 1
+
+def baz(x:Int)
+    if x == 99
+        return foo(x)
+    return x + 1
+
+$puts "$(foo(5))"
+$puts "$(baz(99))"
+

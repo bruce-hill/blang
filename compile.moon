@@ -243,14 +243,26 @@ class Environment
     declare_function: (fndec)=>
         args = ["#{parse_type(arg.type).base_type} #{arg.arg.__register}" for arg in *fndec.args]
         fn_scope = @inner_scope {"%#{arg.arg[0]}",true for arg in *fndec.args}
+
+        fn_type = get_type fndec
+        ret_type = fn_type.return_type
+        check_returns = (ast)->
+            return if type(ast) != 'table'
+            return if ast.__tag == "FnDecl" or ast.__tag == "Lambda" or ast.__tag == "Macro"
+            if ast.__tag == "Return"
+                unless (ret_type == Types.NilType and not ast.value) or get_type(ast.value)\is_a(ret_type)
+                    node_error ast, "Not a valid function return value. Expected type is #{ret_type}, not #{ast.value and get_type(ast.value) or Types.NilType}"
+            for k,v in pairs ast
+                check_returns(v) if type(v) == 'table' and not (type(k) == 'string' and k\match("^__"))
+
+        check_returns fndec.body
+
         body_code = if fndec.body.__tag == "Block"
             fn_scope\compile_stmt fndec.body
         else
             ret_reg, tmp = fn_scope\to_reg fndec.body
             "#{tmp}ret #{ret_reg}\n"
         body_code = body_code\gsub("[^\n]+", =>(@\match("^%@") and @ or "  "..@))
-        fn_type = get_type fndec
-        ret_type = fn_type.return_type
         node_assert fndec.__register, fndec, "Function has no name"
         fn_name = fndec.__register
         @fn_code ..= "\nfunction #{ret_type\is_a(Types.Void) and "" or ret_type.base_type.." "}"

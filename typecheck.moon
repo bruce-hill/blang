@@ -884,6 +884,7 @@ get_type = (node)->
             return base_type
         when "Lambda","FnDecl"
             decl_ret_type = node.return and parse_type(node.return)
+            return FnType([parse_type a.type for a in *node.args], decl_ret_type, [a.arg[0] for a in *node.args]) if decl_ret_type
             if node.__pending == true
                 return nil unless decl_ret_type
                 return FnType([parse_type a.type for a in *node.args], decl_ret_type, [a.arg[0] for a in *node.args])
@@ -925,11 +926,6 @@ get_type = (node)->
                 node_assert ret_type == NilType or not has_fallthrough(node.body), node, "Function is not guaranteed to return a value"
             else
                 ret_type = NilType
-            -- ret_type = ret_type or NilType
-            if decl_ret_type and decl_ret_type\is_a(OptionalType) and ret_type == NilType
-                ret_type = decl_ret_type
-            elseif decl_ret_type
-                node_assert decl_ret_type == ret_type, node, "Conflicting return types: #{decl_ret_type} vs #{ret_type}"
             node.__pending = nil
             return FnType([parse_type a.type for a in *node.args], ret_type, [a.arg[0] for a in *node.args])
         when "Var"
