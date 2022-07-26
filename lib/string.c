@@ -92,7 +92,7 @@ const char *bl_string_append_range(char *s, range_t *r) {
 }
 const char *bl_string_append_string(char *a, char *b) { RETURN_FMT("%s%s", a, b); }
 
-const char *bl_string_slice(char *s, range_t *r) {
+const char *bl_string_slice(const char *s, range_t *r) {
     int64_t step = r->next - r->first;
     if (step == 0) return intern_str("");
 
