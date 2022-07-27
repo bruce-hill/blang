@@ -18,6 +18,7 @@
 static const int64_t INT_NIL = 0x7FFFFFFFFFFFFFFF;
 
 #define RETURN_FMT(fmt, ...) do { char *ret = NULL; int status = asprintf(&ret, fmt, __VA_ARGS__); if (status < 0) err(1, "string formatting failed"); const char *tmp = intern_str(ret); free(ret); return tmp; } while(0)
+#define CLAMP(x, lo, hi) MIN(hi, MAX(x,lo))
 
 const char *bl_string(const char *s) { return intern_str(s); }
 const char *bl_tostring_int(int64_t i) { RETURN_FMT("%ld", i); }
@@ -97,7 +98,7 @@ const char *bl_string_slice(const char *s, range_t *r) {
     if (step == 0) return intern_str("");
 
     int64_t len = (int64_t)strlen(s);
-    int64_t first = MAX(0, MIN(len-1, r->first-1)), last = MAX(0, MIN(len-1, r->last-1));
+    int64_t first = CLAMP(r->first-1, 0, len-1), last = CLAMP(r->last-1, 0, len-1);
     int64_t slice_len = 0;
     for (int64_t i = first; step > 0 ? i <= last : i >= last; i += step)
         ++slice_len;
