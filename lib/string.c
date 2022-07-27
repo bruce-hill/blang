@@ -73,6 +73,10 @@ const char *bl_string_join(int64_t count, char **strings, char *sep) {
     return bl_string(CORD_to_const_char_star(buf));
 }
 
+const char *bl_string_list_join(list_t *list, char *sep) {
+    return bl_string_join(list->len, (char**)list->items, sep);
+}
+
 const char *bl_string_append_int(char *s, int64_t i) { RETURN_FMT("%s%ld", s, i); }
 const char *bl_string_append_float(char *s, double f) { RETURN_FMT("%s%g", s, f); }
 const char *bl_string_append_char(char *s, int64_t c) { RETURN_FMT("%s%c", s, (char)c); }
