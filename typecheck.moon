@@ -792,6 +792,8 @@ get_type = (node)->
                         node_error val, "Failure will always trigger"
 
                 if node.__tag == "Or" and not t\is_a(OptionalType)
+                    if i == 1
+                        node_assert t != Bool, node[i], "This value is a Bool, but subsequent values in this `or` sequence have different types. Either make everything a Bool, or make everything the same optional type."
                     node_assert i == #node, node[i], "This value is never nil, so subsequent values are ignored"
                     node_assert t == optional.nonnil, val, "Mismatched type: #{t} doesn't match earlier type: '#{optional}'"
                     return t
