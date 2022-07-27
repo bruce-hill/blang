@@ -2082,7 +2082,7 @@ expr_compilers =
         ret = env\fresh_local "#{t.name\lower!}"
         code = "#{ret} =l call $gc_alloc(l #{t.memory_size})\n"
         i = 0
-        unpopulated = {n:memb for n,memb in pairs t.members}
+        unpopulated = {n,memb for n,memb in pairs t.members}
         for field in *@
             memb = if field.name
                 t.members[field.name[0]]
@@ -2105,7 +2105,7 @@ expr_compilers =
             unpopulated[memb.name] = nil
 
         for name,memb in pairs unpopulated
-            continue unless memb\is_a(Types.OptionalType)
+            continue unless memb.type\is_a(Types.OptionalType)
             unpopulated[name] = nil
             continue if memb.type.nil_value == 0
             loc = env\fresh_local "#{t\id_str!\lower!}.#{memb.name}.loc"
