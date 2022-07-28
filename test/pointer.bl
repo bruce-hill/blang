@@ -1,5 +1,7 @@
+extern fopen(path:String, mode:String):Pointer?
+
 def try_file(path:String):Bool
-    f := $fopen(path, "r"):Pointer? or return no
+    f := fopen(path, "r") or return no
     return no unless $fclose(f):Int == 0
     return yes
 

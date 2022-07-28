@@ -1,3 +1,6 @@
+extern float_to_int(n:Num):Int
+extern int_to_float(i:Int):Num
+
 a := 3_000 // Underscores can separate chunks
 b := 2
 x := 3.5
@@ -17,11 +20,11 @@ say "Long chain: $long"
 
 f := 23.5
 say "$f casts to int: $(f:Int)"
-say "$f rounds to int: $($float_to_int(f):Int)"
+say "$f rounds to int: $(float_to_int(f):Int)"
 
 i := 123
 say "$i casts to float: $(i:Num)"
-say "$f rounds to float: $($int_to_float(i):Num)"
+say "$f rounds to float: $(int_to_float(i):Num)"
 
 def fast_inverse_sqrt(number:Num):Num
     threehalfs := 1.5

@@ -1,4 +1,4 @@
-
+extern sqrt(n:Num):Num
 def sqr(self:Num) = self*self
 
 x := 5.
@@ -11,7 +11,7 @@ say "$x|sqr|sqr = $s"
 struct Vec{x:Num,y:Num}
 
 def len(v:Vec):Num
-    l := $sqrt(v.x*v.x + v.y*v.y):Num
+    l := sqrt(v.x*v.x + v.y*v.y):Num
     return l
 
 v := Vec{1., 1.}

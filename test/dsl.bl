@@ -1,13 +1,15 @@
 deftype BP:String
 
+extern bl_string_replace(text:String, pat:BP, replacement:String):String
+
 def hl(s:String):String
     return "\x1b[36;7m$s\x1b[m"
 
 def escape(str:String):BP
-    return ("\"$(str | $bl_string_replace(%BP{`",\}, '\@0'):String)\""):BP
+    return ("\"$(str | bl_string_replace(%BP{`",\}, '\@0'))\""):BP
 
 def replace(str:String, pat:String, replacement:String):String
-    return str|$bl_string_replace(%BP[$pat], replacement):String
+    return str|bl_string_replace(%BP[$pat], replacement)
 
 deftype SQL:String
 

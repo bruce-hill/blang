@@ -1,3 +1,4 @@
+extern printf(str:String):NilType
 
 repeat
     stop
@@ -7,13 +8,13 @@ tmp := 1
 while tmp <= #nums
     say "$(nums[tmp])"
     tmp += 1
-between $printf ", "
+between printf ", "
 say ""
 
 
 for i,num in nums
     say "[$i]$num"
-between $printf ", "
+between printf ", "
 say ""
 
 say "$i" for i in 100..102

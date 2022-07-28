@@ -1,6 +1,8 @@
+extern random():Int
+
 def shuffle(list:[Value])
     for i in 1..(#list-1)
-        r := i + ($rand():Int mod (#list - i))
+        r := i + (random() mod (#list - i))
         tmp := list[i]
         list[i] = list[r]
         list[r] = tmp

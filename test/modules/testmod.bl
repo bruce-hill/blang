@@ -1,7 +1,8 @@
 foo := 12345
 baz := "Hello $(2 + 3)"
 str := "string"
-rand := $random():Int
+extern random():Int
+rand := random()
 
 say "wip loaded!"
 
