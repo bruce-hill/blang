@@ -1,0 +1,71 @@
+macro max(_xs, x, expr)
+    xs := _xs
+    if x := xs[1]
+        best := x
+        best_score := expr
+        for x in xs[2..]
+            score := expr
+            if score > best_score
+                best = x
+                best_score = score
+        best
+
+macro min(_xs, x, expr)
+    xs := _xs
+    if x := xs[1]
+        best := x
+        best_score := expr
+        for x in xs[2..]
+            score := expr
+            if score < best_score
+                best = x
+                best_score = score
+        best
+
+macro max(_xs)
+    xs := _xs
+    if best := xs[1]
+        for x in xs[2..]
+            if x > best
+                best = x
+        best
+
+macro min(_xs)
+    xs := _xs
+    if best := xs[1]
+        for x in xs[2..]
+            if x < best
+                best = x
+        best
+
+macro any(_xs, x, expr)
+    xs := _xs
+    ret := no
+    for x in xs
+        if expr
+            ret = yes
+            stop
+    ret
+
+macro all(_xs, x, expr)
+    xs := _xs
+    ret := yes
+    for x in xs
+        if not expr
+            ret = no
+            stop
+    ret
+
+macro sum(_xs)
+    xs := _xs
+    if total := xs[1]
+        for x in xs[2..]
+            total += x
+        total
+
+macro product(_xs)
+    xs := _xs
+    if total := xs[1]
+        for x in xs[2..]
+            total *= x
+        total

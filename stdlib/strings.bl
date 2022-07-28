@@ -1,0 +1,30 @@
+extern bl_string_replace(text:String, pat:BP, replacement:String):String
+extern bl_string_repeat(str:String, n:Int):String
+deftype Cord:Pointer
+empty_cord := (0):Cord
+deftype StringPointer:Pointer
+extern CORD_cat(cord:Cord, str:String):Cord
+extern CORD_to_const_char_star(cord:Cord):StringPointer
+extern CORD_from_file_eager(fp:Pointer):Cord
+
+def tostring(cord:Cord):String
+    return "$(CORD_to_const_char_star(cord):String)"
+
+def join_strings(strs:[String], glue:String?):String
+    buf := empty_cord
+    for str in strs
+        buf = CORD_cat(buf, str)
+    between
+        buf = CORD_cat(buf, glue) if glue
+    return "$(CORD_to_const_char_star(buf):String)"
+
+macro join(strs, glue)
+    join_strings(["$x" for x in strs], glue)
+
+macro join(strs)
+    join_strings(["$x" for x in strs])
+
+nums := [6,7,8]
+
+$puts "$(nums | join)"
+$puts "$(nums | join ",")"

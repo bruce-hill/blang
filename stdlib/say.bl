@@ -1,0 +1,9 @@
+
+extern puts(s:String):NilType
+extern printf(fmt:String,s:String):NilType
+
+def say2(s:String,skip_nl:Bool?)
+    if skip_nl == yes
+        printf("%s", s)
+    else
+        puts(s)

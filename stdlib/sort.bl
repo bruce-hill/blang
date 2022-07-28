@@ -1,0 +1,71 @@
+// Macros for sorting lists using C's qsort()
+
+struct _List{len:Int, items:Pointer}
+extern qsort(items:Pointer, count:Int, size:Int, compare:(Pointer,Pointer)=>Int32)
+
+macro _sort_by_expr(_xs,T,x,expr)
+    def compare(a:Pointer, b:Pointer):Int32
+        x := (a:struct{val:T}).val
+        ka := expr
+        x = (b:struct{val:T}).val
+        kb := expr
+        if ka == kb
+            return 0:Int32
+        elseif ka < kb
+            return -1:Int32
+        else
+            return 1:Int32
+
+    xs := _xs
+    info := xs:_List
+    qsort(info.items, info.len, sizeof xs[1], compare)
+
+macro sort(_xs,x,expr)
+    xs := _xs
+    _sort_by_expr(xs, typeof(xs[1] or fail), x, expr)
+
+macro _sort(_xs,T)
+    def compare(a:Pointer, b:Pointer):Int32
+        ka := (a:struct{val:T}).val
+        kb := (b:struct{val:T}).val
+        if ka == kb
+            return 0:Int32
+        elseif ka < kb
+            return -1:Int32
+        else
+            return 1:Int32
+
+    xs := _xs
+    info := xs:_List
+    qsort(info.items, info.len, sizeof xs[1], compare)
+
+macro sort(_xs)
+    xs := _xs
+    _sort(xs, typeof(xs[1] or fail))
+
+macro contains(list, item)
+    has_item := no
+    for x in list
+        if x == item
+            has_item = yes
+            stop
+    has_item
+
+nums := [5,3,6,1,2]
+$puts "2: $(nums|contains 2)  999: $(nums|contains 999)"
+
+// nums := [5,2,7,3,5,1,-2,-3,-1]
+// sort(nums)
+// $puts "$nums"
+// sort(nums, x, x*x)
+// $puts "$nums"
+
+// struct Foo {
+//     junk:Int
+//     str:String
+// }
+// foos := [Foo{1,"hi"}, Foo{5,"bye"}, Foo{3,"xxx"}]
+// sort(foos, f, f.str)
+// $puts "$foos"
+// sort(foos, f, f.junk)
+// $puts "$foos"

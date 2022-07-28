@@ -1,0 +1,22 @@
+
+deftype StringPointer:Pointer
+struct StringPointerPointer{str:StringPointer?}
+
+extern strtol(s:String, endptr:StringPointerPointer?, base:Int):Int
+extern strtod(s:String, endptr:StringPointerPointer?):Int
+
+def parse_int(s:String, base:Int?):Int?
+    endptr := StringPointerPointer{}
+    i := strtol(s, endptr, base or 10)
+    if endptr.string != s:StringPointer?
+        return i:Int?
+    else
+        return (nil):Int?
+
+def parse_num(s:String):Num?
+    endptr := StringPointerPointer{}
+    n := strtod(s, endptr)
+    if endptr[1] != s:StringPointer?
+        return n:Num?
+    else
+        return (nil):Num?

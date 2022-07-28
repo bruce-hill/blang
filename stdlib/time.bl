@@ -1,0 +1,15 @@
+// Date/time objects and formatting
+
+struct Time {
+    seconds:Int
+    nanoseconds:Int
+}
+
+extern bl_tostring_time(fmt:String, seconds:Int):String
+
+def tostring(t:Time):String
+    // return "Date{$(bl_tostring_time("%Y-%m-%d %H:%M:%S", t.seconds))}"
+    return "Date{$(bl_tostring_time("%b %e, %Y %l:%M:%S%P", t.seconds))}"
+
+def format(t:Time, fmt:String):String
+    return bl_tostring_time(fmt, t.seconds)

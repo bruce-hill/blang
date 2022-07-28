@@ -19,8 +19,10 @@ say ""
 
 say "$i" for i in 100..102
 
+extern random():Int
+
 def retry()
-    r := $random():Int
+    r := random()
     say "rng = $r"
     return r mod 4 != 0
 

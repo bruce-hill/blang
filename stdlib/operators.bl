@@ -1,0 +1,8 @@
+use "stdlib/string"
+
+def multiply(s:String,i:Int) := bl_string_repeat(s,i)
+def multiply(i:Int,s:String) := bl_string_repeat(s,i)
+
+def multiply(x:Num,y:Percent):Num = x*(y:Num)
+def multiply(x:Percent,y:Num):Num = (x:Num)*y
+

@@ -1,0 +1,97 @@
+// Logic for shell code and globs
+use "stdlib/files"
+
+deftype Shell:String 
+def escape(str:String):Shell
+    return ("'" + (str | replace("'", "'\"'\"'")) + "'"):Shell
+
+def escape(strings:[String]):Shell
+    ret := %Shell""
+    for str in strings
+        ret += %Shell[$str]
+    between ret += %Shell[ ]
+    return ret
+
+def escape(path:Path):Shell
+    if path == "~"
+        return path:Shell
+    elseif path[1..2] == "~/"
+        return %Shell[~/] + %Shell[$((path[3..]):String)]
+    else
+        return %Shell[$(path:String)]
+
+def escape(paths:[Path]):Shell
+    ret := %Shell""
+    for path in paths
+        ret += %Shell[$path]
+    between ret += %Shell[ ]
+    return ret
+
+deftype Glob:String
+def escape(glob:Glob):Shell
+    return glob:Shell
+
+def escape(globs:[Glob]):Shell
+    ret := %Shell[]
+    for glob in globs
+        ret += %Shell[$glob]
+    between ret += %Shell[ ]
+    return ret
+
+def escape(str:String):Glob
+    pat := %BP{`*,?,[,#}
+    return ("$(str | bl_string_replace(%BP{`*,?,[,#,\}, '\@0'):String)"):Glob
+
+def escape(path:Path):Glob
+    return %Glob[$(path:String)]
+
+
+struct glob_buf {
+    gl_pathc:Int, gl_pathv:Pointer, gl_offs:Int
+    _1,_2,_3,_4,_5:Pointer? // Padding
+}
+
+extern glob(g:Glob, flags:Int32, _:NilType, buf:glob_buf):Int32
+extern globfree(buf:glob_buf):NilType
+
+def paths(glob:Glob,flags:Int32?):[Path]?
+    struct glob_buf {
+        gl_pathc:Int, gl_pathv:Pointer, gl_offs:Int
+        _1,_2,_3,_4,_5:Pointer? // Padding
+    }
+
+    buf := glob_buf{0, mem_ptr{0:Pointer}, 0}
+    status := glob(glob, flags or 0:Int32, nil, buf):Int32
+    return nil if status != 0
+    mem := buf.gl_pathv
+    my_paths := [("$(((mem:Int + 8*i):struct{str:String}).str)"):Path for i in 0..(buf.gl_pathc-1)]
+    globfree(buf)
+    return my_paths
+
+struct ShellResult {
+    output:String
+    status:Int32
+}
+
+extern popen(cmd:Shell, mode:String):Pointer?
+extern pclose(p:Pointer):Int32
+extern GC_malloc(size:Int):Pointer
+extern fread(buf:StringPointer, memberSize:Int, nMembers:Int, fp:Pointer):Int
+extern ferror(fp:Pointer):Int32
+extern CORD_cat_char_star(cord:Cord, str:StringPointer):Cord
+
+def run(cmd:Shell):ShellResult?
+    fp := popen(cmd, "r") or return nil
+    cord := EMPTY_CORD
+    repeat
+        buf_size := 1000
+        buf := GC_malloc(buf_size):StringPointer
+        len := fread(buf, 1, buf_size, fp)
+        stop if len == 0
+        cord = CORD_cat_char_star(cord, buf, len)
+
+    return nil if ferror(fp) != 0
+
+    output := "$cord"
+    status := pclose(fp)
+    return ShellResult{.output=output, .status=status}

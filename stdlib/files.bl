@@ -1,0 +1,153 @@
+// Library functionality for dealing with files and paths
+use "stdlib/time"
+use "stdlib/string"
+
+deftype FilePointer:Pointer
+deftype DirPointer:Pointer
+extern fopen(path:Path, mode:String):FilePointer?
+extern fclose(fp:FilePointer):NilType
+extern fseek(fp:FilePointer):Int32
+extern rewind(fp:FilePointer):Void
+extern opendir(path:Path):DirPointer?
+extern closedir(path:Path):NilType
+extern readdir_str(dir:DirPointer):String?
+extern GC_register_finalizer(obj:Pointer, finalizer:(Pointer,Pointer?)=>NilType, data:Pointer?, _:Pointer?, _:Pointer?)
+extern getenv(varname:String):String?
+extern realpath(path:Path, _:NilType):StringPointer?
+extern free(p:Pointer):NilType
+extern unlink(path:Path):Int32
+extern rmdir(path:Path):Int32
+extern mkdir(path:Path, mode_int:Int8):Int32
+
+struct StringPointerPointer{ptr:StringPointer?}
+struct IntPointer{int:Int}
+extern getline(buf:StringPointerPointer,len:IntPointer,fp:FilePointer):Int
+
+deftype Path:String
+struct File {
+    path:Path
+    file_pointer:Pointer
+}
+struct Directory {
+    path:Path
+    dir_pointer:Pointer
+}
+
+enum FileMode { Read, Write, ReadWrite }
+
+def open_file(path:Path, mode:FileMode?):File?
+    mode := mode or FileMode.Read
+    modestr := if mode == FileMode.Read
+        "r"
+    elseif mode == FileMode.Write
+        "w"
+    elseif mode == FileMode.ReadWrite
+        "rw"
+    else
+        fail "Invalid file mode: $mode"
+
+    fp := fopen(path, modestr) or return nil
+    file := File{path,fp}
+    GC_register_finalizer(file:Pointer, (_:Pointer, fp:Pointer)=> fclose(fp or fail):NilType, fp, (nil):Pointer?, (nil):Pointer?)
+    return file
+
+def open_directory(path:Path):Directory?
+    dir_ptr := opendir(path) or return nil
+    dir := Directory{path,dir_ptr}
+    GC_register_finalizer(dir, (_:Directory, dirp:Pointer?)=> closedir(dirp or fail):NilType, dir_ptr, (nil):Pointer?, (nil):Pointer?)
+    return dir
+
+def contents(dir:Directory):[Path]
+    ret := [:Path]
+    path := dir.path
+    while entry := readdir_str(dir.dir_pointer):String
+        ret += ("$path/$entry"):Path
+    return ret
+    
+def make_directory(path:Path,mode:String?):Bool
+    mode := mode or "755"
+    mode_int := parse_int(mode, base=8) or return no
+    return mkdir(path, mode_int:Int8) == 0
+
+def parent(path:Path):Path?
+    return nil if path == %Path[/]
+
+def real(path:Path):Path?
+    if path[1..1] == "~" and (path[2..2] == "" or path[2..2] == "/")
+        path = ("$(getenv("HOME"):Path? or return nil)$(path[2..])"):Path
+    buf := realpath(path, nil) or return nil
+    full_path := ("$((buf or fail):String)"):Path
+    free(buf:Pointer)
+    return realpath
+
+def delete(path:Path):Bool
+    return unlink(path) == 0
+
+def delete(file:File):Bool
+    fclose(file.file_pointer)
+    return unlink(file.path) == 0
+
+def delete(dir:Directory):Bool
+    fclose(dir.dir_pointer)
+    return rmdir(dir.path) == 0
+
+def contents(f:File):String
+    return "$(CORD_from_file_eager(f.file_pointer))"
+
+def rewind(f:File,amount:Int):NilType
+    if amount
+        _ := fseek(f.file_pointer, -amount, 1)
+    else
+        rewind(f.file_pointer)
+
+def fast_forward(f:File,amount:Int):NilType
+    if amount
+        fseek(f.file_pointer, amount, 1)
+    else
+        fseek(f.file_pointer, 0, 2)
+
+def seek(f:File,pos:Int):NilType
+    fseek(f.file_pointer, pos, 0)
+
+def next_line(f:File,keep_nl:Bool?):String?
+    len := {0}
+    buf := {0:String?}
+    nread := getline(buf, len, f.file_pointer):Int
+    ret := if nread < 0
+        (nil):String?
+    else
+        s := "$(buf[1] or fail)"
+        if s[#s] == 10 and keep_nl != yes
+            s = s[..(#s-1)]
+        s
+    free(buf[1]:Pointer) if buf[1]
+    return ret
+
+def tostring(f:File):String
+    return "File{$(f.path)}"
+
+def tostring(f:Directory):String
+    return "Directory{$(f.path)}"
+
+deftype DeviceID:Int
+deftype INode:Int
+deftype _FileMode:Int
+deftype UserID:Int
+deftype GroupID:Int
+
+struct FileInfo {
+    device,rdevice:DeviceID
+    inode:INode
+    mode:_FileMode
+    links:Int
+    user:UserID
+    group:GroupID
+    size:Int
+    block_size:Int
+    block_count:Int
+    accessed,modified,moved:Time
+}
+extern bl_fstat(fp:FilePointer):FileInfo?
+
+def info(file:File):FileInfo?
+    return bl_fstat(file.file_pointer):FileInfo?
