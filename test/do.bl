@@ -3,16 +3,16 @@ def sqrt(n:Num):Num?
     return n < 0. ? nil; $sqrt(n):Num
 
 for x in [9.,-1.,-2.,-3.,-999.,4.]
-    $puts "x = $x"
+    say "x = $x"
     do
         x = sqrt(x) or skip
-        $puts "First: $x"
+        say "First: $x"
     else
         x = sqrt(x+1.) or skip
-        $puts "Second: $x"
+        say "Second: $x"
     else
         x = sqrt(x+2.) or skip
-        $puts "Third: $x"
+        say "Third: $x"
     else
         stop if x < -5.
-        $puts "I give up: $x"
+        say "I give up: $x"

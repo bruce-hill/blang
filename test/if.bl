@@ -1,5 +1,3 @@
-def say(s:String) $puts(s)
-
 x := 5
 if not x > 10
     say "x is small"

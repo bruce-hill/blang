@@ -3,10 +3,10 @@ def sqr(self:Num) = self*self
 
 x := 5.
 s := x|sqr
-$puts "$x|sqr = $s"
+say "$x|sqr = $s"
 
 s |= sqr
-$puts "$x|sqr|sqr = $s"
+say "$x|sqr|sqr = $s"
 
 struct Vec{x:Num,y:Num}
 
@@ -15,13 +15,13 @@ def len(v:Vec):Num
     return l
 
 v := Vec{1., 1.}
-$puts "$v|len = $(v|len)"
-$puts "$v|len|sqr = $(v | len | sqr)"
+say "$v|len = $(v|len)"
+say "$v|len|sqr = $(v | len | sqr)"
 
 def add(v:Vec, other:Vec):Vec
     return Vec{v.x + other.x, v.y + other.y}
 
-$puts "$v|add(Vec{10.,10.}) = $(v | add(Vec{10., 10.}))"
+say "$v|add(Vec{10.,10.}) = $(v | add(Vec{10., 10.}))"
 
 v |= add Vec{100.,100.}
-$puts "$v|=... = $v"
+say "$v|=... = $v"

@@ -1,7 +1,7 @@
-$puts "args: $args"
+say "args: $args"
 
 def foo(args:Int)
     fail unless args == 5
-    $puts "Shadowing args works"
+    say "Shadowing args works"
 
 foo(5)

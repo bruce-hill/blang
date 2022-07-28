@@ -5,7 +5,7 @@ def make_list(n:Int):[Int]
         tmp += [i]
     return tmp
 
-$puts("$(make_list(100))")
+say "$(make_list(100))"
 
 def make_string(n:Int):String
     tmp := ""
@@ -14,4 +14,4 @@ def make_string(n:Int):String
     between tmp += ","
     return tmp
 
-$puts(make_string 100)
+say(make_string 100)

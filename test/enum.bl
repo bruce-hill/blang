@@ -1,16 +1,16 @@
 enum Color{Red, Green, Blue}
 
 x := Color.Red
-$puts "x = $x"
+say "x = $x"
 
 for c in [Color.Red, Color.Green, Color.Blue]
     when c is Color.Blue
-        $puts "Blue: $c"
+        say "Blue: $c"
     is Color.Red
-        $puts "Red: $c"
+        say "Red: $c"
     else
-        $puts "Other: $c"
-    $puts "$c == $x? $(c == x)"
+        say "Other: $c"
+    say "$c == $x? $(c == x)"
 
 enum FooType {
     Zero,
@@ -23,6 +23,6 @@ enum FooType {
 vals := [FooType.Zero, FooType.One, FooType.Two, FooType.Three, FooType.Four, nil]
 expected := [0, 5, 7, 8, 9, 10]
 for i,val in vals
-    $puts "$val = $(val:Int)"
+    say "$val = $(val:Int)"
     fail unless val:Int == expected[i]
 

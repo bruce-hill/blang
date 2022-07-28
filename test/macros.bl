@@ -8,27 +8,27 @@ tmp := "tmp"
 baz := "baz"
 swap tmp baz
 fail unless tmp == "baz" and baz == "tmp"
-$puts "After swapping: tmp=$tmp baz=$baz"
+say "After swapping: tmp=$tmp baz=$baz"
 
 macro doubled(expr) expr + expr
 
-$puts "Doubles: $(doubled "hello") $(doubled 4)"
+say "Doubles: $(doubled "hello") $(doubled 4)"
 
 macro let(name, val)
     name := val
 
 let myvar 5
 fail unless myvar == 5
-$puts "myvar: $myvar"
+say "myvar: $myvar"
 
 CONST := "CONST:"
 macro withconst(x) CONST + x
 fail unless withconst("hi") == "CONST:hi"
-$puts "$(withconst "hi")"
+say "$(withconst "hi")"
 
 macro usefn(x)
     def foo(y:String)
-        $puts "$y"
+        say "$y"
     foo(x)
 
 def foo(y:String)
@@ -50,7 +50,7 @@ struct Foo { height:Int }
 things := [Foo{1}, Foo{5}, Foo{2}, Foo{-99}]
 
 tallest := best(things, x, x.height)
-$puts "Tallest of $things: $tallest"
+say "Tallest of $things: $tallest"
 fail unless "$tallest" == "Foo{height=5}"
 
 macro max(xs)
@@ -62,7 +62,7 @@ macro max(xs)
 
 nums := [5,4,1,99,0]
 max_num := max nums
-$puts "max of $nums: $(max nums)"
+say "max of $nums: $(max nums)"
 fail unless max_num == 99
 
 def local_macro(things:[Foo])
@@ -75,7 +75,7 @@ def local_macro(things:[Foo])
         ret
 
     result := any(things, x, x.height > 2)
-    $puts "any x.height > 2 for x in $things: $result"
+    say "any x.height > 2 for x in $things: $result"
     fail unless result
 
 local_macro(things)

@@ -1,20 +1,20 @@
 x := [i*100 for i in 1..10]
-$puts "$x"
+say "$x"
 
 y := [i*100 for i in 1..999 stop if i > 5]
-$puts "$y"
+say "$y"
 
 z := [i*100 for i in 1..10 skip if i mod 2 == 0]
-$puts "$z"
+say "$z"
 
 w := [i*100 for i in 1..10 if i mod 2 == 0]
-$puts "$w"
+say "$w"
 
 p := [s for i,s in ["a","b","c","d"] if i mod 2 == 0]
-$puts "$p"
+say "$p"
 
 t := {[i]=i*i for i in 1.. stop if i > 6}
-$puts "$t"
+say "$t"
 
 t2 := {[v]=k for k,v in t}
-$puts "$t2"
+say "$t2"

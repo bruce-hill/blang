@@ -704,10 +704,14 @@ class Environment
             @type_code ..= "data #{fieldnames} = {#{concat ["l 0" for _ in pairs t.members], ", "}}\n"
 
         @used_names["args"] = true
+        @used_names["say"] = true
         for v in coroutine.wrap(-> each_tag(ast, "Var"))
             if v[0] == "args"
                 v.__location = "$args"
                 v.__type = Types.ListType(Types.String)
+            elseif v[0] == "say"
+                v.__register = "$puts"
+                v.__type = Types.FnType({Types.String}, Types.NilType)
 
         is_file_scope = (scope)->
             while scope

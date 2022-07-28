@@ -1,19 +1,19 @@
 
 def selfrec(i:Int)
     return unless i > 0
-    $puts "Selfrec $i"
+    say "Selfrec $i"
     selfrec(i-1)
 
 selfrec(4)
 
 def ping(i:Int)
     return unless i > 0
-    $puts "Ping $i"
+    say "Ping $i"
     pong(i-1)
 
 def pong(i:Int)
     return unless i > 0
-    $puts "Pong $i"
+    say "Pong $i"
     ping(i-1)
 
 ping(5)
@@ -29,6 +29,6 @@ def baz(x:Int)
         return foo(x)
     return x + 1
 
-$puts "$(foo(5))"
-$puts "$(baz(99))"
+say "$(foo(5))"
+say "$(baz(99))"
 

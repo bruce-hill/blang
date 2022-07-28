@@ -1,9 +1,9 @@
 def doop(cond:Bool)
     x := if cond
-        $puts "first condition"
+        say "first condition"
         1
     else
-        $puts "second condition"
+        say "second condition"
         2
     return x
 

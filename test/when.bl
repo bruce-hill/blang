@@ -1,15 +1,15 @@
 
 def doop(x:Int)
     when x is 1,2,3,4
-        $puts "smol"
+        say "smol"
     is 5
-        $puts "five"
+        say "five"
     is 0
         pass
     is -1
         return
     else
-        $puts "other"
+        say "other"
 
 doop(1)
 doop(2)

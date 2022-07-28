@@ -26,11 +26,11 @@ for i in 1..3
     else
         "etc"
 
-$puts "do_values: $do_values"
+say "do_values: $do_values"
 fail unless "$do_values" == "[one, etc, nil]"
 
-$puts "when_values: $when_values"
+say "when_values: $when_values"
 fail unless "$when_values" == "[one, two, etc]"
 
-$puts "if_values: $if_values"
+say "if_values: $if_values"
 fail unless "$if_values" == "[one, two, etc]"

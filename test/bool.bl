@@ -3,10 +3,10 @@ y := x and (1 < 2)
 z := nil
 
 if x and y and z == nil
-    $puts "And pass"
+    say "And pass"
 
 if 1 < 0 or 2 < 1 or 3 > 1
-    $puts "Or pass"
+    say "Or pass"
 
 if no xor yes xor no
-    $puts "Xor pass"
+    say "Xor pass"

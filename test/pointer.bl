@@ -6,4 +6,4 @@ def try_file(path:String):Bool
 try_file("test/pointer.bl") or fail
 try_file("asdfasdfasdf") and fail
 
-$puts "Pointers work!"
+say "Pointers work!"

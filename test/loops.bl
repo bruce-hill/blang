@@ -5,31 +5,31 @@ repeat
 nums := [10,20,30,40]
 tmp := 1
 while tmp <= #nums
-    $puts "$(nums[tmp])"
+    say "$(nums[tmp])"
     tmp += 1
 between $printf ", "
-$puts ""
+say ""
 
 
 for i,num in nums
-    $puts "[$i]$num"
+    say "[$i]$num"
 between $printf ", "
-$puts ""
+say ""
 
-$puts "$i" for i in 100..102
+say "$i" for i in 100..102
 
 def retry()
     r := $random():Int
-    $puts "rng = $r"
+    say "rng = $r"
     return r mod 4 != 0
 
-$puts "doop\n" while retry()
+say "doop\n" while retry()
 
 for i in [1,-2,3,-4,5]
     skip if i < 0
-    $puts "i = $i"
+    say "i = $i"
 between
-    $puts "---"
+    say "---"
 
 for outer in [-10,1,2,-2,3000,4]
     skip if outer < 0
@@ -37,10 +37,10 @@ for outer in [-10,1,2,-2,3000,4]
         skip if inner < 0
         stop outer if inner*outer > 1000
         while yes
-            $puts "inner: $inner outer: $outer product: $(inner*outer)"
+            say "inner: $inner outer: $outer product: $(inner*outer)"
             stop while
-        between $puts "Between while"
-        $puts "Finished inner"
-    between $puts "Between inner"
-    $puts "Finished outer"
-between $puts "Between outer"
+        between say "Between while"
+        say "Finished inner"
+    between say "Between inner"
+    say "Finished outer"
+between say "Between outer"

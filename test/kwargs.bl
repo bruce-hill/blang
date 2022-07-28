@@ -3,7 +3,7 @@ def foo(x:Int, y:Int, z:Int)
 
 def check(given:String,correct:String)
     fail "$given is not $correct" unless given == correct
-    $puts "Test: $given ok"
+    say "Test: $given ok"
 
 check foo(1,2,3), "1,2,3"
 check foo(z=1,2,3), "2,3,1"

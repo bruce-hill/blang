@@ -10,12 +10,12 @@ unit hr = 60<min>
 
 x := 5<kg*m/s>
 y := 10<kg>
-$puts "$(x * y)"
-$puts "$(x / y)"
-$puts "$(x * 10%)"
+say "$(x * y)"
+say "$(x / y)"
+say "$(x * 10%)"
 
-$puts "5ft + 1m = $(5<ft> + 1<m>)"
+say "5ft + 1m = $(5<ft> + 1<m>)"
 
 vel := 100<mi/hr>
-$puts "100<mi/hr> = $vel"
-$puts "$vel in km/hr = $(vel/1<km/hr>)"
+say "100<mi/hr> = $vel"
+say "$vel in km/hr = $(vel/1<km/hr>)"

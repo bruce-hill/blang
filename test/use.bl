@@ -1,20 +1,20 @@
-$puts "'use' is temporarily disabled"
-// $puts "Loading wip..."
+say "'use' is temporarily disabled"
+// say "Loading wip..."
 // x := use "modules/testmod"
-// $puts "Fully loaded: $(x.rand)"
-// $puts "Loading wip again..."
+// say "Fully loaded: $(x.rand)"
+// say "Loading wip again..."
 // y := use "modules/testmod"
-// $puts "Fully loaded: $(y.rand)"
+// say "Fully loaded: $(y.rand)"
 // fail "Module idempotency failed" unless x.rand == y.rand
 
 // fail "Module string equality check failed '$(x.str)' != 'string'" unless x.str == "string"
 
-// "blop" | (x.bloop) | $puts
+// "blop" | (x.bloop) | say
 
 // use "modules/testothermod"
 
-// $puts "$from_othermod"
-// $puts "Call: $(othermod_foo(5))"
+// say "$from_othermod"
+// say "Call: $(othermod_foo(5))"
 
 // emp := use "modules/emptymod"
-// $puts "$emp"
+// say "$emp"

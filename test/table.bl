@@ -1,36 +1,36 @@
 t := {k=123, v=456}
-$puts "t = $t"
-$puts "t['k'] = $(t["k"])"
-$puts "t['missing'] = $(t["missing"])"
+say "t = $t"
+say "t['k'] = $(t["k"])"
+say "t['missing'] = $(t["missing"])"
 
 fail unless #t == 2
 
 if t["k"]
-    $puts "Yep 'k' is there"
+    say "Yep 'k' is there"
 else
-    $puts "Nope 'k' isn't there"
+    say "Nope 'k' isn't there"
 
 if t["gone"]
-    $puts "Yep 'gone' is there"
+    say "Yep 'gone' is there"
 else
-    $puts "Nope 'gone' isn't there"
+    say "Nope 'gone' isn't there"
 
-$puts "Setting t['new']=1337"
+say "Setting t['new']=1337"
 t["new"] = 1337
-$puts "t = $t"
+say "t = $t"
 
 for k,v in t
-    $puts "Entry: t[$k] = $v"
+    say "Entry: t[$k] = $v"
 
 for val in t
-    $puts "Just the value: $val"
+    say "Just the value: $val"
 
 t_int := {[123]=456, [0]=345, [567]=0}
-$puts "t_int = $t_int"
-$puts "t_int[0] = $(t_int[0])"
-$puts "t_int[123] = $(t_int[123])"
-$puts "t_int[567] = $(t_int[567])"
-$puts "t_int[4] = $(t_int[4])"
+say "t_int = $t_int"
+say "t_int[0] = $(t_int[0])"
+say "t_int[123] = $(t_int[123])"
+say "t_int[567] = $(t_int[567])"
+say "t_int[4] = $(t_int[4])"
 
 for k,v in t_int
-    $puts "Entry: t_int[$k] = $v"
+    say "Entry: t_int[$k] = $v"

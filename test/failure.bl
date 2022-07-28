@@ -1,5 +1,3 @@
-def say(s:String) $puts(s)
-
 maybe_nil := yes ? "safe"; nil
 say "maybe: $maybe_nil"
 x := maybe_nil or fail "Oh no!"

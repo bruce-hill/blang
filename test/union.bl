@@ -4,13 +4,13 @@ union Foo {
 }
 
 def show(foo:Foo)
-    $puts "$foo: .x=$(foo.x) .y=$(foo.y) .z=$(foo.z)"
+    say "$foo: .x=$(foo.x) .y=$(foo.y) .z=$(foo.z)"
     if x := foo.x
-        $puts "It was an x: $x"
+        say "It was an x: $x"
     elseif y := foo.y
-        $puts "It was a y: $y"
+        say "It was a y: $y"
     elseif z := foo.z
-        $puts "It was a z: $z"
+        say "It was a z: $z"
 
 def doop()
     tmp := @Foo.z "hi"
@@ -28,6 +28,6 @@ struct Struct {
 }
 
 foo := Struct{.inner = @InnerUnion.int 5}
-$puts "$foo"
+say "$foo"
 fail unless foo.inner.int == 5
 fail unless foo.inner.num == nil

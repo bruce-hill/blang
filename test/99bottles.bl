@@ -1,7 +1,7 @@
 // 99 Bottles of beer
 def sing_bottles(n:Int)
   def verse(n:Int)
-    $puts "$n bottles of beer on the wall"
+    say "$n bottles of beer on the wall"
 
   def dec(x:Int) = x - 1
 
@@ -9,6 +9,6 @@ def sing_bottles(n:Int)
     verse n
     n = dec n
 
-  $puts "No more bottles of beer on the wall"
+  say "No more bottles of beer on the wall"
 
 sing_bottles 5

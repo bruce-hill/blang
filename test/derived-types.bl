@@ -17,7 +17,7 @@ def meters_per_sec(n:Num):Speed = n:Speed
 def km_per_sec(n:Num):Speed = (n*1000.):Speed
 
 speed := meters_per_sec(234.5)
-$puts "speed is: $speed"
-$puts "add speed: $(speed + km_per_sec(5.))"
-$puts "100x speed: $(100.*speed)"
-$puts "1/10 speed: $(speed/10.)"
+say "speed is: $speed"
+say "add speed: $(speed + km_per_sec(5.))"
+say "100x speed: $(100.*speed)"
+say "1/10 speed: $(speed/10.)"

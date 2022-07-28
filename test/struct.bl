@@ -11,19 +11,19 @@ def multiply(v:Vec, k:Num) = Vec{k*v.x, k*v.y}
 def tostring(v:Vec):String = "Vec<$(v.x),$(v.y)>"
 
 v := Vec{2.3, 4.5}
-$puts "v = $v"
-$puts "v.x = $(v.x)"
-$puts "v + v = $(v + v)"
-$puts "100. * v = $(100. * v)"
-$puts "v * v = $(v * v)"
+say "v = $v"
+say "v.x = $(v.x)"
+say "v + v = $(v + v)"
+say "100. * v = $(100. * v)"
+say "v * v = $(v * v)"
 butwith := v & .x=999.999
-$puts "v&.x=999.999 = $butwith"
+say "v&.x=999.999 = $butwith"
 
 // Anonymous structs (tuples)
 x := Tuple{1, 2.3, "hello"}
-$puts "Tuple: $x"
+say "Tuple: $x"
 x &= [2]=5.5
-$puts "Tuple: $x"
+say "Tuple: $x"
 
 // Return values
 def foo(n:Int)
@@ -34,9 +34,9 @@ def foo(n:Int)
 
 result := foo(4)
 if result.ok
-    $puts result.msg
+    say result.msg
 
-$puts "Equality: $(Vec{1.,1.} == Vec{1.,1.})"
+say "Equality: $(Vec{1.,1.} == Vec{1.,1.})"
 
 // Recursive struct
 struct Tree {
@@ -46,7 +46,7 @@ struct Tree {
 
 t := Tree{5, Tree{0, nil, nil}, nil}
 t.right = t
-$puts "Recursive struct with cyclical references: $t"
+say "Recursive struct with cyclical references: $t"
 
 
 // Inline structs
@@ -58,18 +58,18 @@ do
     }
 
     inline := Inline{"hello", Vec{1.,2.}, "bye"}
-    $puts "Inline struct: $inline"
+    say "Inline struct: $inline"
     fail unless "$inline" == "Inline{first=hello, vec=Vec<1,2>, last=bye}"
 
     vec := inline.vec
-    $puts "Extracted inline member: $vec"
+    say "Extracted inline member: $vec"
     fail unless "$vec" == "Vec<1,2>"
 
     inline.vec = Vec{100.,200.}
-    $puts "Updated inline member: $vec"
+    say "Updated inline member: $vec"
     fail unless "$inline" == "Inline{first=hello, vec=Vec<100,200>, last=bye}"
 
     inline = Inline{"xxx", Vec{0.,0.}, "xxx"}
     $GC_gcollect():NilType
-    $puts "Extracted inline member persists and keeps updates: $vec"
+    say "Extracted inline member persists and keeps updates: $vec"
     fail unless "$vec" == "Vec<100,200>"

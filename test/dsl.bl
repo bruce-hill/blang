@@ -21,7 +21,7 @@ limit := 10
 name := "name'; DROP TABLE users; --"
 query := %SQL[select * from users where name = $name limit $limit]
 
-$puts "\x1b[1mSQL Query:\x1b[m $query"
+say "\x1b[1mSQL Query:\x1b[m $query"
 
 deftype Shell:String
 def escape(str:String):Shell
@@ -37,7 +37,7 @@ def escape(strings:[String]):Shell
 files := ['one', 'file space', 'malicious `rm -f $HOME`', "don't screw up"]
 dest := "tmp"
 cmd := %Shell> cp @files $HOME/@dest
-$puts "\x1b[1mShell command:\x1b[m $cmd"
+say "\x1b[1mShell command:\x1b[m $cmd"
 
 deftype HTML:String
 
@@ -53,4 +53,4 @@ html := %HTML:
 
 html += %HTML[\n</html>]
 
-$puts "\x1b[1mHTML:\x1b[m\n$html"
+say "\x1b[1mHTML:\x1b[m\n$html"
