@@ -26,13 +26,6 @@ def parse_num(s:String):Num?
     else
         return (nil):Num?
 
-// macro say(s) $puts(s):NilType
-def say(s:String,skip_nl:Bool?):
-    if skip_nl == yes
-        $printf("%s", s)
-    else
-        $puts(s)
-
 macro max(xs, x, expr)
     if x := xs[1]
         best := x

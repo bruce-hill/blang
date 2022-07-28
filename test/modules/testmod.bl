@@ -3,7 +3,7 @@ baz := "Hello $(2 + 3)"
 str := "string"
 rand := $random():Int
 
-$puts "wip loaded!"
+say "wip loaded!"
 
 def bloop(s:String) = "bloop $s"
 

@@ -1,1 +1,1 @@
-$puts "Loaded empty mod"
+say "Loaded empty mod"

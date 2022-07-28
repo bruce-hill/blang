@@ -10,13 +10,13 @@ backend IR, and compiles from there to assembly code and then to a binary.
 def sing_bottles_song(n:Int)
     for i in n..0
         when i is 0
-            $puts "No more bottles of beer on the wall! :("
+            say "No more bottles of beer on the wall! :("
         is 1
-            $puts "One last bottle of beer on the wall"
+            say "One last bottle of beer on the wall"
         else
-            $puts "$i bottles of beer on the wall"
+            say "$i bottles of beer on the wall"
     between
-        $puts "Take one down, pass it around... "
+        say "Take one down, pass it around... "
 
 
 sing_bottles_song 99
