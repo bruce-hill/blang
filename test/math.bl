@@ -1,6 +1,3 @@
-extern float_to_int(n:Num):Int
-extern int_to_float(i:Int):Num
-
 a := 3_000 // Underscores can separate chunks
 b := 2
 x := 3.5
@@ -20,19 +17,21 @@ say "Long chain: $long"
 
 f := 23.5
 say "$f casts to int: $(f:Int)"
-say "$f rounds to int: $(float_to_int(f):Int)"
+fail unless f:Int == 23
+say "$f reinterpreted as int: $((f:Value):Int)"
 
 i := 123
 say "$i casts to float: $(i:Num)"
-say "$f rounds to float: $(int_to_float(i):Num)"
+fail unless i:Num == 123.0
+say "$i reinterpreted as float: $((i:Value):Num)"
 
 def fast_inverse_sqrt(number:Num):Num
     threehalfs := 1.5
     x2 := number * 0.5
     y := number
-    i := number:Int
+    i := (number:Value):Int
     i = 0x5FE6EB50C7B537A9 - (i / 2) // what the fuck? 
-    y = i:Num
+    y = (i:Value):Num
     y *= (threehalfs - (x2 * y * y)) // 1st iteration
     y *= (threehalfs - (x2 * y * y)) // 2nd iteration, this can be removed
     y *= (threehalfs - (x2 * y * y)) // 3rd iteration, this can be removed
@@ -40,3 +39,4 @@ def fast_inverse_sqrt(number:Num):Num
 
 test := 16.
 say "fast_inverse_sqrt($test) = $(fast_inverse_sqrt test)"
+fail unless "$(fast_inverse_sqrt(16.))" == "0.25"

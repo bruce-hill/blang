@@ -21,11 +21,3 @@ int64_t ipow(int64_t base, int64_t exp) {
     }
     return result;
 }
-
-double int_to_float(int64_t i) {
-    return (double)i;
-}
-
-int64_t float_to_int(double f) {
-    return (int64_t)f;
-}

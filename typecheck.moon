@@ -65,6 +65,7 @@ class DerivedType extends Type
 
 class MeasureType extends Type
     new: (@units)=>
+    is_numeric: => true
     normalized: => @units == "" and assert(Num) or @
     base_type: 'd'
     abi_type: 'd'

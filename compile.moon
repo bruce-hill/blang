@@ -1297,6 +1297,12 @@ expr_compilers =
         c = env\fresh_local "casted"
         abt = actual_type.base_type
         cbt = cast_type.base_type
+        if actual_type\is_numeric! and cast_type\is_numeric!
+            if (abt == "s" or abt == "d") and not (cbt == "s" or cbt == "d")
+                return c, code.."#{c} =#{cbt} #{abt}tosi #{reg}\n"
+            elseif (cbt == "s" or cbt == "d") and not (abt == "s" or abt == "d")
+                return c, code.."#{c} =#{cbt} s#{abt}tof #{reg}\n"
+
         if abt == "l" and cbt == "w"
             code ..= "#{c} =w copy #{reg}\n"
         elseif abt == "w" and cbt == "l"
@@ -1306,7 +1312,7 @@ expr_compilers =
         elseif abt == "d" and cbt == "s"
             code ..= "#{c} =d truncd #{reg}\n"
         else
-            code ..= "#{c} =#{cast_type.base_type} cast #{reg}\n"
+            code ..= "#{c} =#{cbt} cast #{reg}\n"
         return c,code
     TypeOf: (env)=>
         return env\get_string_reg(get_type(@expression)\verbose_type!, "typename"), ""
