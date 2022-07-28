@@ -325,7 +325,13 @@ find_declared_type = (scope, name, arg_types=nil, return_type=nil)->
         when "Block"
             for i=#scope,1,-1
                 stmt = scope[i]
-                if stmt.__tag == "FnDecl" and stmt.name[0] == name and arg_types and get_type(stmt)\matches(arg_types,return_type)
+                if (stmt.__tag == "FnDecl" or stmt.__tag == "Extern") and stmt.name[0] == name
+                    t = get_type(stmt)
+                    if arg_types and t\is_a(FnType) and t\matches(arg_types, return_type)
+                        return t
+                    elseif not arg_types
+                        return t
+                elseif stmt.__tag == "FnDecl" and stmt.name[0] == name and arg_types and get_type(stmt)\matches(arg_types,return_type)
                     return get_type(stmt)
                 elseif stmt.__tag == "Declaration" and stmt.var[0] == name
                     t = get_type stmt.value
@@ -884,9 +890,12 @@ get_type = (node)->
             exponent_type = get_type node.exponent
             node_assert exponent_type\is_a(Num) or base_type\is_a(Int), node.exponent, "Expected Num or Int, not #{exponent_type}"
             return base_type
-        when "Lambda","FnDecl"
+        when "Lambda","FnDecl","Extern"
+            if node.__tag == "Extern" and node.type
+                return parse_type(node.type)
             decl_ret_type = node.return and parse_type(node.return)
             return FnType([parse_type a.type for a in *node.args], decl_ret_type, [a.arg[0] for a in *node.args]) if decl_ret_type
+            assert node.__tag != "Extern"
             if node.__pending == true
                 return nil unless decl_ret_type
                 return FnType([parse_type a.type for a in *node.args], decl_ret_type, [a.arg[0] for a in *node.args])

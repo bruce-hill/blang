@@ -102,7 +102,7 @@ statements: @curdent:\C +(
   / !$ @:ParseError=(@dent:\C ..$ *(\n dent (` /\t)..$) =>"Invalid statement")) % (nl curdent !(` /\t))
 indentedBlock: @:Block=([_comment] nl curdent +(` /\t) statements)
 statement: (
-    Declaration / FnDecl / Macro / If / Do / When / For / While / Repeat
+    Declaration / FnDecl / Extern / Macro / If / Do / When / For / While / Repeat
   / TypeDeclaration / StructDeclaration / UnionDeclaration / UnitDeclaration / EnumDeclaration
   / PostfixIf / PostfixFor / PostfixWhile
   / Return / Skip / Stop / Export / Use
@@ -129,6 +129,11 @@ FnDecl:: @curdent:\C "def"\b _ (@name=Var _
       [_comment] nl curdent +(` /\t) @curdent:\C @:Return=(@value=required-extended-expr)
       / @:Return=(@value=required-extended-expr) _ [comment])))
    / @body=maybeIndentedBlock))
+Extern:: \b"extern"\b _ @name=Var _ (
+  (`( __ @args=@(*((@:FnArg=(@arg=Var_`:_@type=type) / @:ParseError=(Var =>"This argument doesn't have a type")))%(__`,__))__[`,__]`)_
+  `: _ @return=type)
+  / (`: _ @type=type)
+)
 Lambda:: (@curdent:\C
   @args=@[`(__*@:FnArg=(@arg=Var__`:__@type=type)%(__`,__)__[`,__]`)]
   [_`:_@return=type]_
@@ -209,7 +214,7 @@ comment: "//" *.
 
 # Keep keywords reverse-alphabetically sorted so you don't get spurious prefix matches (e.g. "no" instead of "not")
 keyword: \b("yes"/"xor"/"with"/"while"/"when"/"use"/"unless"/"unit"/"union"/"typeof"/"struct"/"stop"/"skip"/"sizeof"/"return"/"repeat"/"pass"/"or"
-  /"not"/"no"/"nil"/"mod"/"macro"/"is"/"if"/"for"/"fail"/"export"/"enum"/"elseif"/"else"/"do"/"deftype"/"def"/"between"/"as"/"and")\b
+  /"not"/"no"/"nil"/"mod"/"macro"/"is"/"if"/"for"/"fail"/"extern"/"export"/"enum"/"elseif"/"else"/"do"/"deftype"/"def"/"between"/"as"/"and")\b
 hex: `0-9,a-f,A-F
 nl: +\n % (*(` /\t) [comment])
 __: *(` /\t/\n/\r/comment)

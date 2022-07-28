@@ -18,7 +18,11 @@ get_function_reg = (scope, name, arg_types, return_type=nil)->
                 if stmt.__tag == "FnDecl" and stmt.name[0] == name
                     t = get_type(stmt)
                     if t\matches(arg_types, return_type)
-                        return node_assert(stmt.__register, stmt, "Function without a name"), false, get_type(stmt)
+                        return node_assert(stmt.__register, stmt, "Function without a name"), false, t
+                elseif stmt.__tag == "Extern" and stmt.name[0] == name
+                    t = get_type(stmt)
+                    if t\is_a(Types.FnType) and t\matches(arg_types, return_type)
+                        return "$#{stmt.name[0]}", false, t
                 elseif stmt.__tag == "Declaration" and stmt.var[0] == name
                     t = get_type stmt.value
                     if t\is_a(Types.FnType) and t\matches(arg_types, return_type)
@@ -873,6 +877,15 @@ class Environment
                 fndec.name.__decl = fndec
                 t = get_type(fndec)
                 hook_up_refs fndec.name, fndec.__parent, t
+
+        -- Set up externs
+        for extern in coroutine.wrap(-> each_tag(ast, "Extern"))
+            extern.__register = "$#{extern.name[0]}"
+            extern.__decl = extern
+            extern.name.__register = extern.__register
+            extern.name.__decl = extern
+            t = get_type(extern)
+            hook_up_refs extern.name, extern.__parent, t
                     
         for fn in coroutine.wrap(-> each_tag(ast, "FnDecl", "Lambda"))
             for a in *fn.args
@@ -2668,6 +2681,7 @@ stmt_compilers =
         return code
 
     FnDecl: (env)=> ""
+    Extern: (env)=> ""
     Macro: (env)=> ""
     Pass: (env)=> ""
     Fail: (env)=>
