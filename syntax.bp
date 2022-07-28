@@ -5,7 +5,7 @@ term: (
     / Fail / Return / Skip / Stop / Use / TypeOf / SizeOf
     / Lambda / Cast
     / unaryOp
-    / Global !(_`(,{) / Var !(_`(,{)
+    / Var !(_`(,{)
     / Percent / Measure / Float / Int
     / String / DSL
     / List / Table
@@ -74,7 +74,7 @@ Table:: `{ __ `:__ @type=@:TableType=(@keyType=type __ `= __ @valueType=type) __
 tableEntry: PostfixFor / PostfixWhile / PostfixIf / TableEntry
 TableEntry:: ((`[__@key=required-extended-expr__`] / @key=@:String=(@content=Var) / @key=String) __`= __ @value=required-extended-expr)
 PostfixConditional: \b"if"\b _ @condition=required-extended-expr / \b"unless"\b_ @condition=@:Not=(@value=required-extended-expr)
-Cast:: @expr=(methodCall / Measure / Float / Percent / Int / Global / Var / `(__extended-expr__`))_`:_@type=type
+Cast:: @expr=(methodCall / Measure / Float / Percent / Int / Var / `(__extended-expr__`))_`:_@type=type
 Interp:: `$ @value=(Var / `(__ extended-expr __`) / @:ParseError=(`(..`) => "Cannot parse this string interpolation") / @:String=@content=`$)
 AtInterp: @:Interp=(`@ @value=(Var / `(__ required-extended-expr __`) / @:String=@content=`@))
 Escape:: `\ (`x 2 hex / `a,b,t,n,r,v / 3 `0-8 / .)
@@ -85,16 +85,15 @@ Percent:: (`0-9 *`0-9,_ [`. *`0-9] / `. +`0-9) `%
 Int:: "0x" +`0-9,a-f,A-F,_ / [`-,+] `0-9 *`0-9,_
 Struct:: [@name=Var] _ `{ __ *@:StructField=([`. @name=FieldName __`=__] @value=extended-expr) % (__`,__) __[`, __] `}
 Union:: `@ @name=Var `. @member=Var _ @value=required-extended-expr
-FnCall:: @fn=(FnCall / IndexedTerm / Global / Var / `(__required-extended-expr__`)) `( __ *(KeywordArg/extended-expr) % (__`,__) __ [`,__] `) [_`:_@type=type]
+FnCall:: @fn=(FnCall / IndexedTerm / Var / `(__required-extended-expr__`)) `( __ *(KeywordArg/extended-expr) % (__`,__) __ [`,__] `) [_`:_@type=type]
 KeywordArg:: @name=Var _ `= _ @value=required-extended-expr
 methodCall: @:FnCall=((methodCall / IndexedTerm / term) _ `| _
-  (@fn=(Global / Var / `(__required-extended-expr__`)) _ [`( __ *(KeywordArg/expr) % (__`,__) __ [`,__] `)]) [_`:_@type=type])
-splatFnCall: @:FnCall=(@fn=(FnCall / IndexedTerm / Global / Var / `(__required-extended-expr__`)) +(` /\t) +(KeywordArg/expr) % +(` ,,/\t))
+  (@fn=(Var / `(__required-extended-expr__`)) _ [`( __ *(KeywordArg/expr) % (__`,__) __ [`,__] `)]) [_`:_@type=type])
+splatFnCall: @:FnCall=(@fn=(FnCall / IndexedTerm / Var / `(__required-extended-expr__`)) +(` /\t) +(KeywordArg/expr) % +(` ,,/\t))
 splatMethodCall: @:FnCall=((splatMethodCall / IndexedTerm / term) _ `| _
-  (@fn=(Global / Var / `(__required-extended-expr__`)) +(` /\t) +(KeywordArg/expr) % +(` ,,/\t)))
+  (@fn=(Var / `(__required-extended-expr__`)) +(` /\t) +(KeywordArg/expr) % +(` ,,/\t)))
 Var:: id !~ keyword
 FieldName:: Var
-Global:: `$ Var
 id: \b(\I *\i)
 statements: @curdent:\C +(
     comment
@@ -151,7 +150,7 @@ AndUpdate:: @lhs=Var _ "and=" _ @rhs=required-extended-expr
 OrUpdate:: @lhs=Var _ "or=" _ @rhs=required-extended-expr
 XorUpdate:: @lhs=Var _ "xor=" _ @rhs=required-extended-expr
 MethodCallUpdate:: (Var _ "|=" _
-  (@fn=(Global / Var / `(__required-extended-expr__`)) _
+  (@fn=(Var / `(__required-extended-expr__`)) _
    [`( __ *expr % (__`,__) __ [`,__] `) / +(KeywordArg/expr) % +(` ,,/\t)] / @:ParseError=(=>"Not a valid method call")) [_`:_@type=type])
 ButWithUpdate:: (@base=Var _ "&=" _
   *@:ButWithField=((`. @field=FieldName / `[__@index=required-extended-expr__`]) _`=_ @value=required-extended-expr) % (_`,,|_) [_`,])

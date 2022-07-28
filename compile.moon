@@ -782,9 +782,6 @@ class Environment
                         if type(node) == 'table' and not (type(k) == 'string' and k\match("^__"))
                             hook_up_refs var, node, var_type
 
-        for glob in coroutine.wrap(-> each_tag(ast, "Global"))
-            glob.__register = glob[0]
-
         for s in coroutine.wrap(-> each_tag(ast, "StructDeclaration", "UnionDeclaration"))
             scope = if s.__parent.__tag == "Block"
                 i = 1
@@ -1193,8 +1190,6 @@ expr_compilers =
         code = env\compile_stmt @
         var_reg,var_code = env\to_reg @var
         return var_reg, code..var_code
-    Global: (env)=>
-        return "#{@[0]}", ""
     Int: (env)=>
         t = get_type(@)
         s = @[0]\gsub("_","")

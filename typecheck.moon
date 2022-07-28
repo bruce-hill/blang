@@ -957,8 +957,6 @@ get_type = (node)->
 
             node_assert var_type, node, "Cannot determine type for this variable. Either it's undefined or you need to provide its type."
             return var_type
-        when "Global"
-            return nil
         when "FnCall"
             return parse_type(node.type) if node.type
             fn_type = get_type node.fn
