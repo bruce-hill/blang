@@ -25,6 +25,9 @@ say "$i casts to float: $(i:Num)"
 fail unless i:Num == 123.0
 say "$i reinterpreted as float: $((i:Value):Num)"
 
+fail unless (23.5):Int8 == (23):Int8
+fail "23:Num32 = $((23):Num32)" unless (23):Num32 == (23.0):Num32
+
 def fast_inverse_sqrt(number:Num):Num
     threehalfs := 1.5
     x2 := number * 0.5

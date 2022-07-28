@@ -1201,7 +1201,7 @@ expr_compilers =
         if t\is_a(Types.Num)
             return "d_#{n}",""
         elseif t\is_a(Types.Num32)
-            return "d_#{n}",""
+            return "s_#{n}",""
 
         min,max = -(2^(t.bytes*8-1)), 2^(t.bytes*8-1)-2
         if n == t.nil_value
