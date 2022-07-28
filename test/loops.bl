@@ -5,18 +5,18 @@ repeat
 nums := [10,20,30,40]
 tmp := 1
 while tmp <= #nums
-    $printf("%ld", nums[tmp])
+    $puts "$(nums[tmp])"
     tmp += 1
-between $printf(", ")
-$printf("\n")
+between $printf ", "
+$puts ""
 
 
 for i,num in nums
-    $printf("[%ld]%ld", i, num)
-between $printf(", ")
-$printf("\n")
+    $puts "[$i]$num"
+between $printf ", "
+$puts ""
 
-$printf("%ld\n", i) for i in 100..102
+$puts "$i" for i in 100..102
 
 def retry()
     r := $random():Int
