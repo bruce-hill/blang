@@ -852,16 +852,6 @@ class Environment
                 if block == loop.body and loop.between
                     hook_up_refs vardec.var, loop.between, t
 
-        -- Set up function names (global):
-        for fndec in coroutine.wrap(-> each_tag(ast, "FnDecl", "Lambda"))
-            fndec.__register or= @fresh_global(fndec.name and fndec.name[0] or "lambda")
-            fndec.__decl = fndec
-            if fndec.name
-                fndec.name.__register = fndec.__register
-                fndec.name.__decl = fndec
-                t = get_type(fndec)
-                hook_up_refs fndec.name, fndec.__parent, t
-
         -- Set up externs
         for extern in coroutine.wrap(-> each_tag(ast, "Extern"))
             extern.__register = "$#{extern.name[0]}"
@@ -870,12 +860,20 @@ class Environment
             extern.name.__decl = extern
             t = get_type(extern)
             hook_up_refs extern.name, extern.__parent, t
-                    
-        for fn in coroutine.wrap(-> each_tag(ast, "FnDecl", "Lambda"))
-            for a in *fn.args
-                a.arg.__register,a.arg.__location = nil,nil
-                hook_up_refs a.arg, fn.body, parse_type(a.type)
 
+        -- Set up function names (global):
+        for fndec in coroutine.wrap(-> each_tag(ast, "FnDecl", "Lambda"))
+            fndec.__register or= @fresh_global(fndec.name and fndec.name[0] or "lambda")
+            fndec.__decl = fndec
+            for a in *fndec.args
+                a.arg.__register,a.arg.__location = nil,nil
+                hook_up_refs a.arg, fndec.body, parse_type(a.type)
+            if fndec.name
+                fndec.name.__register = fndec.__register
+                fndec.name.__decl = fndec
+                t = get_type(fndec)
+                hook_up_refs fndec.name, fndec.__parent, t
+                    
         for for_block in coroutine.wrap(-> each_tag(ast, "For"))
             if for_block.val
                 for_block.val.__register,for_block.val.__location = nil,nil
