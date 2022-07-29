@@ -1,8 +1,8 @@
 deftype Foo:Int
-x := (5):Foo
+x := 5:Foo
 
 deftype MyString:String
-s := ("Hello"):MyString
+s := "Hello":MyString
 say "$x $s"
 
 deftype ShellCode:String
@@ -12,7 +12,7 @@ extern bl_string_replace(text:String, pat:BP, replacement:String):String
 extern bl_string_append_string(a:String,b:String):String
 
 def shell_escape(unsafe:String):String
-    escaped := bl_string_replace(unsafe, %BP{`",\,$,`}, '\\@0'):String
+    escaped := bl_string_replace(unsafe, %BP{`",\,$,`}, '\\@0')
     return "\"$escaped\""
 
 def add(unsafe:String,sh:ShellCode):ShellCode
@@ -25,5 +25,5 @@ def add(sh1:ShellCode,sh2:ShellCode):ShellCode
     return bl_string_append_string(sh1, sh2):ShellCode
 
 file := "`rm -rf \$HOME/xxxx`" 
-cmd := ("cp "):ShellCode + file + (" /tmp"):ShellCode
+cmd := %ShellCode[cp ] + file + %ShellCode[ /tmp]
 say "> $cmd"

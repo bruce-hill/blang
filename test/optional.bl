@@ -19,9 +19,9 @@ def maybe_str(s:String,nil_it:Bool)
 say(maybe_str("hi", no) or "XXX")
 foo:= maybe_str("hi", no)
 
-boolnil:= (nil):Bool?
-boolyes:= (yes):Bool?
-boolno:= (no):Bool?
+boolnil:= nil:Bool?
+boolyes:= yes:Bool?
+boolno:= no:Bool?
 
 t := "truthy"
 f := "falsey"

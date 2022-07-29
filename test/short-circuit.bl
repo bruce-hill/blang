@@ -37,6 +37,6 @@ for i in 1..5
 
 say "Successfully short circuited with stop"
 
-opt := (nil):String?
+opt := nil:String?
 opt or= "optstring"
 fail unless opt == "optstring"

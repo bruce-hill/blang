@@ -11,9 +11,9 @@ extern bl_string_append_string(a:String, b:String):String
 extern bl_string_repeat(s:String, i:Int):String
 
 // String operators
-def add(a:String,b:String):String = bl_string_append_string(a, b):String
-def multiply(s:String,i:Int):String = bl_string_repeat(s, i):String
-def multiply(i:Int,s:String):String = bl_string_repeat(s, i):String
+def add(a:String,b:String) = bl_string_append_string(a, b)
+def multiply(s:String,i:Int) = bl_string_repeat(s, i)
+def multiply(i:Int,s:String) = bl_string_repeat(s, i)
 
 say "Hello: i=$i f=$f s=$s v=$v l=$l l2=$l2 expr=$(i + 1)!"
 say "\n<-newline \x21<-bang \101<-A, backslash: \\ quote: \" done"

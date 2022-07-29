@@ -3,7 +3,7 @@ extern fclose(fp:Pointer):Int32
 
 def try_file(path:String):Bool
     f := fopen(path, "r") or return no
-    return no unless fclose(f):Int32 == 0
+    return no unless fclose(f) == 0
     return yes
 
 try_file("test/pointer.bl") or fail

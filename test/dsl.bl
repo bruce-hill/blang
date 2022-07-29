@@ -14,7 +14,7 @@ def replace(str:String, pat:String, replacement:String):String
 deftype SQL:String
 
 def escape(str:String):SQL
-    return ("'$(str|replace("'", "''")|hl)'"):SQL
+    return "'$(str|replace("'", "''")|hl)'":SQL
 
 def escape(n:Int):SQL
     return ("$n"|hl):SQL

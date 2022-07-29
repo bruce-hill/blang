@@ -11,7 +11,7 @@ say "$x|sqr|sqr = $s"
 struct Vec{x:Num,y:Num}
 
 def len(v:Vec):Num
-    l := sqrt(v.x*v.x + v.y*v.y):Num
+    l := sqrt(v.x*v.x + v.y*v.y)
     return l
 
 v := Vec{1., 1.}
