@@ -34,7 +34,7 @@ get_function_reg = (scope, name, arg_types, return_type=nil)->
                         t = stmt.orElse and mem.type or OptionalType(mem.type)
                         return mem.__location, true, t
                 elseif stmt.__tag == "StructDeclaration"
-                    for method in *(stmt[1].methods or {})
+                    for method in *(stmt.methods or {})
                         t = get_type(method)
                         if t\matches(arg_types, return_type)
                             return node_assert(stmt.__register, stmt, "Function without a name"), false, get_type(stmt)
@@ -672,16 +672,6 @@ class Environment
     compile_program: (ast, filename)=>
         ast = @apply_macros(ast)
         @type_code = "type :Range = {l,l,l}\n"
-        declared_structs = {}
-        for s in coroutine.wrap(-> each_tag(ast, "StructType", "Struct"))
-            t = if s.__tag == "StructType" then parse_type(s)
-            else get_type(s)
-
-            if declared_structs[t.name]
-                node_assert declared_structs[t.name] == t, s, "Struct declaration shadows"
-                continue
-            declared_structs[t.name] = t
-            @type_code ..= "type :#{t.name} = {#{concat [m.type.base_type for m in *t.sorted_members], ","}}\n"
 
         -- Declared units:
         for u in coroutine.wrap(-> each_tag(ast, "UnitDeclaration"))
@@ -697,7 +687,7 @@ class Environment
             @type_code ..= "data #{fieldnames} = {#{("l 0,")\rep(t.next_value)}}\n"
 
         -- Union field names
-        for u in coroutine.wrap(-> each_tag(ast, "UnionType"))
+        for u in coroutine.wrap(-> each_tag(ast, "UnionDeclaration", "UnionType"))
             t = parse_type(u)
             assert t\is_a(Types.UnionType), "#{t}"
             fieldnames = "$#{t\id_str!}.member_names"
@@ -783,17 +773,10 @@ class Environment
                             hook_up_refs var, node, var_type
 
         for s in coroutine.wrap(-> each_tag(ast, "StructDeclaration", "UnionDeclaration"))
-            scope = if s.__parent.__tag == "Block"
-                i = 1
-                while s.__parent[i] != s
-                    i += 1
-                {table.unpack(s.__parent, i+1)}
-            else s.__parent
-            t = s[1] or s.type
-            var = {__tag:"Var", [0]: t.name[0], __location: @get_string_reg(t.name[0], "typestring"), __parent:s.__parent}
-            hook_up_refs var, scope, parse_type(t)
+            var = {__tag:"Var", [0]: s.name[0], __location: @get_string_reg(s.name[0], "typestring"), __parent:s.__parent}
+            hook_up_refs var, s.__parent, Types.TypeString
 
-            for method in *(t.methods or {})
+            for method in *(s.methods or {})
                 method.__register = @fresh_global(method.name[0])
                 method.__decl = method
                 method.name.__register = method.__register
@@ -1254,7 +1237,7 @@ expr_compilers =
                 t
             elseif parent.__tag == "StructField"
                 field = parent
-                while parent.__tag != "Struct"
+                while parent.__tag != "Struct" and parent.__tag != "Union"
                     parent = parent.__parent
                 struct_type = get_type parent
                 if field.name

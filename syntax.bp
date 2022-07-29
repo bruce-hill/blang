@@ -118,11 +118,16 @@ Fail:: \b"fail"\b _ [@message=extended-expr]
 Declaration:: @var=Var _":=" _ @value=required-extended-expr
 TypeDeclaration:: \b"deftype"\b _ @name=@:NamedType=(Var) _ `: _ @derivesFrom=(type / @:ParseError=(..$ =>"Not a valid type"))
 UnitDeclaration:: \b"unit"\b _ @name=@:NamedType=(Var) _ `= _ @measure=Measure
-StructDeclaration:: \b"struct"\b _ (StructType / @:ParseError=(([Var]__braces /..$) =>"Not a valid struct declaration"))
-UnionDeclaration:: @type=UnionType
+StructDeclaration:: \b"struct"\b _ @name=Var __ `{(__
+  @members=@(*@:StructField=(UnionType / [@names=@*(@:FieldName=([@inline=".."_]Var))%(__`,__) _`:]_@type=type) % ((__`,__/__)~(`,/\n))) [__`,] __
+  @methods=@(*FnDecl%__)
+__)`}
+UnionDeclaration:: \b"union"\b _ @name=Var __ (`{__
+  @members=@(+@:StructField=([@names=@*(FieldName)%(__`,__) _`:]_@type=type) % ((__`,__/__)~(`,/\n))) [__`,] 
+__`})
 EnumDeclaration:: \b"enum"\b _ @name=Var _ (`{__+(@:EnumField=(@name=Var [__`=__@value=Int])) % (__`,__) __ [`,__] `} / @:ParseError=((braces /..$) =>"Not a valid enum declaration"))
-Macro:: @curdent:\C "macro"\b _ @name=Var _ `( __ @args=@(*Var%(__`,__))__[`,__]`)_ [comment] @body=maybeIndentedBlock
-FnDecl:: @curdent:\C "def"\b _ (@name=Var _
+Macro:: @curdent:\C \b"macro"\b _ @name=Var _ `( __ @args=@(*Var%(__`,__))__[`,__]`)_ [comment] @body=maybeIndentedBlock
+FnDecl:: @curdent:\C \b"def"\b _ (@name=Var _
   `( __ @args=@(*((@:FnArg=(@arg=Var_`:_@type=type) / @:ParseError=(Var =>"This argument doesn't have a type")))%(__`,__))__[`,__]`)_
   [`: _ @return=type]_ [comment]
   ((`= _ @body=(@:Block=(
@@ -160,12 +165,12 @@ type: @:OptionalType=(@nonnil=nonoptional-type `?) / nonoptional-type
 nonoptional-type: (
     @:TableType=(`{__ @keyType=type __`=__ @valueType=type __`})
   / MeasureType
-  / StructType / UnionType
+  / TupleType / UnionType
   / @:NamedType=(Var)
   / @:ListType=(`[@itemtype=type`])
   / @:FnType=(`(__ @args=@(*type % (__`,__)) __ `) _ "=>" __ @return=type)
 )
-StructType:: @name=[Var] _ `{(__
+TupleType:: `{(__
   @members=@(*@:StructField=(UnionType / [@names=@*(@:FieldName=([@inline=".."_]Var))%(__`,__) _`:]_@type=type) % ((__`,__/__)~(`,/\n))) [__`,] __
   @methods=@(*FnDecl%__) __ )`}
 UnionType:: \b"union"\b _ @name=(Var / @:ParseError=(=>"Expected an identifier for this union")) _ `{__ @members=@(+@:StructField=([@names=@*(FieldName)%(__`,__) _`:]_@type=type) % ((__`,__/__)~(`,/\n))) [__`,] __`}

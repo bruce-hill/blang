@@ -162,7 +162,7 @@ class StructType extends Type
                 m.type.name
             else
                 "#{m.type}"
-            table.insert mem_strs, "#{m.name and m.name..':' or ''}#{m.type}"
+            table.insert mem_strs, "#{m.name and type(m.name) == 'string' and m.name..':' or ''}#{m.type}"
         "#{@name}{#{concat mem_strs, ","}}"
     id_str: => "#{@name}"
     __eq: Type.__eq
@@ -429,11 +429,11 @@ find_type_alias = (scope, name)->
         if decl.name[0] == name
             return DerivedType(decl.name[0], parse_type(decl.derivesFrom))
 
-    for struct in coroutine.wrap(-> each_tag(root, "StructType"))
-        if struct.name[0] == name
+    for struct in coroutine.wrap(-> each_tag(root, "StructDeclaration"))
+        if struct.name and struct.name[0] == name
             return parse_type struct
 
-    for union in coroutine.wrap(-> each_tag(root, "UnionType"))
+    for union in coroutine.wrap(-> each_tag(root, "UnionType", "UnionDeclaration"))
         if union.name[0] == name
             return parse_type union
 
@@ -451,7 +451,7 @@ parse_type = memoize (type_node)->
                 return primitive_types[type_node[0]]
             tmp = type_node.__parent
             while tmp
-                if tmp.__tag == "StructType" and tmp.name[0] == type_node[0] and tmp.__type
+                if tmp.__tag == "StructDeclaration" and tmp.name[0] == type_node[0] and tmp.__type
                     return tmp.__type
                 tmp = tmp.__parent
             alias = find_type_alias type_node, type_node[0]
@@ -472,25 +472,23 @@ parse_type = memoize (type_node)->
         when "FnType"
             arg_types = [parse_type(a) for a in *type_node.args]
             return FnType(arg_types, parse_type(type_node.return))
-        when "StructType"
-            name = if type_node.name.__tag == "Var"
-                type_node.name[0]
-            else
-                node_assert parse_type(type_node.name).name, type_node, "Couldn't parse this struct name"
-
+        when "StructDeclaration","TupleType"
+            name = type_node.name and type_node.name[0] or ""
             t = StructType(name)
             type_node.__type = t
+            field_num = 1
             for m in *type_node.members
-                continue unless m.names
                 mt = parse_type(m.type)
-                for name in *m.names
-                    if name.inline
-                        node_assert mt\is_a(StructType), name, "Only structs are allowed to be inlined"
-                    t\add_member name[1][0], mt, (name.inline != nil)
+                if m.names and #m.names > 0
+                    for name in *m.names
+                        if name.inline
+                            node_assert mt\is_a(StructType), name, "Only structs are allowed to be inlined"
+                        t\add_member name[1][0], mt, (name.inline != nil)
+                else
+                    t\add_member field_num, mt, (name.inline != nil)
+                    field_num += 1
             return t
-        when "UnionDeclaration"
-            return parse_type(type_node.type)
-        when "UnionType"
+        when "UnionDeclaration","UnionType"
             t = UnionType(type_node.name[0])
             type_node.__type = t
             for m in *type_node.members
@@ -973,27 +971,15 @@ get_type = (node)->
                 -- node_assert alias, node, "Undefined struct"
                 return alias if alias
 
-            key = "{#{concat ["#{m.name and "#{m.name[0]}=" or ""}#{get_type m.value}" for m in *node], ","}}"
-            unless tuples[key]
-                name = if not node.name
-                    "Tuple.#{tuple_index}"
-                elseif node.name.__tag == "Var"
-                    node.name[0]
+            t = StructType(node.name and node.name[0] or "")
+            field_index = 0
+            for memb in *node
+                if memb.name
+                    t\add_member memb.name[0], get_type(memb.value)
                 else
-                    node_assert parse_type(node.name).name, node, "Couldn't parse this struct name"
-
-                tuple_type = StructType(name)
-                i = 0
-                for memb in *node
-                    if memb.name
-                        tuple_type\add_member memb.name[0], get_type(memb.value)
-                    else
-                        i += 1
-                        tuple_type\add_member i, get_type(memb.value)
-
-                tuple_index += 1
-                tuples[key] = tuple_type
-            return tuples[key]
+                    field_index += 1
+                    t\add_member field_index, get_type(memb.value)
+            return t
         when "Union"
             union_type = find_type_alias node, node.name[0]
             node_assert union_type, node.name, "Couldn't find where this union was defined"
