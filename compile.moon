@@ -2044,17 +2044,23 @@ expr_compilers =
                 else
                     arg_reg, arg_code = env\to_reg arg
                     code ..= arg_code
-                    table.insert pos_args, arg_reg
+                    table.insert pos_args, {reg: arg_reg, type: get_type(arg), node:arg}
 
             if fn_type.arg_names
                 arg_list = {}
                 assert fn_type.arg_names, "No arg names: #{fn_type}"
                 for i,name in ipairs fn_type.arg_names
-                    arg_reg = kw_args[name] or table.remove(pos_args, 1)
+                    arg_reg = kw_args[name] or table.remove(pos_args, 1).reg
                     if not arg_reg
                         arg_reg = env\fresh_local name
                         code ..= set_nil fn_type.arg_types[i], env, arg_reg
                     table.insert arg_list, "#{fn_type.arg_types[i].base_type} #{arg_reg}"
+
+            if #pos_args > 0
+                node_assert fn_type.varargs, pos_args[1].node, "The arguments from here onwards are not defined in the function signature: #{fn_type}"
+                table.insert(arg_list, #fn_type.arg_types+1, "...")
+                for arg in *pos_args
+                    table.insert arg_list, "#{arg.type.base_type} #{arg.reg}"
 
         if not arg_list
             arg_list = {}

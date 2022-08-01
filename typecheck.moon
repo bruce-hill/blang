@@ -123,10 +123,11 @@ class FnType extends Type
                     i += 1
                 j += 1
                 
-            for _,t in pairs unmatched
-                return false unless t\is_a(OptionalType)
+            unless @varargs
+                for _,t in pairs unmatched
+                    return false unless t\is_a(OptionalType)
         else
-            return false unless #arg_types == #@arg_types
+            return false unless #arg_types == #@arg_types or @varargs
             for i=1,#arg_types
                 return false unless arg_types[i]\is_a(@arg_types[i])
 
@@ -893,7 +894,11 @@ get_type = (node)->
             if node.__tag == "Extern" and node.type
                 return parse_type(node.type)
             decl_ret_type = node.return and parse_type(node.return)
-            return FnType([parse_type a.type for a in *node.args], decl_ret_type, [a.arg[0] for a in *node.args]) if decl_ret_type
+            if decl_ret_type
+                t = FnType([parse_type a.type for a in *node.args], decl_ret_type, [a.arg[0] for a in *node.args])
+                if node.varargs
+                    t.varargs = true
+                return t
             assert node.__tag != "Extern"
             if node.__pending == true
                 return nil unless decl_ret_type
