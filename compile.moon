@@ -2050,11 +2050,15 @@ expr_compilers =
                 arg_list = {}
                 assert fn_type.arg_names, "No arg names: #{fn_type}"
                 for i,name in ipairs fn_type.arg_names
-                    arg_reg = kw_args[name] or table.remove(pos_args, 1).reg
+                    arg_reg = kw_args[name] or (table.remove(pos_args, 1) or {}).reg
                     if not arg_reg
                         arg_reg = env\fresh_local name
                         code ..= set_nil fn_type.arg_types[i], env, arg_reg
                     table.insert arg_list, "#{fn_type.arg_types[i].base_type} #{arg_reg}"
+            else
+                node_assert not next(kw_args), @, "Keyword arguments supplied to a function that doesn't have names for its arguments"
+                for _ in *fn_type.arg_types
+                    table.remove(pos_args, 1)
 
             if #pos_args > 0
                 node_assert fn_type.varargs, pos_args[1].node, "The arguments from here onwards are not defined in the function signature: #{fn_type}"
