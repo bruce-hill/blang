@@ -701,7 +701,7 @@ class Environment
                 v.__type = Types.ListType(Types.String)
             elseif v[0] == "say"
                 v.__register = "$puts"
-                v.__type = Types.FnType({Types.String}, Types.NilType)
+                v.__type = Types.FnType({Types.String}, Types.NilType, {"text"})
 
         is_file_scope = (scope)->
             while scope
