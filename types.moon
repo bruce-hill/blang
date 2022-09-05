@@ -151,10 +151,6 @@ class StructType extends Type
     verbose_type: =>
         mem_strs = {}
         for m in *@sorted_members
-            t_str = if m.type.__class == StructType
-                m.type.name
-            else
-                "#{m.type}"
             table.insert mem_strs, "#{m.name and type(m.name) == 'string' and m.name..':' or ''}#{m.type}"
         "#{@name}{#{concat mem_strs, ","}}"
     id_str: => "#{@name}"
@@ -165,27 +161,23 @@ class UnionType extends Type
     new: (@name, @members)=> -- Members: {{type=t, name="Foo"}, {type=t2, name="Baz"}, ...}
         @abi_type = "l"
         @base_type = "l"
-        @memory_size = 16
+        @memory_size = 8
         @members = {}
         @num_members = 0
-        @enum = EnumType(@name)
         if members
             for memb in *members
                 @add_member memb.name, memb.type
                 @enum\add_field memb.name
-    add_member: (name, type)=>
+    add_member: (name, member_type)=>
         @num_members += 1
-        @members[name] = {type: type, index: @num_members}
+        @members[name] = {type: member_type, index: @num_members}
+        @memory_size = math.max(@memory_size, 8+member_type.memory_size)
     __tostring: => "#{@name}"
     nil_value: 0
     verbose_type: =>
         mem_strs = {}
         for name,info in pairs @members
-            t_str = if info.type.__class == UnionType
-                info.type.name
-            else
-                "#{info.type}"
-            table.insert mem_strs, "#{name and name..':' or ''}#{info.type}"
+            table.insert mem_strs, "#{name}:#{info.type}"
         "union #{@name}{#{concat mem_strs, ","}}"
     id_str: => "#{@name}"
     __eq: Type.__eq

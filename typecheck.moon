@@ -251,8 +251,17 @@ assign_types = =>
                     for name in *member.names
                         name.__type = member_type
                         t\add_member name[0], member_type, (name.inline and true or false)
-                elseif member.__tag == "TaggedUnion"
-                    error "Not implemented"
+                elseif member.__tag == "FnDecl"
+                    assign_types member
+
+        when "UnionDeclaration"
+            t = Types.StructType(@name[0])
+            for member in *@
+                if member.__tag == "StructField"
+                    member_type = parse_type member.type
+                    for name in *member.names
+                        name.__type = member_type
+                        t\add_member name[0], member_type, (name.inline and true or false)
                 elseif member.__tag == "FnDecl"
                     assign_types member
 
