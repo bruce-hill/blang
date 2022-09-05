@@ -47,7 +47,7 @@ parse_type = =>
 
 get_fn_type = (fndec)->
     ret_type = node.returnType and parse_type(node.returnType) or Types.NilType
-    return Types.FnType([parse_type a.type for a in *node.args], ret_type, [a.arg[0] for a in *node.args])
+    return Types.FnType([parse_type a.type for a in *node.args], ret_type, [a.name[0] for a in *node.args])
 
 bind_var = (scope, var)->
     assert var.__tag == "Var", "Not a Var: #{var.__tag}"
@@ -58,7 +58,7 @@ bind_var = (scope, var)->
                 scope.__declaration = var
         when "FnDecl","Lambda"
             for arg in *scope.args
-                if arg.arg[0] == var[0]
+                if arg.name[0] == var[0]
                     -- Don't hook up shadowed args
                     return
             bind_var scope.body, var
@@ -103,14 +103,14 @@ bind_variables = =>
             bind_variables @value
         when "FnDecl"
             @name.__declaration = @name
-            for arg in *@
+            for arg in *@args
                 arg.name.__declaration = arg.name
                 bind_var @body, arg.name
             bind_var @body, @name
             bind_var @__parent, @name
             bind_variables @body
         when "Lambda"
-            for arg in *@
+            for arg in *@args
                 arg.name.__declaration = arg.name
                 bind_var @body, arg.name
             bind_variables @body
@@ -136,9 +136,9 @@ bind_variables = =>
             bind_variables @body
             bind_variables @between if @between
         else
-            for k,v in pairs @
-                continue if type(v) != "table" or (type(k) == "string" and k\match("^__"))
-                bind_variables v
+            for k,child in pairs @
+                continue if type(child) != "table" or (type(k) == "string" and k\match("^__"))
+                bind_variables child
 
 type_or = (t1, t2)->
     if t1 == nil or t2 == nil
@@ -155,7 +155,7 @@ type_or = (t1, t2)->
         return nil
 
 assign_types = =>
-    return unless type(@) == "table" and @__tag
+    return unless type(@) == "table"
     switch @__tag
         when "Nil"
             @__type = Types.NilType
@@ -176,14 +176,20 @@ assign_types = =>
             else
                 @__type = Types.DerivedType(@name[0], Types.String)
         when "TypeOf"
+            assign_types @expression
             @__type = Types.TypeString
         when "SizeOf"
+            assign_types @expression
             @__type = Types.Int
         when "Range"
+            assign_types @first if @first
+            assign_types @next if @next
+            assign_types @last if @last
             @__type = Types.Range
         when "Pass"
             @__type = Types.NilType
         when "Stop","Skip","Fail"
+            assign_types @target if @target
             @__type = Types.Abort
         when "Return"
             assign_types @value if @value
@@ -221,17 +227,17 @@ assign_types = =>
         when "Lambda"
             for arg in *@args
                 arg.__type = parse_type(arg.type)
-                arg.arg.__type = arg.__type
+                arg.name.__type = arg.__type
             assign_types @body
             if @body and @body.__type
-                @__type = Types.FnType([a.__type for a in *@args], @body.__type, [a.arg[0] for a in *@args])
+                @__type = Types.FnType([a.__type for a in *@args], @body.__type, [a.name[0] for a in *@args])
 
         when "FnDecl"
             for arg in *@args
                 arg.__type = parse_type(arg.type)
-                arg.arg.__type = arg.__type
+                arg.name.__type = arg.__type
             ret = @returnType and parse_type(@returnType) or Types.NilType
-            @__type = Types.FnType([a.__type for a in *@args], @body.__type, [a.arg[0] for a in *@args])
+            @__type = Types.FnType([a.__type for a in *@args], ret, [a.name[0] for a in *@args])
             @name.__type = @__type
             assign_types @body
 
@@ -384,6 +390,8 @@ assign_types = =>
             @__type = t
 
         when "Equal","NotEqual","Less","LessEq","Greater","GreaterEq","In"
+            assign_types @lhs
+            assign_types @rhs
             @__type = Types.Bool
 
         when "If"
@@ -402,25 +410,6 @@ assign_types = =>
             elseif not @elseBody
                 t = type_or(t, Types.NilType)
             @__type = t
-        
-        when "For"
-            assign_types @iterable
-            iter_type = @iterable.__type
-            if iter_type
-                if iter_type\is_a(Types.TableType)
-                    if @index and @val
-                        @index.__type = iter_type.key_type
-                        @val.__type = iter_type.value_type
-                    else
-                        @val.__type = iter_type.key_type
-                elseif iter_type\is_a(Types.ListType)
-                    @index.__type = Types.Int if @index
-                    @val.__type = iter_type.item_type
-                elseif iter_type == Types.Range
-                    @index.__type = Types.Int if @index
-                    @val.__type = Types.Int
-            assign_types @body
-            assign_types @between if @between
 
         when "When"
             assign_types @what
@@ -440,6 +429,25 @@ assign_types = =>
             elseif not @elseBody
                 t = type_or(t, Types.NilType)
             @__type = t
+
+        when "For"
+            assign_types @iterable
+            iter_type = @iterable.__type
+            if iter_type
+                if iter_type\is_a(Types.TableType)
+                    if @index and @val
+                        @index.__type = iter_type.key_type
+                        @val.__type = iter_type.value_type
+                    else
+                        @val.__type = iter_type.key_type
+                elseif iter_type\is_a(Types.ListType)
+                    @index.__type = Types.Int if @index
+                    @val.__type = iter_type.item_type
+                elseif iter_type == Types.Range
+                    @index.__type = Types.Int if @index
+                    @val.__type = Types.Int
+            assign_types @body
+            assign_types @between if @between
 
         when "Do"
             for block in *@
@@ -474,9 +482,9 @@ assign_types = =>
             @__type = @base.__type
 
         else
-            for k,v in pairs @
-                continue if type(k) == "string" and k\match("^__")
-                assign_types v
+            for k,child in pairs @
+                continue if type(child) != "table" or (type(k) == "string" and k\match("^__"))
+                assign_types child
             @__type = Types.NilType
 
 assign_all_types = (ast)->
@@ -513,7 +521,7 @@ assign_all_types = (ast)->
 
         break if not progress
 
-    print "Finished assigning types!"
+    print "Finished assigning types:"
     print viz(ast)
 
     for var in coroutine.wrap(-> each_tag("Var","TypeVar"))

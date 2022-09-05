@@ -192,8 +192,8 @@ class Environment
         return @strings[str]
 
     declare_function: (fndec)=>
-        args = ["#{parse_type(arg.type).base_type} #{arg.arg.__register}" for arg in *fndec.args]
-        fn_scope = @inner_scope {"%#{arg.arg[0]}",true for arg in *fndec.args}
+        args = ["#{parse_type(arg.type).base_type} #{arg.name.__register}" for arg in *fndec.args]
+        fn_scope = @inner_scope {"%#{arg.name[0]}",true for arg in *fndec.args}
 
         fn_type = get_type fndec
         ret_type = fn_type.return_type
@@ -640,11 +640,11 @@ class Environment
         for v in coroutine.wrap(-> each_tag(ast, "Var"))
             if v[0] == "args"
                 v.__declaration = {__location:"$args"}
-                -- v.__location = "$args"
+                v.__location = "$args"
                 v.__type = Types.ListType(Types.String)
             elseif v[0] == "say"
                 v.__declaration = {__register:"$puts"}
-                -- v.__register = "$puts"
+                v.__register = "$puts"
                 v.__type = Types.FnType({Types.String}, Types.NilType, {"text"})
 
         is_file_scope = (scope)->
@@ -659,6 +659,7 @@ class Environment
         file_scope_vars = {}
         -- Set up variable registers:
         for v in coroutine.wrap(-> each_tag(ast, "Var"))
+            node_assert v.__declaration, v, "No declaration found"
             continue unless v == v.__declaration
             continue if v.__register or v.__location
             if v.__parent.__tag == "FnDecl" and v == v.__parent.name
@@ -671,9 +672,11 @@ class Environment
 
         for v in coroutine.wrap(-> each_tag(ast, "Var"))
             continue if v.__register or v.__location
+            node_assert v.__declaration, v, "No declaration found"
             v.__register = v.__declaration.__register
             v.__location = v.__declaration.__location
 
+        print "Finished binding variable registers:"
         print(viz(ast))
 
         -- Compile modules:
