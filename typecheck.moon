@@ -49,63 +49,39 @@ get_fn_type = (fndec)->
     ret_type = node.returnType and parse_type(node.returnType) or Types.NilType
     return Types.FnType([parse_type a.type for a in *node.args], ret_type, [a.arg[0] for a in *node.args])
 
-highest_priority = (target, declA, declB)->
-    if not declA
-        return declB
-    elseif not declB
-        return declA
-    elseif declA.start < target.start and declB.start > target.start
-        return declA
-    elseif declA.start > target.start and declB.start < target.start
-        return declB
-    elseif declA.start >= declB.start
-        return declA
-    else
-        return declB
-
-bind = (varname, decl)=>
-    switch @__tag
+bind_var = (scope, var)->
+    assert var.__tag == "Var", "Not a Var: #{var.__tag}"
+    switch scope.__tag
         when "Var"
-            if @[0] == varname
-                if @__parent.__tag == "FnCall"
-                    @__fn_candidates or= {}
-                    table.insert @__fn_candidates, decl
-                @__declaration = highest_priority @__declaration, decl
+            if scope[0] == var[0]
+                print "Bound: #{var[0]}"
+                scope.__declaration = var
         when "FnDecl","Lambda"
-            for arg in *@args
-                if arg.arg[0] == varname
+            for arg in *scope.args
+                if arg.arg[0] == var[0]
                     -- Don't hook up shadowed args
                     return
-            bind @body, varname, decl
-        when "Block"
-            for i, stmt in ipairs @
-                if stmt.__tag == "Declaration" and stmt.var[0] == varname
-                    -- Shadowed declaration
-                    return
-                if stmt.__tag == "FnDecl" and stmt.name[0] == varname
-                    -- Shadowed function
-                    return
-                bind stmt, varname, decl
+            bind_var scope.body, var
         else
-            for k,v in pairs @
-                continue if type(v) != "table" or (type(k) == "string" and k\match("^__"))
-                bind v, varname, decl
+            for k,child in pairs scope
+                continue if type(child) != "table" or (type(k) == "string" and k\match("^__"))
+                bind_var child, var
 
-bind_type = (typename, decl)=>
-    switch @__tag
+bind_type = (scope, typevar)->
+    switch scope.__tag
         when "TypeVar"
-            if @[0] == typename
-                @__declaration = highest_priority @__declaration, decl
+            if scope[0] == typevar[0]
+                scope.__declaration = typevar
         when "Var"
-            if @[0] == typename
-                @__declaration = highest_priority @__declaration, decl
+            if scope[0] == typevar[0]
+                scope.__declaration = typevar
         when "TypeDeclaration","StructDeclaration","UnionDeclaration","EnumDeclaration","UnitDeclaration"
-            if @name[0] == typename
-                @__declaration = highest_priority @__declaration, decl
+            if scope.name[0] == typevar[0]
+                scope.__declaration = typevar
         else
-            for k,v in pairs @
+            for k,v in pairs scope
                 continue if type(v) != "table" or (type(k) == "string" and k\match("^__"))
-                bind v, varname, decl
+                bind_var v, typevar
 
 table.find = (t, obj)->
     for k,v in pairs t
@@ -115,46 +91,47 @@ table.find = (t, obj)->
 bind_variables = =>
     switch @__tag
         when "Declaration"
-            bind @var, @var[0], @
+            @var.__declaration = @var
             switch @__parent.__tag
                 when "Block"
                     pos = table.find(@__parent, @)
                     for i=pos+1,#@__parent
-                        bind @__parent[i], @var[0], @
+                        bind_var @__parent[i], @var
                 when "Clause"
-                    bind @__parent.body, @var[0], @
+                    bind_var @__parent.body, @var
             bind_variables @var
             bind_variables @value
         when "FnDecl"
-            bind @, @name[0], @
+            @name.__declaration = @name
             for arg in *@
-                bind arg.name, arg.name[0], arg
-                bind @body, arg.name[0], arg
-            bind @body, @name[0], @
-            bind @__parent, @name[0], @
+                arg.name.__declaration = arg.name
+                bind_var @body, arg.name
+            bind_var @body, @name
+            bind_var @__parent, @name
             bind_variables @body
         when "Lambda"
             for arg in *@
-                bind arg.name, arg.name[0], arg
-            bind @body, arg.name[0], arg
+                arg.name.__declaration = arg.name
+                bind_var @body, arg.name
             bind_variables @body
         when "TypeDeclaration","StructDeclaration","UnionDeclaration","EnumDeclaration","UnitDeclaration"
-            bind_type @__parent, @name[0], @
+            @name.__declaration = @name
+            bind_type @__parent, @name
             bind_variables @
         when "Extern"
-            bind @name, @name[0], @
-            bind @__parent, @name[0], @
+            @name.__declaration = @name
+            bind_var @__parent, @name
         when "Use"
             error "Not implemented"
         when "For"
             if @index
-                bind @index, @index[0], @index
-                bind @body, @index[0], @index
-                bind @between, @index[0], @index if @between
+                @index.__declaration = @index
+                bind_var @body, @index
+                bind_var @between, @index if @between
             if @val
-                bind @val, @val[0], @val
-                bind @body, @val[0], @val
-                bind @between, @val[0], @val if @between
+                @val.__declaration = @val
+                bind_var @body, @val
+                bind_var @between, @val if @between
 
             bind_variables @body
             bind_variables @between if @between

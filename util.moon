@@ -11,7 +11,9 @@ viz = =>
 
     children = ["#{k}=#{viz(v)}" for k,v in pairs(@) when type(v) == 'table' and not (type(k) == 'string' and k\match("^__"))]
     body = #children > 0 and concat(children, " ") or viz(@[0])
-    return "\x1b[33m#{@__tag or ""}:#{@__type or ""}(\x1b[m#{body}\x1b[33m)\x1b[m"
+    typeinfo = @__type and ":#{@__type}" or ""
+    varinfo = (@__register or @__location) and "\x1b[2m#{@__register or @__location}\x1b[m" or ""
+    return "\x1b[33m#{@__tag or ""}#{typeinfo}(\x1b[m#{body}#{varinfo}\x1b[33m)\x1b[m"
 
 local cur_filename, cur_source
 set_file = (filename, source)->

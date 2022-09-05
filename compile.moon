@@ -214,11 +214,11 @@ class Environment
             ret_reg, tmp = fn_scope\to_reg fndec.body
             "#{tmp}ret #{ret_reg}\n"
         body_code = body_code\gsub("[^\n]+", =>(@\match("^%@") and @ or "  "..@))
-        node_assert fndec.__register, fndec, "Function has no name"
-        fn_name = fndec.__register
-        @fn_code ..= "\nfunction #{ret_type\is_a(Types.Void) and "" or ret_type.base_type.." "}"
+        node_assert fndec.name.__register, fndec, "Function has no name"
+        fn_name = fndec.name.__register
+        @fn_code ..= "\nfunction #{ret_type\is_a(Types.Abort) and "" or ret_type.base_type.." "}"
         @fn_code ..= "#{fn_name}(#{concat args, ", "}) {\n@start\n#{body_code}"
-        if ret_type\is_a(Types.Void) and not has_jump\match(@fn_code)
+        if ret_type\is_a(Types.Abort) and not has_jump\match(@fn_code)
             @fn_code ..= "  ret\n"
         elseif not has_jump\match(@fn_code)
             @fn_code ..= "  ret 0\n"
@@ -274,8 +274,8 @@ class Environment
         dest = @fresh_local "string"
         if t\is_a(Types.NilType)
             code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("nil", "nil")})\n"
-        elseif t\is_a(Types.Void)
-            code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("Void", "void")})\n"
+        elseif t\is_a(Types.Abort)
+            code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("Abort", "Abort")})\n"
         elseif t\is_a(Types.OptionalType)
             nil_label,nonnil_label,end_label = @fresh_labels "optional.nil", "optional.nonnil", "optional.end"
             code ..= check_nil t, @, reg, nonnil_label, nil_label
@@ -659,24 +659,22 @@ class Environment
         file_scope_vars = {}
         -- Set up variable registers:
         for v in coroutine.wrap(-> each_tag(ast, "Var"))
-            decl = v.__declaration
-            node_assert decl, v, "Couldn't find declaration"
-            reg = decl.__register
-            loc = decl.__location
-            if reg or loc
-                v.__register = reg
-                v.__location = loc
+            continue unless v == v.__declaration
+            continue if v.__register or v.__location
+            if v.__parent.__tag == "FnDecl" and v == v.__parent.name
+                v.__register = @fresh_global v[0]
+            elseif is_file_scope(v)
+                v.__location = @fresh_global v[0]
+                table.insert file_scope_vars, v
             else
-                if is_file_scope(decl)
-                    loc = @fresh_global v[0]
-                    decl.__location = loc
-                    v.__location = loc
-                    table.insert file_scope_vars, v
-                else
-                    reg = @fresh_local v[0]
-                    decl.__register = reg
-                    v.__register = reg
-            assert v.__register or v.__location, "WTF"
+                v.__register = @fresh_local v[0]
+
+        for v in coroutine.wrap(-> each_tag(ast, "Var"))
+            continue if v.__register or v.__location
+            v.__register = v.__declaration.__register
+            v.__location = v.__declaration.__location
+
+        print(viz(ast))
 
         -- Compile modules:
         for use in coroutine.wrap(-> each_tag(ast, "Use"))
@@ -1975,7 +1973,7 @@ expr_compilers =
 
     If: (env)=>
         t = get_type(@)
-        ret = t != Types.Void and env\fresh_local("if.value") or nil
+        ret = t != Types.Abort and env\fresh_local("if.value") or nil
         code = ""
         end_label,false_label = env\fresh_labels "if.end", "if.else"
         for cond in *@
@@ -1985,7 +1983,7 @@ expr_compilers =
             code ..= check_truthiness get_type(cond.condition), env, r, true_label, false_label
             code ..= "#{true_label}\n"
             block_type = get_type(cond.body)
-            if block_type == Types.Void
+            if block_type == Types.Abort
                 code ..= env\compile_stmt cond.body
             elseif block_type == Types.NilType
                 code ..= env\compile_stmt cond.body
@@ -2001,11 +1999,11 @@ expr_compilers =
 
         if @elseBody
             else_type = get_type(@elseBody)
-            if else_type == Types.Void
+            if else_type == Types.Abort
                 code ..= env\compile_stmt @elseBody
             elseif else_type == Types.NilType
                 code ..= env\compile_stmt @elseBody
-                code ..= set_nil(t, env, ret) unless t == Types.Void
+                code ..= set_nil(t, env, ret) unless t == Types.Abort
             else
                 block_reg,block_code = env\to_reg @elseBody
                 code ..= block_code
@@ -2014,7 +2012,7 @@ expr_compilers =
             unless has_jump\match(code)
                 code ..= "jmp #{end_label}\n"
         else
-            code ..= set_nil(t, env, ret) unless t == Types.Void
+            code ..= set_nil(t, env, ret) unless t == Types.Abort
 
         code ..= "#{end_label}\n"
         return ret,code
@@ -2022,9 +2020,9 @@ expr_compilers =
     Do: (env)=>
         end_label,next_label = env\fresh_labels "do.end", "do.else"
         t = get_type(@)
-        ret = t != Types.Void and env\fresh_local("do.value") or nil
+        ret = t != Types.Abort and env\fresh_local("do.value") or nil
         code = ""
-        code ..= set_nil(t, env, ret) if t != Types.Void and t\is_a(Types.OptionalType)
+        code ..= set_nil(t, env, ret) if t != Types.Abort and t\is_a(Types.OptionalType)
         for i,block in ipairs @
             for jmp in coroutine.wrap(-> each_tag(block, "Stop"))
                 if not jmp.target or jmp.target[0] == "do"
@@ -2034,7 +2032,7 @@ expr_compilers =
                     jmp.jump_label = next_label
 
             block_type = get_type(block)
-            if block_type == Types.Void
+            if block_type == Types.Abort
                 code ..= env\compile_stmt block
             elseif block_type == Types.NilType
                 code ..= env\compile_stmt block
@@ -2056,7 +2054,7 @@ expr_compilers =
     When: (env)=>
         t = get_type(@)
         what_type = get_type @what
-        ret = t != Types.Void and env\fresh_local("when.value") or nil
+        ret = t != Types.Abort and env\fresh_local("when.value") or nil
         what_reg,code = env\to_reg @what
         end_label,next_case,next_body = env\fresh_labels "when.end","when.case","when.body"
         match_reg = env\fresh_local "when.matches"
@@ -2073,7 +2071,7 @@ expr_compilers =
             next_body = env\fresh_label "when.body"
 
             block_type = get_type(branch.body)
-            if block_type == Types.Void
+            if block_type == Types.Abort
                 code ..= env\compile_stmt branch.body
             elseif block_type == Types.NilType
                 code ..= env\compile_stmt branch.body
@@ -2081,7 +2079,7 @@ expr_compilers =
             else
                 block_reg,block_code = env\to_reg branch.body
                 code ..= block_code
-                code ..= "#{ret} =#{block_type.base_type} copy #{block_reg}\n" unless t == Types.Void
+                code ..= "#{ret} =#{block_type.base_type} copy #{block_reg}\n" unless t == Types.Abort
 
             unless has_jump\match(code)
                 code ..= "jmp #{end_label}\n"
@@ -2090,11 +2088,11 @@ expr_compilers =
             code ..= "#{next_case}\n"
 
             else_type = get_type(@elseBody)
-            if else_type == Types.Void
+            if else_type == Types.Abort
                 code ..= env\compile_stmt @elseBody
             elseif else_type == Types.NilType
                 code ..= env\compile_stmt @elseBody
-                code ..= set_nil(t, env, ret) unless t == Types.Void
+                code ..= set_nil(t, env, ret) unless t == Types.Abort
             else
                 block_reg,block_code = env\to_reg @elseBody
                 code ..= block_code
@@ -2544,14 +2542,14 @@ stmt_compilers =
     FnCall: (env)=>
         ret_type = get_type(@)
         if ret_type
-            node_assert ret_type == Types.Void or ret_type == Types.NilType, @, "Return value (#{ret_type}) is not being used"
+            node_assert ret_type == Types.Abort or ret_type == Types.NilType, @, "Return value (#{ret_type}) is not being used"
         _, code = env\to_reg @, true
         code = code\gsub("[^\n]- (call [^\n]*\n)$", "%1")
         return code
     Return: (env)=>
         if @value
             reg, code = env\to_reg @value
-            if get_type(@value)\is_a(Types.Void)
+            if get_type(@value)\is_a(Types.Abort)
                 return "#{code}ret\n"
             return "#{code}ret #{reg}\n"
         else
