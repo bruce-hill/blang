@@ -1990,11 +1990,13 @@ expr_compilers =
                 code ..= env\compile_stmt cond.body
             elseif block_type == Types.NilType
                 code ..= env\compile_stmt cond.body
-                code ..= set_nil t, env, ret
+                unless has_jump\match(code)
+                    code ..= set_nil t, env, ret
             else
                 block_reg,block_code = env\to_reg cond.body
                 code ..= block_code
-                code ..= "#{ret} =#{block_type.base_type} copy #{block_reg}\n"
+                unless has_jump\match(code)
+                    code ..= "#{ret} =#{block_type.base_type} copy #{block_reg}\n"
             unless has_jump\match(code)
                 code ..= "jmp #{end_label}\n"
             code ..= "#{false_label}\n"
@@ -2006,16 +2008,17 @@ expr_compilers =
                 code ..= env\compile_stmt @elseBody
             elseif else_type == Types.NilType
                 code ..= env\compile_stmt @elseBody
-                code ..= set_nil(t, env, ret) unless t == Types.Abort
+                code ..= set_nil(t, env, ret) unless t == Types.Abort or has_jump\match(code)
             else
                 block_reg,block_code = env\to_reg @elseBody
                 code ..= block_code
-                code ..= "#{ret} =#{else_type.base_type} copy #{block_reg}\n"
+                unless has_jump\match(code)
+                    code ..= "#{ret} =#{else_type.base_type} copy #{block_reg}\n"
                 
             unless has_jump\match(code)
                 code ..= "jmp #{end_label}\n"
         else
-            code ..= set_nil(t, env, ret) unless t == Types.Abort
+            code ..= set_nil(t, env, ret) unless t == Types.Abort or has_jump\match(code)
 
         code ..= "#{end_label}\n"
         return ret,code
