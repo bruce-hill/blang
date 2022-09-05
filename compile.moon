@@ -1,6 +1,6 @@
-Types = require 'typecheck'
+Types = require 'types'
 bp = require 'bp'
-import get_type, parse_type from Types
+import assign_all_types, get_type, parse_type from require('typecheck')
 import log, viz, node_assert, node_error, get_node_pos, print_err, each_tag from require 'util'
 import Measure, register_unit_alias from require 'units'
 concat = table.concat
@@ -8,61 +8,6 @@ concat = table.concat
 has_jump = bp.compile('^_("jmp"/"jnz"/"ret")\\b ..$ $$')
 
 local stmt_compilers, expr_compilers
-
-get_function_reg = (scope, name, arg_types, return_type=nil)->
-    return nil unless scope
-    switch scope.__tag
-        when "Block"
-            for i=#scope,1,-1
-                stmt = scope[i]
-                if stmt.__tag == "FnDecl" and stmt.name[0] == name
-                    t = get_type(stmt)
-                    if t\matches(arg_types, return_type)
-                        return node_assert(stmt.__register, stmt, "Function without a name"), false, t
-                elseif stmt.__tag == "Extern" and stmt.name[0] == name
-                    t = get_type(stmt)
-                    if t\is_a(Types.FnType) and t\matches(arg_types, return_type)
-                        return "$#{stmt.name[0]}", false, t
-                elseif stmt.__tag == "Declaration" and stmt.var[0] == name
-                    t = get_type stmt.value
-                    if t\is_a(Types.FnType) and t\matches(arg_types, return_type)
-                        return stmt.var.__register, false, t
-                elseif stmt.__tag == "Use"
-                    mod_type = get_type(stmt)
-                    mem = mod_type.nonnil.members[name]
-                    if mem and mem.type\is_a(Types.FnType) and mem.type\matches(arg_types, return_type)
-                        t = stmt.orElse and mem.type or OptionalType(mem.type)
-                        return mem.__location, true, t
-                elseif stmt.__tag == "StructDeclaration"
-                    for method in *(stmt.methods or {})
-                        t = get_type(method)
-                        if t\matches(arg_types, return_type)
-                            return node_assert(stmt.__register, stmt, "Function without a name"), false, get_type(stmt)
-
-        when "FnDecl","Lambda"
-            for a in *scope.args
-                if a.arg[0] == name
-                    t = parse_type(a.type)
-                    if t\is_a(Types.FnType) and t\matches(arg_types, return_type)
-                        return a.__register, false, t
-        when "For"
-            iter_type = get_type(scope.iterable)
-            if scope.val and scope.val[0] == name
-                if iter_type\is_a(Types.ListType) and iter_type.item_type\is_a(Types.FnType)
-                    return scope.val.__register, false, iter_type.item_type
-                elseif iter_type\is_a(Types.TableType) and iter_type.value_type\is_a(Types.FnType)
-                    return scope.val.__register, false, iter_type.value_type
-            if scope.index and scope.index[0] == name
-                if iter_type\is_a(Types.TableType) and iter_type.key_type\is_a(Types.FnType)
-                    return scope.index.__register, false, iter_type.key_type
-
-    if scope.__parent and (scope.__parent.__tag == "For" or scope.__parent.__tag == "While" or scope.__parent.__tag == "Repeat")
-        loop = scope.__parent
-        if scope == loop.between
-            r,c,t = get_function_reg(loop.body, name, arg_types, return_type)
-            return r,c,t if r
-    
-    return get_function_reg(scope.__parent, name, arg_types, return_type)
 
 nonnil_eq = (t1, t2)-> (t1.nonnil or t1) == (t2.nonnil or t2)
 
@@ -86,7 +31,9 @@ infixop = (env, op)=>
 overload_infix = (env, overload_name, regname="result")=>
     t = get_type @
     lhs_type, rhs_type = get_type(@lhs), get_type(@rhs)
-    fn_reg, needs_loading, t2 = get_function_reg @__parent, overload_name, {lhs_type,rhs_type}
+
+    -- OVERLOAD infix?
+    error "Not impl"
     node_assert fn_reg, @, "#{overload_name} is not supported for #{lhs_type} and #{rhs_type}"
     lhs_reg,rhs_reg,operand_code = env\to_regs @lhs, @rhs
     code = ""
@@ -279,7 +226,8 @@ class Environment
 
     get_tostring_fn: (t, scope)=>
         if t != Types.String
-            fn,needs_loading = get_function_reg scope, "tostring", {t}, Types.String
+            -- OVERLOAD `tostring()`
+            error "Not impl"
             return fn,needs_loading if fn
 
         -- HACK: these primitive values' functions only take 1 arg, but it
@@ -673,11 +621,34 @@ class Environment
         ast = @apply_macros(ast)
         @type_code = "type :Range = {l,l,l}\n"
 
-        -- Declared units:
-        for u in coroutine.wrap(-> each_tag(ast, "UnitDeclaration"))
-            n = tonumber((u.measure.amount[0]\gsub("_","")))
-            m = Measure(n, u.measure.units[0]\gsub("[<>]",""))
-            register_unit_alias(u.name[0], m)
+        assign_all_types ast, @
+
+        declarations = {}
+        find_declarations = =>
+            if @__declaration
+                declarations[@__declaration] = true
+            for k,v in pairs(@)
+                continue unless type(k) == "string" and not k\match("^__") and type(v) == "table"
+                find_declarations v
+        find_declarations ast
+
+        is_in_function = (node)->
+            while node
+                return true if node.__tag == "FnDecl" or node.__tag == "Lambda"
+                node = node.__parent
+            return false
+
+        file_scope_vars = {}
+        for decl in pairs declarations
+            switch decl.__tag
+                when "FnDecl"
+                    decl.__register = @fresh_global decl.name[0]
+                when "Declaration"
+                    if is_in_function @
+                        decl.__register = @fresh_local decl.var[0]
+                    else
+                        decl.__location = @fresh_global decl.var[0]
+                        table.insert file_scope_vars, decl
 
         -- Enum field names
         for e in coroutine.wrap(-> each_tag(ast, "EnumDeclaration"))
@@ -1359,7 +1330,8 @@ expr_compilers =
             safe = if t == dsl_type
                 val_reg
             else
-                fn_reg,needs_loading = get_function_reg @__parent, "escape", {t}, dsl_type
+                -- OVERLOAD escape()?
+                error "Not impl"
                 node_assert fn_reg, val, "No escape(#{t})=>#{dsl_type} function is implemented, so this value cannot be safely inserted"
                 code ..= "#{fn_reg} =l loadl #{fn_reg}\n" if needs_loading
                 escaped = env\fresh_local "escaped"
@@ -2532,7 +2504,8 @@ stmt_compilers =
             code ..= "\n"
             return code
         else
-            fn_reg, needs_loading, t2 = get_function_reg @__parent, "add", {lhs_type,rhs_type}, lhs_type
+            -- OVERLOAD add()?
+            error "Not impl"
             node_assert fn_reg, @, "addition is not supported for #{lhs_type} and #{rhs_type}"
             code ..= "#{fn_reg} =l loadl #{fn_reg}\n" if needs_loading
             return code.."#{lhs_reg} =#{lhs_type.base_type} call #{fn_reg}(#{lhs_type.base_type} #{lhs_reg}, #{rhs_type.base_type} #{rhs_reg})\n"..store_code
@@ -2543,7 +2516,8 @@ stmt_compilers =
         if nonnil_eq(lhs_type, rhs_type) and lhs_type\is_numeric!
             return code.."#{lhs_reg} =#{lhs_type.base_type} sub #{lhs_reg}, #{rhs_reg}\n"..store_code
         else
-            fn_reg, needs_loading, t2 = get_function_reg @__parent, "subtract", {lhs_type,rhs_type}, lhs_type
+            -- OVERLOAD subtract()?
+            error "Not impl"
             node_assert fn_reg, @, "subtraction is not supported for #{lhs_type} and #{rhs_type}"
             code ..= "#{fn_reg} =l loadl #{fn_reg}\n" if needs_loading
             return code.."#{lhs_reg} =#{lhs_type.base_type} call #{fn_reg}(#{lhs_type.base_type} #{lhs_reg}, #{rhs_type.base_type} #{rhs_reg})\n"..store_code
@@ -2554,7 +2528,8 @@ stmt_compilers =
         if nonnil_eq(lhs_type, rhs_type) and lhs_type\is_numeric!
             return code.."#{lhs_reg} =#{lhs_type.base_type} mul #{lhs_reg}, #{rhs_reg}\n"..store_code
         else
-            fn_reg, needs_loading, t2 = get_function_reg @__parent, "multiply", {lhs_type,rhs_type}, lhs_type
+            -- OVERLOAD multiply()?
+            error "Not impl"
             node_assert fn_reg, @, "multiplication is not supported for #{lhs_type} and #{rhs_type}"
             code ..= "#{fn_reg} =l loadl #{fn_reg}\n" if needs_loading
             return code.."#{lhs_reg} =#{lhs_type.base_type} call #{fn_reg}(#{lhs_type.base_type} #{lhs_reg}, #{rhs_type.base_type} #{rhs_reg})\n"..store_code
@@ -2565,7 +2540,9 @@ stmt_compilers =
         if nonnil_eq(lhs_type, rhs_type) and lhs_type\is_numeric!
             return code.."#{lhs_reg} =#{lhs_type.base_type} div #{lhs_reg}, #{rhs_reg}\n"..store_code
         else
-            fn_reg, needs_loading, t2 = get_function_reg @__parent, "divide", {lhs_type,rhs_type}, lhs_type
+
+            -- OVERLOAD divide()?
+            error "Not impl"
             node_assert fn_reg, @, "division is not supported for #{lhs_type} and #{rhs_type}"
             code ..= "#{fn_reg} =l loadl #{fn_reg}\n" if needs_loading
             return code.."#{lhs_reg} =#{lhs_type.base_type} call #{fn_reg}(#{lhs_type.base_type} #{lhs_reg}, #{rhs_type.base_type} #{rhs_reg})\n"..store_code

@@ -1,1078 +1,505 @@
--- Type checking/inference logic
-concat = table.concat
-import log, viz, print_err, node_assert, node_error, each_tag from require 'util'
+Types = require 'types'
+import log, viz, node_assert, node_error, get_node_pos, print_err, each_tag from require 'util'
 import Measure, register_unit_alias from require 'units'
-parse = require 'parse'
+concat = table.concat
 
-local get_type, parse_type, get_module_type
-local Int,Int32,Int16,Int8,Num,Num32
-
-class Type
-    is_a: (cls)=> @ == cls or @.__class == cls or cls\contains @
-    is_numeric: => @is_a(Int) or @is_a(Num) or @is_a(Int32) or @is_a(Int16) or @is_a(Int8) or @is_a(Num32)
-    contains: (other)=> @ == other
-    base_type: 'l'
-    abi_type: 'l'
-    bytes: 8
-    nil_value: 0x7FFFFFFFFFFFFFFF
-    id_str: => tostring(@)\gsub('[^%w%d.]','')
-    __eq: (other)=> type(other) == type(@) and other.__class == @__class and tostring(other) == tostring(@)
-    verbose_type: => "#{@}"
-
-class NamedType extends Type
-    new: (@name)=>
-    __tostring: => @name
-    __eq: Type.__eq
-
-Value = NamedType("Value")
-Value.contains = (other)=> other.bytes == @bytes
-Value.is_a = (other)=> other == @ or other == @__class
-Value.nil_value = 0x7FFFFFFFFFFFFFFF
-
-Value32 = NamedType("Value32")
-Value32.contains = (other)=> other.bytes == @bytes
-Value32.is_a = (other)=> other == @ or other == @__class
-Value32.base_type = 'w'
-Value32.abi_type = 'w'
-Value32.bytes = 4
-Value32.nil_value = 0x7FFFFFFF
-
-Value16 = NamedType("Value16")
-Value16.contains = (other)=> other.bytes == @bytes
-Value16.is_a = (other)=> other == @ or other == @__class
-Value16.base_type = 'w'
-Value16.abi_type = 'h'
-Value16.bytes = 2
-Value16.nil_value = 0x7FFF
-
-Value8 = NamedType("Value8")
-Value8.contains = (other)=> other.bytes == @bytes
-Value8.is_a = (other)=> other == @ or other == @__class
-Value8.base_type = 'w'
-Value8.abi_type = 'b'
-Value8.bytes = 1
-Value8.nil_value = 0x7F
-
-class DerivedType extends Type
-    new: (@name, @derived_from)=>
-        @base_type = @derived_from.base_type
-        @abi_type = @derived_from.abi_type
-        @bytes = @derived_from.bytes
-        @nil_value = @derived_from.nil_value
-    __tostring: => @name
-    __eq: Type.__eq
-    is_a: (cls)=> @ == cls or @derived_from\is_a(cls) or @.__class == cls or cls\contains(@)
-
-class MeasureType extends Type
-    new: (@units)=>
-    is_numeric: => true
-    normalized: => @units == "" and assert(Num) or @
-    base_type: 'd'
-    abi_type: 'd'
-    __tostring: => "<#{@units}>"
-    __eq: Type.__eq
-    is_a: (cls)=> @ == cls or @.__class == cls or cls\contains @
-
-class ListType extends Type
-    new: (@item_type)=>
-    __tostring: => "[#{@item_type}]"
-    id_str: => "#{@item_type\id_str!}.List"
-    __eq: Type.__eq
-    is_a: (cls)=> cls == @ or cls == @__class or (cls.__class == ListType and @item_type\is_a(cls.item_type)) or cls\contains(@) or cls\contains(@)
-    nil_value: 0
-
-class TableType extends Type
-    new: (@key_type, @value_type)=>
-        assert @key_type and @value_type
-    __tostring: => "{#{@key_type}=#{@value_type}}"
-    id_str: => "#{@key_type\id_str!}.#{@value_type\id_str!}.Table"
-    is_a: (cls)=> cls == @ or cls == @__class or (cls.__class == TableType and @key_type\is_a(cls.key_type) and @value_type\is_a(cls.value_type)) or cls\contains(@)
-    __eq: Type.__eq
-    nil_value: 0
-
-dbg = (t)->
-    if type(t) == 'table'
-        "{#{concat [dbg(k).."="..dbg(v) for k,v in pairs(t)], ", "}}"
-    else
-        tostring(t)
-
-local OptionalType
-class FnType extends Type
-    new: (@arg_types, @return_type, @arg_names=nil)=>
-    __tostring: => "#{@arg_signature!}=>#{@return_type}"
-    __eq: Type.__eq
-    nil_value: 0
-    id_str: => "Fn"
-    arg_signature: => "(#{concat ["#{a}" for a in *@arg_types], ","})"
-    matches: (arg_types, return_type=nil)=>
-        if arg_types == "*"
-            _=0 -- Free pass
-        elseif @arg_names
-            unmatched = {name,@arg_types[i] for i,name in ipairs @arg_names}
-            for name,t in pairs arg_types
-                continue unless type(name) == 'string'
-                return false unless unmatched[name] and t\is_a(unmatched[name])
-                unmatched[name] = nil
-
-            i,j = 1,1
-            while i <= #arg_types and j <= #@arg_names
-                t = unmatched[@arg_names[j]]
-                if t
-                    return false unless arg_types[i]\is_a(t)
-                    unmatched[@arg_names[j]] = nil
-                    i += 1
-                j += 1
-                
-            unless @varargs
-                for _,t in pairs unmatched
-                    return false unless t\is_a(OptionalType)
-        else
-            return false unless #arg_types == #@arg_types or @varargs
-            for i=1,#arg_types
-                return false unless arg_types[i]\is_a(@arg_types[i])
-
-        if return_type
-            return false unless return_type == "*" or @return_type\is_a(return_type)
-        return true
-
-class StructType extends Type
-    new: (@name, members)=> -- Members: {{type=t, name="Foo"}, {type=t2, name="Baz", inline=true}, ...}
-        @members = {}
-        @sorted_members = {}
-        @memory_size = 0
-        if members
-            for memb in *members
-                @add_member memb.name, memb.type, memb.inline
-    add_member: (name, memtype, inline)=>
-        offset = @memory_size
-        -- Align memory:
-        if offset % memtype.bytes != 0
-            offset = offset - (offset % memtype.bytes) + memtype.bytes
-        @members[name] = {name: name, type: memtype, offset: offset, inline: inline}
-        table.insert @sorted_members, @members[name]
-        if inline
-            @memory_size = offset + (memtype.memory_size or memtype.bytes)
-        else
-            @memory_size = offset + memtype.bytes
-    __tostring: => "#{@name}"
-    nil_value: 0
-    verbose_type: =>
-        mem_strs = {}
-        for m in *@sorted_members
-            t_str = if m.type.__class == StructType
-                m.type.name
-            else
-                "#{m.type}"
-            table.insert mem_strs, "#{m.name and type(m.name) == 'string' and m.name..':' or ''}#{m.type}"
-        "#{@name}{#{concat mem_strs, ","}}"
-    id_str: => "#{@name}"
-    __eq: Type.__eq
-
-local EnumType
-class UnionType extends Type
-    new: (@name, @members)=> -- Members: {{type=t, name="Foo"}, {type=t2, name="Baz"}, ...}
-        @abi_type = "l"
-        @base_type = "l"
-        @memory_size = 16
-        @members = {}
-        @num_members = 0
-        @enum = EnumType(@name)
-        if members
-            for memb in *members
-                @add_member memb.name, memb.type
-                @enum\add_field memb.name
-    add_member: (name, type)=>
-        @num_members += 1
-        @members[name] = {type: type, index: @num_members}
-    __tostring: => "#{@name}"
-    nil_value: 0
-    verbose_type: =>
-        mem_strs = {}
-        for name,info in pairs @members
-            t_str = if info.type.__class == UnionType
-                info.type.name
-            else
-                "#{info.type}"
-            table.insert mem_strs, "#{name and name..':' or ''}#{info.type}"
-        "union #{@name}{#{concat mem_strs, ","}}"
-    id_str: => "#{@name}"
-    __eq: Type.__eq
-
-NilType = NamedType("Nil")
-
-class OptionalType extends Type
-    new: (@nonnil)=>
-        assert @nonnil and @nonnil != NilType
-        if @nonnil.__class == OptionalType
-            @nonnil = assert(@nonnil.nonnil)
-        @base_type = @nonnil.base_type
-        @abi_type = @nonnil.abi_type
-        @nil_value = @nonnil.nil_value
-        @bytes = @nonnil.bytes
-    contains: (other)=> other == @ or other == NilType or (@nonnil and other\is_a(@nonnil))
-    __tostring: => @nonnil\is_a(FnType) and "(#{@nonnil})?" or "#{@nonnil}?"
-    verbose_type: => @nonnil\is_a(FnType) and "(#{@nonnil\verbose_type!})?" or "#{@nonnil\verbose_type!}?"
-    id_str: => "Optional.#{@nonnil\id_str!}"
-    __eq: Type.__eq
-
-class EnumType extends Type
-    new: (@name, fields={})=>
-        @next_value = 0
-        @field_values = {}
-        @fields = {}
-        for f in *fields
-            @add_field(f.name, f.value)
-    add_field: (name, value=nil)=>
-        assert value >= 0 if value
-        table.insert @fields, name
-        value or= @next_value
-        @next_value = value + 1
-        @nil_value = @next_value
-        @field_values[name] = value
-    nil_value: 0
-    __tostring: => @name
-    id_str: => @name
-    __eq: Type.__eq
-
--- Primitive Types:
-Pointer = NamedType("Pointer")
-Pointer.nil_value = 0
-
-Num = NamedType("Num")
-Num.base_type = 'd'
-Num.abi_type = 'd'
-Num32 = NamedType("Num32")
-Num32.base_type = 's'
-Num32.abi_type = 's'
-Num32.bytes = 4
-Num32.nil_value = 0x7FFFFFFF
-
-Int = NamedType("Int")
-Int.base_type = 'l'
-Int.abi_type = 'l'
-
-Int32 = NamedType("Int32")
-Int32.base_type = 'w'
-Int32.abi_type = 'w'
-Int32.bytes = 4
-Int32.nil_value = 0x7FFFFFFF
-
-Int16 = NamedType("Int16")
-Int16.base_type = 'w'
-Int16.abi_type = 'h'
-Int16.bytes = 2
-Int16.nil_value = 0x7FFF
-
-Int8 = NamedType("Int8")
-Int8.base_type = 'w'
-Int8.abi_type = 'b'
-Int8.bytes = 1
-Int8.nil_value = 0x7F
-
-Percent = DerivedType("Percent", Num)
-
-Void = NamedType("Void")
-
-Bool = NamedType("Bool")
-Bool.base_type = 'w'
-Bool.abi_type = 'b'
-Bool.bytes = 1
-Bool.nil_value = 0x7F
-
-String = NamedType("String")
-String.nil_value = 0
-TypeString = DerivedType("TypeString", String)
-Range = StructType("Range", {{name:"first",type:Int},{name:"next",type:Int},{name:"last",type:Int}})
-Range.item_type = Int
-Range.nil_value = 0
-
-primitive_types = {:Value, :Value32, :Value16, :Value8, :Pointer, :Int, :Int32, :Int16, :Int8, :Num, :Num32,
-    :Void, :NilType, :Bool, :String, :Range, :OptionalType, :Percent, :TypeString}
-
-tuples = {}
-tuple_index = 1
-
-memoize = (fn)->
-    cache = setmetatable {}, __mode:'k'
-    return (x)->
-        unless cache[x]
-            cache[x] = fn(x)
-        return cache[x]
-
-find_returns = (node)->
-    switch node.__tag
-        when "Return"
-            coroutine.yield(node)
-        when "Lambda","FnDecl","Macro"
-            return
-        else
-            for k,child in pairs node
-                find_returns(child) if type(child) == 'table' and not (type(k) == 'string' and k\match("^__"))
-
-enclosing_scope = (scope, exclude_self)->
-    if scope.__parent and scope.__parent.__tag == "Block"
-        i = 1
-        while scope.__parent[i] != (scope.__original or scope)
-            i += 1
-        i -= 1 if exclude_self
-        t = {k,v for k,v in pairs scope.__parent when type(k) != 'number' or k <= i}
-        t.__original = scope.__parent
-        return t
-    else
-        return scope.__parent
-
-find_declared_type = (scope, name, arg_types=nil, return_type=nil)->
-    return nil unless scope
-    switch scope.__tag
-        when "Block"
-            for i=#scope,1,-1
-                stmt = scope[i]
-                if (stmt.__tag == "FnDecl" or stmt.__tag == "Extern") and stmt.name[0] == name
-                    t = get_type(stmt)
-                    if arg_types and t\is_a(FnType) and t\matches(arg_types, return_type)
-                        return t
-                    elseif not arg_types
-                        return t
-                elseif stmt.__tag == "FnDecl" and stmt.name[0] == name and arg_types and get_type(stmt)\matches(arg_types,return_type)
-                    return get_type(stmt)
-                elseif stmt.__tag == "Declaration" and stmt.var[0] == name
-                    t = get_type stmt.value
-                    if (stmt.__parent.__tag == "Clause" or stmt.__parent.__tag == "While") and stmt == stmt.__parent.condition and t\is_a(OptionalType)
-                        t = t.nonnil
-                    if not arg_types and not t\is_a(FnType)
-                        return t
-                    elseif arg_types and t\is_a(FnType) and t\matches(arg_types,return_type)
-                        return t
-                elseif stmt.__tag == "Use"
-                    -- Naked "use"
-                    t = get_module_type(stmt.name[0])
-                    mem = t.members[name]
-                    if mem and not arg_types and not mem.type\is_a(FnType)
-                        return mem.type
-                    elseif mem and mem.type\is_a(FnType) and mem.type\matches(arg_types,return_type)
-                        return mem.type
-        when "StructDeclaration"
-            for method in *(scope[1].methods or {})
-                if method.name[0] == name and (not arg_types or get_type(method)\matches(arg_types,return_type))
-                    return get_type(method)
-        when "Macro"
-            return nil
-        when "FnDecl","Lambda"
-            for a in *scope.args
-                if a.arg[0] == name
-                    return parse_type(a.type)
-        when "FnCall"
-            if arg_types == nil and scope.fn.__tag == "Var" and scope.fn[0] == name
-                arg_types = {}
-                for arg in *scope
-                    if arg.__tag == "KeywordArg"
-                        arg_types[arg.name[0]] = get_type(arg.value)
-                    else
-                        table.insert arg_types, get_type(arg)
-        when "Clause","While"
-            if scope.condition.__tag == "Declaration" and scope.condition.var[0] == name
-                t = get_type(scope.condition.value)
-                if t\is_a(OptionalType)
-                    return t.nonnil
-                else
-                    return t
-        when "For"
-            get_iter_type = ->
-                iter_type = if scope.iterable.__tag == "Var"
-                    find_declared_type(scope.__parent, scope.iterable[0], arg_types, return_type)
-                else get_type(scope.iterable)
-
-                node_assert iter_type, scope.iterable, "Can't determine the type of this variable"
-                return iter_type
-
-            if scope.index and scope.index[0] == name
-                iter_type = get_iter_type!
-                if iter_type\is_a(TableType)
-                    return iter_type.key_type
-                else
-                    return Int
-            elseif scope.val and scope.val[0] == name
-                iter_type = get_iter_type!
-                if iter_type\is_a(TableType)
-                    return scope.index and iter_type.value_type or iter_type.key_type
-                elseif iter_type\is_a(Range)
-                    return Int
-                elseif iter_type\is_a(ListType)
-                    return iter_type.item_type
-                else
-                    node_error scope.iterable, "Not an iterable value"
-
-    if scope.__parent and (scope.__parent.__tag == "For" or scope.__parent.__tag == "While" or scope.__parent.__tag == "Repeat")
-        loop = scope.__parent
-        if (scope.__original or scope) == loop.between
-            t = find_declared_type(loop.body, name, arg_types, return_type)
-            return t if t
-
-    parent_scope = if scope.__parent and scope.__parent.__tag == "Declaration" and scope == scope.__parent.value
-        -- Special case to handle referencing a shadowed variable while declaring its shadow:
-        -- foo := foo or 1234
-        enclosing_scope scope.__parent, true
-    else
-        enclosing_scope scope
-        
-    if parent_scope
-        return find_declared_type(parent_scope, name, arg_types, return_type)
-
-find_type_alias = (scope, name)->
-    if primitive_types[name]
-        return primitive_types[name]
-
-    root = scope
-    while root.__parent
-        root = root.__parent
-
-    for decl in coroutine.wrap(-> each_tag(root, "TypeDeclaration"))
-        if decl.name[0] == name
-            return DerivedType(decl.name[0], parse_type(decl.derivesFrom))
-
-    for struct in coroutine.wrap(-> each_tag(root, "StructDeclaration"))
-        if struct.name and struct.name[0] == name
-            return parse_type struct
-
-    for union in coroutine.wrap(-> each_tag(root, "UnionType", "UnionDeclaration"))
-        if union.name[0] == name
-            return parse_type union
-
-    for enum in coroutine.wrap(-> each_tag(root, "EnumDeclaration"))
-        if enum.name[0] == name
-            return parse_type enum
-
-derived_types = {}
-
-parse_type = memoize (type_node)->
-    return type_node.__type if type_node.__type
-    switch type_node.__tag
-        when "NamedType","Var"
-            if primitive_types[type_node[0]]
-                return primitive_types[type_node[0]]
-            tmp = type_node.__parent
-            while tmp
-                if tmp.__tag == "StructDeclaration" and tmp.name[0] == type_node[0] and tmp.__type
-                    return tmp.__type
-                tmp = tmp.__parent
-            alias = find_type_alias type_node, type_node[0]
-            node_assert alias, type_node, "Undefined type"
-            return alias
-        when "MeasureType"
-            m = Measure(1, type_node[0]\gsub("[<>]",""))
-            return MeasureType(m.str)\normalized!
-        when "DerivedType"
-            unless derived_types[type_node.name[0]]
-                derived_types[type_node.name[0]] = DerivedType type_node.name[0], parse_type(type_node.derivesFrom)
-            return derived_types[type_node.name[0]]
-        when "ListType"
-            node_assert type_node.itemtype, type_node, "List without item type"
-            return ListType(parse_type(type_node.itemtype))
-        when "TableType"
-            return TableType(parse_type(type_node.keyType), parse_type(type_node.valueType))
-        when "FnType"
-            arg_types = [parse_type(a) for a in *type_node.args]
-            return FnType(arg_types, parse_type(type_node.return))
-        when "StructDeclaration","TupleType"
-            name = type_node.name and type_node.name[0] or ""
-            t = StructType(name)
-            type_node.__type = t
-            field_num = 1
-            for m in *type_node.members
-                mt = parse_type(m.type)
-                if m.names and #m.names > 0
-                    for name in *m.names
-                        if name.inline
-                            node_assert mt\is_a(StructType), name, "Only structs are allowed to be inlined"
-                        t\add_member name[1][0], mt, (name.inline != nil)
-                else
-                    t\add_member field_num, mt, (name.inline != nil)
-                    field_num += 1
-            return t
-        when "UnionDeclaration","UnionType"
-            t = UnionType(type_node.name[0])
-            type_node.__type = t
-            for m in *type_node.members
-                continue unless m.names
-                mt = parse_type(m.type)
-                for name in *m.names
-                    t\add_member name[0], mt
-            return t
-        when "EnumDeclaration"
-            return EnumType(type_node.name[0], [{name:f.name[0], value:f.value and tonumber(f.value[0])} for f in *type_node])
+parse_type = =>
+    return @__parsed_type if @__parsed_type
+    switch @__tag
+        when "Var","TypeVar"
+            if @__declaration
+                return parse_type @__declaration
+            elseif Types[@[0]]
+                return Types[@[0]]
         when "OptionalType"
-            t = parse_type(type_node.nonnil)
-            return OptionalType(t)
-        when "TypeOf"
-            return get_type(type_node.expression)
+            nonnil = parse_type(@nonnil)
+            return unless nonnil
+            return Types.OptionalType(nonnil)
+        when "MeasureType"
+            m = Measure(1, @[0]\gsub("[<>]",""))
+            return Types.MeasureType(m.str)\normalized!
+        when "TupleType"
+            t = Types.StructType("")
+            for memgroup in *@members
+                member_type = parse_type memgroup.type
+                return unless member_type
+                for name in *memgroup.names
+                    t\add_member name[0], member_type, (name.inline and true or false)
+            return t
+        when "TableType"
+            key = parse_type @keyType
+            return unless key
+            val = parse_type @valueType
+            return unless val
+            return Types.TableType(key, val)
+        when "TableType"
+            item = parse_type @itemtype
+            return unless item
+            return Types.ListType(item)
+        when "FnType"
+            ret_type = parse_type @returnType
+            arg_types = {}
+            for arg in *@args
+                arg_t = parse_type arg
+                return unless arg_t
+                table.insert arg_types, arg_t
+            return Types.FnType(arg_types, ret_type)
+
+get_fn_type = (fndec)->
+    ret_type = node.returnType and parse_type(node.returnType) or Types.NilType
+    return Types.FnType([parse_type a.type for a in *node.args], ret_type, [a.arg[0] for a in *node.args])
+
+highest_priority = (target, declA, declB)->
+    if not declA
+        return declB
+    elseif not declB
+        return declA
+    elseif declA.start < target.start and declB.start > target.start
+        return declA
+    elseif declA.start > target.start and declB.start < target.start
+        return declB
+    elseif declA.start >= declB.start
+        return declA
+    else
+        return declB
+
+bind = (varname, decl)=>
+    switch @__tag
+        when "Var"
+            if @[0] == varname
+                if @__parent.__tag == "FnCall"
+                    @__fn_candidates or= {}
+                    table.insert @__fn_candidates, decl
+                @__declaration = highest_priority @__declaration, decl
+        when "FnDecl","Lambda"
+            for arg in *@args
+                if arg.arg[0] == varname
+                    -- Don't hook up shadowed args
+                    return
+            bind @body, varname, decl
+        when "Block"
+            for i, stmt in ipairs @
+                if stmt.__tag == "Declaration" and stmt.var[0] == varname
+                    -- Shadowed declaration
+                    return
+                if stmt.__tag == "FnDecl" and stmt.name[0] == varname
+                    -- Shadowed function
+                    return
+                bind stmt, varname, decl
         else
-            error "Not a type node: #{viz type_node}"
+            for k,v in pairs @
+                continue if type(v) != "table" or (type(k) == "string" and k\match("^__"))
+                bind v, varname, decl
 
-get_op_type = (t1, op, t2)=>
-    all_member_types = (t, pred)->
-        for mem in *t.sorted_members
-            return false unless pred(mem.type)
-        return true
-
-    if t1\is_a(MeasureType) and t2\is_a(Num)
-        switch op
-            when "Mul","Div"
-                return t1
-    elseif t1\is_a(Num) and t2\is_a(MeasureType)
-        if op == "Mul"
-            return t1
-        elseif op == "Div"
-            m2 = Measure(1,t1.units)\invert!
-            return MeasureType(m2.str)\normalized!
-    elseif t1\is_a(MeasureType) and t2\is_a(MeasureType)
-        switch op
-            when "Add","Sub"
-                return t1 if t1 == t2
-            when "Mul"
-                m2 = Measure(1,t1.units)*Measure(1,t2.units)
-                return MeasureType(m2.str)\normalized!
-            when "Div"
-                m2 = Measure(1,t1.units)/Measure(1,t2.units)
-                return MeasureType(m2.str)\normalized!
-
-    -- if (t1.nonnil or t1) == (t2.nonnil or t2) and (t1.nonnil or t1)\is_a(Num) and t1.base_type == "d"
-    --     switch op
-    --         when "Add","Sub","Mul","Div","Mod","Pow"
-    --             return t1
-
-    if op == "Add"
-        if t1\is_a(ListType) and t2\is_a(t1.item_type)
-            return t1
-        elseif t2\is_a(ListType) and t1\is_a(t2.item_type)
-            return t2
-        elseif t1 == t2 and t1\is_a(ListType)
-            return t1
-        elseif t1 == t2 and t1\is_a(String)
-            return t1
-
-    if t1 == t2 and t1\is_numeric!
-        switch op
-            when "Add","Sub","Mul","Div","Mod","Pow"
-                return t1
-
-    overload_names = Add:"add", Sub:"subtract", Mul:"multiply", Div:"divide", Mod:"modulus", Pow:"raise"
-    return unless overload_names[op]
-    overload = find_declared_type @, overload_names[op], {t1,t2}
-    return overload.return_type if overload
-
-load_module = memoize (path)->
-    libpath = path\gsub("([^/]*)$","lib%1.so")
-    cmd = io.popen("./getsym #{libpath} source")
-    source = cmd\read("a")
-    unless cmd\close!
-        blpath = path\gsub("([^/]*)$","lib%1.so")
-        src_file = io.open(blpath)
-        return nil unless src_file
-        source = src_file\read("*a")
-
-    ast = parse source, filename
-    exports = {}
-    for exp in coroutine.wrap(-> each_tag(ast, "Export"))
-        for var in *exp
-            table.insert(exports, var)
-    t = StructType("Module", [{type: get_type(e), name: e[0]} for e in *exports])
-    log "Module type #{node.name[0]} = {#{concat ["#{m.name}=#{m.type}" for m in *t.sorted_members], ", "}}"
-    return t
-
-get_type = (node)->
-    return node.__type if node.__type
-    get_binop_other = (node, parent)->
-        if parent.__tag == "Assignment"
-            for i,lhs in ipairs parent.lhs
-                return parent.rhs[i] if lhs == node
-            for i,rhs in ipairs parent.rhs
-                return parent.lhs[i] if rhs == node
-        elseif node == parent.lhs
-            return parent.rhs
+bind_type = (typename, decl)=>
+    switch @__tag
+        when "TypeVar"
+            if @[0] == typename
+                @__declaration = highest_priority @__declaration, decl
+        when "Var"
+            if @[0] == typename
+                @__declaration = highest_priority @__declaration, decl
+        when "TypeDeclaration","StructDeclaration","UnionDeclaration","EnumDeclaration","UnitDeclaration"
+            if @name[0] == typename
+                @__declaration = highest_priority @__declaration, decl
         else
-            return parent.lhs
+            for k,v in pairs @
+                continue if type(v) != "table" or (type(k) == "string" and k\match("^__"))
+                bind v, varname, decl
 
-    switch node.__tag
-        when "Int"
-            switch node.__parent.__tag
-                when "Assignment","AddSub","MulDiv","AddUpdate","SubUpdate","MulUpdate","DivUpdate","AndUpdate","OrUpdate","XorUpdate","Equal","NotEqual","Less","LessEq","Greater","GreaterEq"
-                    other = get_binop_other node, node.__parent
-                    return Int if other.__tag == "Int"
-                    t = get_type(other)
-                    if t\is_a(OptionalType)
-                        t = t.nonnil
-                    if t\is_a(Int) or t\is_a(Int32) or t\is_a(Int16) or t\is_a(Int8) or t\is_a(Num) or t\is_a(Num32)
-                        return t
-                when "Cast"
-                    t = parse_type(node.__parent.type)
-                    if t\is_a(OptionalType)
-                        t = t.nonnil
-                    if t\is_a(Int) or t\is_a(Int32) or t\is_a(Int16) or t\is_a(Int8) or t\is_a(Num) or t\is_a(Num32)
-                        return t
-            return Int
-        when "Float"
-            switch node.__parent.__tag
-                when "Assignment","AddSub","MulDiv","AddUpdate","SubUpdate","MulUpdate","DivUpdate","AndUpdate","OrUpdate","XorUpdate","Equal","NotEqual","Less","LessEq","Greater","GreaterEq"
-                    other = get_binop_other node, node.__parent
-                    return Num if other.__tag == "Float" or other.__tag == "Int"
-                    t = get_type(other)
-                    if t\is_a(OptionalType)
-                        t = t.nonnil
-                    if t\is_a(Num) or t\is_a(Num32)
-                        return t
-                when "Cast"
-                    t = parse_type(node.__parent.type)
-                    if t\is_a(OptionalType)
-                        t = t.nonnil
-                    if t\is_a(Num) or t\is_a(Num32)
-                        return t
-            return Num
-        when "Percent" then return Percent
-        when "Measure"
-            m = Measure(1, node.units[0]\gsub("[<>]",""))
-            return MeasureType(m.str)\normalized!
-        when "Declaration" return get_type(node.value)
-        when "Assignment","AddUpdate","SubUpdate","MulUpdate","DivUpdate","AndUpdate","OrUpdate","ButWithUpdate","MethodCallUpdate" return NilType
-        when "EnumDeclaration" then return parse_type(node)
-        when "Bool" then return Bool
-        when "Pass" return NilType
-        when "Nil" then return NilType
-        when "String","Escape","Newline","FieldName" then return String
-        when "TypeOf" then return TypeString
-        when "SizeOf" then return Int
+bind_variables = =>
+    switch @__tag
+        when "Block"
+            for i, stmt in ipairs @
+                switch stmt.__tag
+                    when "Declaration"
+                        bind stmt.var, stmt.var[0], stmt
+                        for j=i+1,#@
+                            bind @[j], stmt.var[0], stmt
+                        bind_variables stmt.var
+                        bind_variables stmt.value
+                    when "FnDecl"
+                        bind stmt, stmt.name[0], stmt
+                        for arg in *stmt
+                            bind arg.name, arg.name[0], arg
+                        bind stmt.body, arg.name[0], arg
+                        for j=1,#@
+                            bind @[j], stmt.name[0], stmt
+                        bind_variables stmt.body
+                    when "TypeDeclaration","StructDeclaration","UnionDeclaration","EnumDeclaration","UnitDeclaration"
+                        bind_type @, stmt.name[0], stmt
+                        bind_variables stmt
+                    when "Extern"
+                        bind stmt.name, stmt.name[0], stmt
+                        for j=1,#@
+                            bind @[j], stmt.name[0], stmt
+                    when "Use"
+                        error "Not implemented"
+                    else
+                        bind_variables stmt
+        when "Lambda"
+            for arg in *@
+                bind arg.name, arg.name[0], arg
+            bind @body, arg.name[0], arg
+            bind_variables @body
+        else
+            for k,v in pairs @
+                continue if type(v) != "table" or (type(k) == "string" and k\match("^__"))
+                bind_variables v
+
+type_or = (t1, t2)->
+    if t1 == nil or t2 == nil
+        return t1 or t2
+    elseif t1\is_a(t2)
+        return t2
+    elseif t2\is_a(t1)
+        return t1
+    elseif t1 == Types.Nil
+        return Types.OptionalType(t2)
+    elseif t2 == Types.Nil
+        return Types.OptionalType(t1)
+    else
+        return nil
+
+assign_types = =>
+    return unless type(@) == "table" and @__tag
+    switch @__tag
+        when "Nil"
+            @__type = Types.NilType
+        when "Bool"
+            @__type = Types.BoolType
+        when "String","Escape","Newline","FieldName"
+            for interp in *@content
+                assign_types interp
+            @__type = Types.StringType
+        when "Interp"
+            assign_types @value
+            @__type = @value.__type
         when "DSL"
-            return String unless node.name
-            name = node.name[0]
-            unless derived_types[name]
-                derived_types[name] = DerivedType name, String
-            return derived_types[name]
-        when "Range" then return Range
-        when "Stop","Skip","Return","Fail"
-            return Void
-        when "Export"
-            return Nil
-        when "Use"
-            tmp = node.__parent
-            while tmp.__parent
-                tmp = tmp.__parent
-            filename = tmp.__filename
+            for interp in *@content
+                assign_types interp
+            if @name and @name[0] != ""
+                @__type = Types.String
+            else
+                @__type = Types.DerivedType(@name[0], Types.String)
+        when "TypeOf"
+            @__type = Types.TypeString
+        when "SizeOf"
+            @__type = Types.Int
+        when "Range"
+            @__type = Types.Range
+        when "Pass"
+            @__type = Types.NilType
+        when "Stop","Skip","Fail"
+            @__type = Types.Abort
+        when "Return"
+            assign_types @value if @value
+            @__type = Types.Abort
+        when "Float"
+            if @__parent.__tag == "Cast"
+                @__type = @__parent.__type
+            else
+                @__type = Types.Num
+        when "Percent"
+            @__type = Types.Percent
+        when "Measure"
+            m = Measure(1, @units[0]\gsub("[<>]",""))
+            return Types.MeasureType(m.str)\normalized!
 
-            module_dirname,module_basename = @name[0]\match("(.*/)([^/]*)$")
-            if not module_dirname
-                module_dirname,module_basename = "",modname
+        when "Int"
+            if @__parent.__tag == "Cast"
+                @__type = @__parent.__type
+            else
+                @__type = Types.Int
 
-            for search_path in (os.getenv("BLANG_MODULE_PATHS") or ".")\gmatch("[^:]+")
-                unless search_path\match("^/")
-                    dirname = filename\match("^.*/") or ""
-                    search_path = dirname..search_path
-                path = "#{search_path}/#{module_dirname}/#{module_basename}"
-                t = load_module(path)
-                return t if t
+        when "Declaration"
+            assign_types @value
+            @__type = @value.__type
+            @var.__type = @value.__type
 
-            node_error node, "Cannot find module: #{modname}"
+        when "Cast"
+            assign_types @value
+            @__type = parse_type(@type)
 
-        when "Cast" then return parse_type(node.type)
+        when "Var"
+            if @__declaration
+                @__type = @__declaration.__type
+
+        when "Lambda"
+            for arg in *@args
+                arg.__type = parse_type(arg.type)
+                arg.arg.__type = arg.__type
+            assign_types @body
+            if @body and @body.__type
+                @__type = Types.FnType([a.__type for a in *@args], @body.__type, [a.arg[0] for a in *@args])
+
+        when "FnDecl"
+            for arg in *@args
+                arg.__type = parse_type(arg.type)
+                arg.arg.__type = arg.__type
+            ret = @returnType and parse_type(@returnType) or Types.NilType
+            @__type = Types.FnType([a.__type for a in *@args], @body.__type, [a.arg[0] for a in *@args])
+            @name.__type = @__type
+            assign_types @body
+
+        when "FnCall"
+            assign_types @fn
+            for arg in *@
+                assign_types arg
+            if @fn.__type
+                node_assert @fn.__type\is_a(Types.FnType), @fn, "Not a function"
+                @__type = @fn.__type.return_type
+
+        when "StructDeclaration"
+            t = Types.StructType(@name[0])
+            for member in *@
+                if member.__tag == "StructField"
+                    member_type = parse_type member.type
+                    for name in *member.names
+                        name.__type = member_type
+                        t\add_member name[0], member_type, (name.inline and true or false)
+                elseif member.__tag == "TaggedUnion"
+                    error "Not implemented"
+                elseif member.__tag == "FnDecl"
+                    assign_types member
+
         when "List"
-            decl_type = node.type and parse_type(node.type)
-            return decl_type if #node == 0
-            item_type = (item)->
-                switch item.__tag
-                    when "If" then return get_type item[1].body[1]
-                    when "For","While","Repeat" then return get_type item.body[1]
-                    else return get_type item
+            if @type
+                return Types.ListType(parse_type(@type))
+            else
+                for item in *@
+                    assign_types item
+                switch @[1].__tag
+                    when "For","While","If"
+                        item_type = @[1].body[1].__type
+                        return unless item_type
+                        @__type = Types.ListType(item_type)
+                    else
+                        item_type = @[1].__type
+                        return unless item_type
+                        @__type = Types.ListType(item_type)
 
-            t = item_type(node[1])
-            if decl_type
-                node_assert t == decl_type.item_type, node[1],
-                    "List is declared as having type #{decl_type}, but this item has type: #{t}"
-
-            for i=2,#node
-                t_i = item_type(node[i])
-                continue if t_i == t
-                if t\is_a(OptionalType)
-                    node_assert t_i == t.nonnil or t_i == NilType, node[i], "Earlier items have type #{t}, but this item is a #{t_i}"
-                elseif t_i == NilType
-                    t = OptionalType(t)
-                elseif t == NilType
-                    t = OptionalType(t_i)
-                elseif t_i\is_a(OptionalType)
-                    node_assert t == t_i.nonnil, node[i], "Earlier items have type #{t}, but this item is a #{t_i}"
-                    t = t_i
-
-            return ListType(t)
         when "Table"
-            decl_type = node.type and parse_type(node.type)
-            return decl_type if #node == 0
+            if @type
+                return Types.TableType(parse_type(@type.keyType), parse_type(@type.valueType))
+            else
+                for entry in *@
+                    assign_types entry
+                switch @[1].__tag
+                    when "TableEntry"
+                        key_type, value_type = @[1].key.__type, @[1].value.__type
+                        return unless key_type and value_type
+                        @__type = Types.TableType(key_type, value_type)
+                    when "For","While","If"
+                        assert_node @[1].body[1].__tag == "TableEntry", @[1].body[1], "Table comprehension should have a [key]=value pair"
+                        key_type, value_type = @[1].body[1].key.__type, @[1].body[1].value.__type
+                        return unless key_type and value_type
+                        @__type = Types.TableType(key_type, value_type)
+                        
 
-            entry_types = (entry)->
-                e = switch entry.__tag
-                    when "If" then entry[1].body[1]
-                    when "For","While","Repeat" then entry.body[1]
-                    else entry
-                node_assert e.__tag == "TableEntry", e, "Expected a table entry here"
-                return get_type(e.key), get_type(e.value)
-
-            key_type, value_type = entry_types node[1]
-
-            if decl_type
-                node_assert key_type == decl_type.key_type and value_type == decl_type.value_type, node[1], "Not expected type: #{t}"
-
-            for i=2,#node
-                t_k, t_v = entry_types node[i]
-                node_assert t_k == key_type, node[i].key, "Item is type #{t_k} but should be #{key_type}"
-                node_assert t_v == value_type, node[i].value, "Item is type #{t_v} but should be #{value_type}"
-
-            return TableType(key_type, value_type)
         when "IndexedTerm"
-            if node.value.__tag == "Var"
-                enum = find_type_alias node, node.value[0]
-                if enum and enum\is_a(EnumType)
-                    node_assert enum.field_values[node.index[0]], node.index, "Not a valid enum field for #{enum.name}. Valid fields are: #{concat enum.fields, ", "}"
-                    return enum
+            assign_types @value
+            assign_types @index
+            return unless @value.__type and @index.__type
 
-            t = get_type node.value
-            is_optional = t\is_a(OptionalType) and t != NilType
-            t = t.nonnil if is_optional
-            if t\is_a(ListType)
-                index_type = get_type(node.index, vars)
-                if index_type == Int or index_type == OptionalType(Int)
-                    return OptionalType(t.item_type)
-                elseif index_type == Range
-                    return is_optional and OptionalType(t) or t
+            value_type = @value.__type
+            is_optional = value_type\is_a(Types.OptionalType) and value_type != Types.NilType
+            t = is_optional and value_type.nonnil or value_type
+            index_type = @index.__type
+
+            if t\is_a(Types.ListType)
+                if index_type == Types.Int or index_type == Types.OptionalType(Types.Int)
+                    @__type = Types.OptionalType(t.item_type)
+                elseif index_type == Types.Range
+                    @__type = is_optional and Types.OptionalType(t) or t
                 else
                     node_error node.index, "Index has type #{index_type}, but expected Int or Range"
-            elseif t\is_a(TableType)
-                index_type = get_type(node.index, vars)
+            elseif t\is_a(Types.TableType)
                 node_assert index_type == t.key_type, node.index, "This table has type #{t}, but is being indexed with #{index_type}"
-                return OptionalType(t.value_type)
-            elseif t\is_a(StructType)
-                if node.index.__tag == "FieldName"
-                    member_name = node.index[1][0]
-                    node_assert t.members[member_name], node.index, "Not a valid struct member of #{t}{#{concat ["#{memb.name}=#{memb.type}" for memb in *t.sorted_members], ", "}}"
-                    ret_type = t.members[member_name].type
-                    return is_optional and OptionalType(ret_type) or ret_type
+                @__type = Types.OptionalType(t.value_type)
+            elseif t\is_a(Types.StructType)
+                if @index.__tag == "FieldName"
+                    member_name = @index[1][0]
+                    node_assert t.members[member_name], @index, "Not a valid struct member of #{t}{#{concat ["#{memb.name}=#{memb.type}" for memb in *t.sorted_members], ", "}}"
+                    member_type = t.members[member_name].type
+                    @__type = is_optional and Types.OptionalType(member_type) or member_type
                 elseif node.index.__tag == "Int"
                     i = tonumber(node.index[0])
-                    ret_type = node_assert(t.members[i], node, "Not a valid #{t} field: #{i}").type
-                    node_assert ret_type, node.index, "#{t} doesn't have a member #{i}"
-                    return is_optional and OptionalType(ret_type) or ret_type
+                    member_type = node_assert(t.members[i], node, "Not a valid #{t} field: #{i}").type
+                    node_assert member_type, @index, "#{t} doesn't have a member #{i}"
+                    @__type = is_optional and Types.OptionalType(member_type) or member_type
                 else
-                    node_error node.index, "Structs can only be indexed by a field name or Int literal"
-            elseif t\is_a(UnionType)
-                node_assert node.index.__tag == "FieldName", node, "Not a union field"
-                member_name = node.index[1][0]
-                node_assert t.members[member_name], node.index, "Not a valid union member of #{t}"
-                member = t.members[member_name]
-                return OptionalType(member.type)
+                    node_error @index, "Structs can only be indexed by a field name or Int literal"
             elseif t\is_a(String)
-                index_type = get_type(node.index, vars)
-                if index_type == Int
-                    return OptionalType(Int)
-                elseif index_type == Range
-                    return t
+                if index_type == Types.Int
+                    @__type = Types.OptionalType(Types.Int)
+                elseif index_type == Types.Range
+                    @__type = t
                 else
                     node_error node.index, "Strings can only be indexed by Ints or Ranges"
             else
                 node_error node.value, "Indexing is not valid on type #{t}"
+
+        when "Declaration"
+            assign_types @value
+            @__type = @value.__type
+            @key.__type = @__type
+
+        when "Or"
+            for item in *@
+                assign_types item
+
+            t = nil
+            for item in *@
+                return unless item.__type
+                if item.__type == Types.Abort
+                    if t and t\is_a(Types.OptionalType)
+                        t = t.nonnil
+                    break
+                t = node_assert type_or(t, item.__type), item, "Type mismatch with #{t}"
+            @__type = t
+
         when "And","Or","Xor"
-            all_bools = true
-            maybe_nil = false
-            types = ["#{get_type val}" for val in *node]
-            for val in *node
-                t = get_type val
-                maybe_nil or= t\is_a(OptionalType) or t == Void
-                all_bools and= t == Bool or t == Void
-            return Bool if all_bools
-            node_assert maybe_nil, node, "Expected either Bool values or something that is possibly nil. Types here are: #{concat types, ", "}"
-            optional = nil
-            for i,val in ipairs node
-                t = get_type val
-                continue if t == NilType
-                if t == Void
-                    if node.__tag == "Or"
-                        node_assert optional, node, "WTF: #{concat types, ","}"
-                        return optional.nonnil
-                    elseif node.__tag == "And"
-                        return optional
+            t = items[1].__type
+            return unless t
+            for i,item in ipairs @
+                assign_types item
+                if item.__type == Types.Abort
+                    if @__tag == "Or"
+                        if t\is_a(Types.OptionalType)
+                            t = t.nonnil
                     else
-                        node_error val, "Failure will always trigger"
-
-                if node.__tag == "Or" and not t\is_a(OptionalType)
-                    if i == 1
-                        node_assert t != Bool, node[i], "This value is a Bool, but subsequent values in this `or` sequence have different types. Either make everything a Bool, or make everything the same optional type."
-                    node_assert i == #node, node[i], "This value is never nil, so subsequent values are ignored"
-                    node_assert t == optional.nonnil, val, "Mismatched type: #{t} doesn't match earlier type: '#{optional}'"
-                    return t
-
-                if optional
-                    node_assert OptionalType(t) == optional, val, "Mismatched type: #{t} doesn't match earlier type: '#{optional}'"
+                        t = Types.Abort
+                elseif item.__type\is_a(Types.OptionalType)
+                    node_assert item.__type.nonnil\is_a(t), item, "Type mismatch with #{t}"
+                    t = Types.OptionalType(t)
+                elseif t\is_a(Types.OptionalType)
+                    node_assert item.__type\is_a(t), item, "Type mismatch with #{t}"
                 else
-                    optional = OptionalType(t)
-            return optional
+                    node_assert item.__type == t, item, "Type mismatch with #{t}"
+            @__type = t
+
         when "Equal","NotEqual","Less","LessEq","Greater","GreaterEq","In"
-            return Bool
-        when "TernaryOp"
-            cond_type = get_type node.condition
-            node_assert cond_type\is_a(Bool) or cond_type\is_a(OptionalType), node.condition, "Expected a Bool or optional value here"
-            true_type = get_type node.ifTrue
-            false_type = get_type node.ifFalse
-            if true_type == false_type
-                return true_type
-            elseif true_type == NilType
-                return OptionalType(false_type)
-            elseif false_type == NilType
-                return OptionalType(true_type)
-            else
-                node_error node, "Values for true/false branches are different: #{true_type} vs #{false_type}"
-        when "AddSub","MulDiv","Mod"
-            lhs_type = get_type node.lhs
-            rhs_type = get_type node.rhs
-            op = if node.__tag == "AddSub"
-                node.op[0] == "+" and "Add" or "Sub"
-            elseif node.__tag == "MulDiv"
-                node.op[0] == "*" and "Mul" or "Div"
-            else
-                node.__tag
-            ret_type = get_op_type(node, lhs_type, op, rhs_type)
-            node_assert ret_type, node, "Invalid #{op} types: #{lhs_type} and #{rhs_type}"
-            return ret_type
-        when "ButWith"
-            base_type = get_type node.base
-            if base_type\is_a(ListType)
-                for index in *node
-                    node_assert index.index, index, "field names are not allowed for Lists"
-                    i_type = get_type(index.index)
-                    value_type = get_type(index.value)
-                    if i_type\is_a(Int)
-                        node_assert value_type == base_type.item_type, index.value, "Value is #{value_type} not #{base_type.item_type}"
-                    elseif i_type\is_a(Range)
-                        node_assert value_type == base_type, index.value, "Value is #{value_type} not #{base_type}"
-                    else
-                        node_error index.index, "Value is #{value_type} not Int or Range"
-                return base_type
-            elseif base_type\is_a(String)
-                for range in *node
-                    node_assert range.index, range, "range names are not allowed for Strings"
-                    if get_type(range.index)\is_a(Range)
-                        value_type = get_type(range.value)
-                        node_assert value_type == base_type, range.value, "Value is #{value_type} not #{base_type}"
-                    else
-                        node_error range.index, "Value is #{value_type} not Range"
-                return base_type
-            elseif base_type\is_a(StructType)
-                for field in *node
-                    if field.field
-                        node_assert base_type.members[field.field[0]], field.field, "Not a valid struct member of #{base_type}"
-                    elseif field.index
-                        node_assert field.index.__tag == "Int", field.index, "Only field names and integer literals are supported for using |[..]=.. on Structs"
-                        n = tonumber(field.index[0])
-                        node_assert base_type.members[n], field.index, "#{base_type} doesn't have a member #{n}"
-                return base_type
-            else
-                node_error node, "| operator is only supported for List and Struct types"
+            @__type = Types.Bool
 
-            return base_type
-        when "Negative"
-            t = get_type node.value
-            node_assert t\is_a(Int) or t\is_a(Num) or t\is_a(Range), node, "Invalid negation type: #{t}"
-            return t
-        when "Len"
-            t = get_type node.value
-            node_assert t\is_a(ListType) or t\is_a(Range) or t\is_a(String) or t\is_a(TableType), node, "Attempt to get length of non-iterable: #{t}"
-            return Int
-        when "Not"
-            t = get_type node.value
-            node_assert t == Bool or t\is_a(OptionalType), node, "Invalid type for 'not': #{t}"
-            return Bool
-        when "Pow"
-            base_type = get_type node.base
-            node_assert base_type\is_a(Num) or base_type\is_a(Int), node.base, "Expected Num or Int, not #{base_type}"
-            exponent_type = get_type node.exponent
-            node_assert exponent_type\is_a(Num) or base_type\is_a(Int), node.exponent, "Expected Num or Int, not #{exponent_type}"
-            return base_type
-        when "Lambda","FnDecl","Extern"
-            if node.__tag == "Extern" and node.type
-                return parse_type(node.type)
-            decl_ret_type = node.return and parse_type(node.return)
-            if decl_ret_type
-                t = FnType([parse_type a.type for a in *node.args], decl_ret_type, [a.arg[0] for a in *node.args])
-                if node.varargs
-                    t.varargs = true
-                return t
-            assert node.__tag != "Extern"
-            if node.__pending == true
-                return nil unless decl_ret_type
-                return FnType([parse_type a.type for a in *node.args], decl_ret_type, [a.arg[0] for a in *node.args])
-            node.__pending = true
-            node_assert node.body.__tag == "Block", node.body, "Expected function body to be a block, not #{node.body.__tag or '<untagged>'}"
-            ret_type = nil
-            for ret in coroutine.wrap ->find_returns(node.body)
-                if ret_type == nil
-                    ret_type = ret.value and get_type(ret.value) or NilType
-                else
-                    t2 = ret.value and get_type(ret.value) or NilType
-                    continue if t2\is_a(ret_type)
-                    if t2 == NilType
-                        ret_type = OptionalType(ret_type)
-                    elseif ret_type == NilType
-                        ret_type = OptionalType(t2)
-                    else
-                        node_error ret, "Return type #{t2} doesn't match earlier return type #{ret_type}"
-            -- Check for fallthrough case:
-            has_fallthrough = (node)->
-                last = node
-                while last
-                    switch last.__tag
-                        when "Return" then return false
-                        when "Block" then last = last[#last]
-                        when "Do" then last = last.body[#last.body]
-                        when "If","When"
-                            for clause in *last
-                                return true if has_fallthrough(clause.body)
-                            return true if not last.elseBody or has_fallthrough(last.elseBody)
-                            return false
-                        when "While","For","Repeat"
-                            return true
-                        when nil then last = last[#last]
-                        else return true
-                    break if last.__tag == "Return"
+        when "If"
+            for clause in *@
+                assign_types clause.condition
+                assign_types clause.body
+            if @elseBody
+                assign_types @elseBody
+            t = nil
+            for clause in *@
+                continue if clause.body.__type == Types.Abort
+                return unless clause.body.__type
+                t = node_assert type_or(t, clause.body.__type), item, "Type mismatch with #{t}"
+            if @elseBody and @elseBody.__type != Types.Abort
+                t = node_assert type_or(t, @elseBody.__type), item, "Type mismatch with #{t}"
+            elseif not @elseBody
+                t = type_or(t, Types.NilType)
+            @__type = t
 
-            if ret_type
-                node_assert ret_type == NilType or not has_fallthrough(node.body), node, "Function is not guaranteed to return a value"
-            else
-                ret_type = NilType
-            node.__pending = nil
-            return FnType([parse_type a.type for a in *node.args], ret_type, [a.arg[0] for a in *node.args])
-        when "Var"
-            return node.__type if node.__type
-            if find_type_alias node, node[0]
-                return TypeString
+        when "When"
+            assign_types @what
+            for clause in *@
+                for case in *clause.cases
+                    assign_types case
+                assign_types clause.body
+            if @elseBody
+                assign_types @elseBody
+            t = nil
+            for clause in *@
+                continue if clause.body.__type == Types.Abort
+                return unless clause.body.__type
+                t = node_assert type_or(t, clause.body.__type), item, "Type mismatch with #{t}"
+            if @elseBody and @elseBody.__type != Types.Abort
+                t = node_assert type_or(t, @elseBody.__type), item, "Type mismatch with #{t}"
+            elseif not @elseBody
+                t = type_or(t, Types.NilType)
+            @__type = t
 
-            if node.__parent.__tag == "Cast"
-                parent_cast = parse_type node.__parent.type
-                return parent_cast
-                
-            var_type = find_declared_type(node, node[0])
-            if not var_type and node.__decl
-                return get_type(node.__decl)
-
-            if not var_type
-                var_type = find_declared_type(node, node[0], "*")
-
-            node_assert var_type, node, "Cannot determine type for this variable. Either it's undefined or you need to provide its type."
-            return var_type
-        when "FnCall"
-            return parse_type(node.type) if node.type
-            fn_type = get_type node.fn
-            node_assert fn_type or node.__parent.__tag == "Block", node, "This function's return type cannot be inferred. It must be specified manually using a type annotation"
-            return NilType unless fn_type
-            node_assert fn_type\is_a(FnType), node.fn, "This is not a function, it's a #{fn_type or "???"}"
-            return fn_type.return_type
-        when "Block"
-            return #node > 0 and get_type(node[#node]) or NilType
-        when "Struct"
-            if node.name
-                alias = find_type_alias node, node.name[0]
-                -- node_assert alias, node, "Undefined struct"
-                return alias if alias
-
-            t = StructType(node.name and node.name[0] or "")
-            field_index = 0
-            for memb in *node
-                if memb.name
-                    t\add_member memb.name[0], get_type(memb.value)
-                else
-                    field_index += 1
-                    t\add_member field_index, get_type(memb.value)
-            return t
-        when "Union"
-            union_type = find_type_alias node, node.name[0]
-            node_assert union_type, node.name, "Couldn't find where this union was defined"
-            member = node_assert union_type.members[node.member[0]], node.member, "Not a valid union field from #{union_type\verbose_type!}"
-            value_type = get_type(node.value)
-            node_assert value_type\is_a(member.type), node.value,
-                "This value is a #{value_type}, but values for #{union_type.name}.#{node.member[0]} should be #{member.type}\n"
-            return union_type
-        when "Interp"
-            return get_type(node.value)
-        when "If","When"
-            first_block = node[1].body
-            t = Void
-
-            check_block = (block)->
-                t2 = get_type(block[#block])
-                if t == Void
-                    t = t2
-                elseif t2 == Void
-                    return
-                elseif t2\is_a(t)
-                    return
-                elseif t\is_a(t2)
-                    t = t2
-                elseif t == NilType
-                    t = OptionalType(t2)
-                elseif t2 == NilType
-                    t = OptionalType(t)
-                else
-                    node_error block[#block],
-                        "This expression has type #{t2}, but the earlier values for this `#{node.__Tage}` expression are all #{t}"
-
-            for clause in *node
-                check_block clause.body
-
-            if node.elseBody
-                check_block node.elseBody
-            elseif not t\is_a(OptionalType)
-                t = OptionalType(t)
-
-            return t
         when "Do"
-            t = Void
-            check_block = (block)->
-                t2 = get_type(block[#block])
-                if t == Void
-                    t = t2
-                elseif t2 == Void
-                    return
-                elseif t2\is_a(t)
-                    return
-                elseif t\is_a(t2)
-                    t = t2
-                elseif t == NilType
-                    t = OptionalType(t2)
-                elseif t2 == NilType
-                    t = OptionalType(t)
-                else
-                    node_error block[#block],
-                        "This expression has type #{t2}, but the earlier values for this `do` expression are all #{t}"
+            for block in *@
+                assign_types block
+            @__type = Types.NilType
 
-            for block in *node
-                check_block block
+        when "Negative"
+            assign_types @value
+            return unless @value.__type
+            node_assert @value.__type\is_numeric!, "Not a valid type to negate: #{@value.__type}"
+            @__type = @value.__type
 
-            -- TODO: this is overly conservative, some skip/stops might not be referring to this `do`:
-            for stop in coroutine.wrap(-> each_tag(node, "Stop"))
-                t = OptionalType(t) unless t\is_a(OptionalType)
-                break
+        when "Not"
+            assign_types @value
+            @__type = Types.Bool
 
-            for stop in coroutine.wrap(-> each_tag(node[#node], "Skip"))
-                t = OptionalType(t) unless t\is_a(OptionalType)
-                break
+        when "Len"
+            assign_types @value
+            @__type = Types.Int
 
-            return t
+        when "Mod","AddSub","MulDiv","Pow"
+            assign_types @lhs
+            assign_types @rhs
+            return unless @lhs.__type and @rhs.__type
+            if @lhs.__type == @rhs.__type and @lhs.__type\is_numeric!
+                @__type = @lhs.__type
+
+        when "ButWith"
+            assign_types @base
+            for override in *@
+                assign_types @override
+            @__type = @base.__type
+
         else
-            error("Cannot infer type for #{viz node}")
-            -- node_error node, "Cannot infer type for: #{node.__tag}"
+            for k,v in pairs @
+                continue if type(k) == "string" and k\match("^__")
+                assign_types v
+            @__type = Types.NilType
 
-    if #node > 0
-        error "Getting a node without a tag: #{viz node}"
-        return get_type(node[#node])
+assign_all_types = (ast)->
+    get_all = (field)->
+        vals = {}
+        recurse = =>
+            vals[@] = @[field]
+            for k,v in pairs @
+                continue if type(v) != "table" or (type(k) == "string" and k\match("^__"))
+                recurse v
+        recurse ast
+        return vals
 
-    error("Cannot infer type for #{viz node}")
-    -- assert(node.__tag, "Cannot infer type for #{viz node}")
-    -- node_error node, "Cannot infer type for: #{node.__tag}"
+    while true
+        progress = false
+
+        print "Binding variables..."
+        pre_decls = get_all("__declaration")
+        bind_variables ast
+        post_decls = get_all("__declaration")
+        for k,v in pairs post_decls
+            if pre_decls[k] != post_decls[k]
+                progress = true
+                break
+        
+        print "Assigning types..."
+        pre_types = get_all("__type")
+        assign_types ast
+        post_types = get_all("__type")
+        for k,v in pairs post_types
+            if pre_types[k] != post_types[k]
+                progress = true
+                break
+
+        break if not progress
+
+    print "Finished assigning types!"
+    print viz(ast)
+
+    for var in coroutine.wrap(-> each_tag("Var","TypeVar"))
+        assert_node var.__declaration, var, "Couldn't determine what this variable refers to"
+
+get_type = (ast)-> ast.__type
 
 return {
-    :parse_type, :get_type, :Type, :NamedType, :ListType, :TableType, :FnType, :StructType,
-    :Value, :Value32, :Value16, :Value8, :Pointer, :Int, :Int32, :Int16, :Int8, :Num, :Num32, :Percent, :String, :Bool, :Void, :NilType, :Range,
-    :OptionalType, :MeasureType, :TypeString, :EnumType, :UnionType,
+    :assign_all_types,
+    :get_type,
+    :parse_type,
 }
