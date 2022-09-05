@@ -54,9 +54,10 @@ bind_var = (scope, var)->
     switch scope.__tag
         when "Var"
             if scope[0] == var[0]
-                print "Bound: #{var[0]}"
                 scope.__declaration = var
         when "FnDecl","Lambda"
+            if scope.selfVar and scope.selfVar[0] == var[0]
+                return
             for arg in *scope.args
                 if arg.name[0] == var[0]
                     -- Don't hook up shadowed args
@@ -79,9 +80,9 @@ bind_type = (scope, typevar)->
             if scope.name[0] == typevar[0]
                 scope.__declaration = typevar
         else
-            for k,v in pairs scope
-                continue if type(v) != "table" or (type(k) == "string" and k\match("^__"))
-                bind_var v, typevar
+            for k,child in pairs scope
+                continue if type(child) != "table" or (type(k) == "string" and k\match("^__"))
+                bind_type child, typevar
 
 table.find = (t, obj)->
     for k,v in pairs t
@@ -103,6 +104,9 @@ bind_variables = =>
             bind_variables @value
         when "FnDecl"
             @name.__declaration = @name
+            if @selfVar
+                @selfVar.__declaration = @selfVar
+                bind_var @body, @selfVar
             for arg in *@args
                 arg.name.__declaration = arg.name
                 bind_var @body, arg.name
@@ -117,7 +121,9 @@ bind_variables = =>
         when "TypeDeclaration","StructDeclaration","UnionDeclaration","EnumDeclaration","UnitDeclaration"
             @name.__declaration = @name
             bind_type @__parent, @name
-            bind_variables @
+            for k,child in pairs @
+                continue if type(child) != "table" or (type(k) == "string" and k\match("^__"))
+                bind_variables child
         when "Extern"
             @name.__declaration = @name
             bind_var @__parent, @name
@@ -162,7 +168,7 @@ assign_types = =>
         when "Bool"
             @__type = Types.BoolType
         when "String","Escape","Newline","FieldName"
-            for interp in *@content
+            for interp in *(@content or {})
                 assign_types interp
             @__type = Types.String
         when "Interp"
@@ -233,6 +239,9 @@ assign_types = =>
                 @__type = Types.FnType([a.__type for a in *@args], @body.__type, [a.name[0] for a in *@args])
 
         when "FnDecl"
+            if @selfVar
+                node_assert @__parent.__tag == "StructDeclaration", @, "Method definition is not inside a struct"
+                @selfVar.__type = @__parent.name.__type
             for arg in *@args
                 arg.__type = parse_type(arg.type)
                 arg.name.__type = arg.__type
@@ -259,6 +268,24 @@ assign_types = =>
                         t\add_member name[0], member_type, (name.inline and true or false)
                 elseif member.__tag == "FnDecl"
                     assign_types member
+                elseif member.__tag == "Declaration"
+                    assign_types member
+            @__type = t
+
+        when "Struct"
+            for member in *@
+                assign_types member
+            if @name
+                if @name.__declaration
+                    struct_dec = @name.__declaration.__parent
+                    node_assert struct_dec.__tag == "StructDeclaration", @name, "This isn't a struct name, it's a #{struct_dec.__tag}"
+                    @__type = struct_dec.__type
+            else
+                t = Types.StructType("")
+                for member in *@
+                    return unless member.__type
+                    t\add_member member.name, member.__type
+                @__type = t
 
         when "UnionDeclaration"
             t = Types.StructType(@name[0])
@@ -323,32 +350,32 @@ assign_types = =>
                 elseif index_type == Types.Range
                     @__type = is_optional and Types.OptionalType(t) or t
                 else
-                    node_error node.index, "Index has type #{index_type}, but expected Int or Range"
+                    node_error @index, "Index has type #{index_type}, but expected Int or Range"
             elseif t\is_a(Types.TableType)
-                node_assert index_type == t.key_type, node.index, "This table has type #{t}, but is being indexed with #{index_type}"
+                node_assert index_type == t.key_type, @index, "This table has type #{t}, but is being indexed with #{index_type}"
                 @__type = Types.OptionalType(t.value_type)
             elseif t\is_a(Types.StructType)
                 if @index.__tag == "FieldName"
-                    member_name = @index[1][0]
+                    member_name = @index[0]
                     node_assert t.members[member_name], @index, "Not a valid struct member of #{t}{#{concat ["#{memb.name}=#{memb.type}" for memb in *t.sorted_members], ", "}}"
                     member_type = t.members[member_name].type
                     @__type = is_optional and Types.OptionalType(member_type) or member_type
-                elseif node.index.__tag == "Int"
-                    i = tonumber(node.index[0])
-                    member_type = node_assert(t.members[i], node, "Not a valid #{t} field: #{i}").type
+                elseif @index.__tag == "Int"
+                    i = tonumber(@index[0])
+                    member_type = node_assert(t.members[i], @, "Not a valid #{t} field: #{i}").type
                     node_assert member_type, @index, "#{t} doesn't have a member #{i}"
                     @__type = is_optional and Types.OptionalType(member_type) or member_type
                 else
                     node_error @index, "Structs can only be indexed by a field name or Int literal"
-            elseif t\is_a(String)
+            elseif t\is_a(Types.String)
                 if index_type == Types.Int
                     @__type = Types.OptionalType(Types.Int)
                 elseif index_type == Types.Range
                     @__type = t
                 else
-                    node_error node.index, "Strings can only be indexed by Ints or Ranges"
+                    node_error @index, "Strings can only be indexed by Ints or Ranges"
             else
-                node_error node.value, "Indexing is not valid on type #{t}"
+                node_error @value, "Indexing is not valid on type #{t}"
 
         when "Declaration"
             assign_types @value
@@ -492,9 +519,9 @@ assign_all_types = (ast)->
         vals = {}
         recurse = =>
             vals[@] = @[field]
-            for k,v in pairs @
-                continue if type(v) != "table" or (type(k) == "string" and k\match("^__"))
-                recurse v
+            for k,child in pairs @
+                continue if type(child) != "table" or (type(k) == "string" and k\match("^__"))
+                recurse child
         recurse ast
         return vals
 
