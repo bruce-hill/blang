@@ -10,7 +10,7 @@ term: (
     / Percent / Measure / Float / Int
     / String / DSL
     / List / Table
-    / FnCall
+    / Struct / FnCall
     / `(__extended-expr__`)
 )
 IndexedTerm:: (!`0-9 @value=(methodCall / IndexedTerm / term)
@@ -81,6 +81,7 @@ Measure:: @amount=(Float/Int) @units=MeasureType
 MeasureType:: `< +@(@unit=(id !~ keyword) [`^ @power=([`-] +`0-9)]) % (`*,/) `>
 Percent:: (`0-9 *`0-9,_ [`. *`0-9] / `. +`0-9) `%
 Int:: "0x" +`0-9,a-f,A-F,_ / [`-,+] `0-9 *`0-9,_
+Struct:: [@name=Var] _ `{ __ *@:StructField=([`. @name=FieldName __`=__] @value=extended-expr) % (__`,__) __[`, __] `}
 FnCall:: @fn=(FnCall / IndexedTerm / Cast / Var / `(__required-extended-expr__`)) `( __ *(KeywordArg/extended-expr) % (__`,__) __ [`,__] `)
 KeywordArg:: @name=Var _ `= _ @value=required-extended-expr
 methodCall: @:FnCall=((methodCall / IndexedTerm / Cast / term) _ `| _

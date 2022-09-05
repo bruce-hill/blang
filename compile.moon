@@ -225,10 +225,10 @@ class Environment
         @fn_code ..= "}\n"
 
     get_tostring_fn: (t, scope)=>
-        if t != Types.String
+        -- if t != Types.String
             -- OVERLOAD `tostring()`
-            error "Not impl"
-            return fn,needs_loading if fn
+            -- error "Not impl: tostring(#{t})"
+            -- return fn,needs_loading if fn
 
         -- HACK: these primitive values' functions only take 1 arg, but it
         -- should be safe to pass them an extra callstack argument, which
@@ -623,33 +623,6 @@ class Environment
 
         assign_all_types ast, @
 
-        declarations = {}
-        find_declarations = =>
-            if @__declaration
-                declarations[@__declaration] = true
-            for k,v in pairs(@)
-                continue unless type(k) == "string" and not k\match("^__") and type(v) == "table"
-                find_declarations v
-        find_declarations ast
-
-        is_in_function = (node)->
-            while node
-                return true if node.__tag == "FnDecl" or node.__tag == "Lambda"
-                node = node.__parent
-            return false
-
-        file_scope_vars = {}
-        for decl in pairs declarations
-            switch decl.__tag
-                when "FnDecl"
-                    decl.__register = @fresh_global decl.name[0]
-                when "Declaration"
-                    if is_in_function @
-                        decl.__register = @fresh_local decl.var[0]
-                    else
-                        decl.__location = @fresh_global decl.var[0]
-                        table.insert file_scope_vars, decl
-
         -- Enum field names
         for e in coroutine.wrap(-> each_tag(ast, "EnumDeclaration"))
             t = get_type(e)
@@ -664,99 +637,50 @@ class Environment
             fieldnames = "$#{t\id_str!}.member_names"
             @type_code ..= "data #{fieldnames} = {#{concat ["l 0" for _ in pairs t.members], ", "}}\n"
 
-        @used_names["args"] = true
-        @used_names["say"] = true
         for v in coroutine.wrap(-> each_tag(ast, "Var"))
             if v[0] == "args"
-                v.__location = "$args"
+                v.__declaration = {__location:"$args"}
+                -- v.__location = "$args"
                 v.__type = Types.ListType(Types.String)
             elseif v[0] == "say"
-                v.__register = "$puts"
+                v.__declaration = {__register:"$puts"}
+                -- v.__register = "$puts"
                 v.__type = Types.FnType({Types.String}, Types.NilType, {"text"})
 
         is_file_scope = (scope)->
             while scope
                 return true if scope == ast
                 switch scope.__tag
-                    when "FnDecl","Lambda","Macro"
+                    when "FnDecl","Lambda","Macro","For"
                         return false
                 scope = scope.__parent
             error("Unexpectedly reached a node not parented to top-level AST")
 
         file_scope_vars = {}
         -- Set up variable registers:
-        hook_up_refs = (var, scope, var_type)->
-            if not var.__type
-                var.__type = var_type
-            if not var.__register and not var.__location
-                if var.__parent and var.__parent.__tag == "Declaration" and is_file_scope var
-                    var.__location = @fresh_global var[0]
-                    file_scope_vars[var] = true
+        for v in coroutine.wrap(-> each_tag(ast, "Var"))
+            decl = v.__declaration
+            node_assert decl, v, "Couldn't find declaration"
+            reg = decl.__register
+            loc = decl.__location
+            if reg or loc
+                v.__register = reg
+                v.__location = loc
+            else
+                if is_file_scope(decl)
+                    loc = @fresh_global v[0]
+                    decl.__location = loc
+                    v.__location = loc
+                    table.insert file_scope_vars, v
                 else
-                    var.__register = @fresh_local var[0]
-
-            switch scope.__tag
-                when "Var"
-                    if scope[0] == var[0]
-                        ok = if var_type\is_a(Types.FnType)
-                            if (scope.__parent.__tag == "FnCall" or scope.__parent.__tag == "MethodCallUpdate") and scope == scope.__parent.fn
-                                arg_types = {}
-                                fncall = scope.__parent
-                                for arg in *fncall
-                                    if arg.__tag == "KeywordArg"
-                                        arg_types[arg.name[0]] = get_type(arg.value)
-                                    else
-                                        table.insert arg_types, get_type(arg)
-                                return_type = fncall.type and parse_type(fncall.type) or nil
-                                var_type\matches(arg_types, return_type)
-                            elseif scope.__parent.__tag == "Cast"
-                                cast_type = parse_type scope.__parent.type
-                                (var_type == cast_type)
-                            else
-                                false
-                        else
-                            true
-
-                        if ok or not (scope.__register or scope.__location)
-                            -- node_assert not scope.__register and not scope.__location, var, "Variable shadows earlier declaration #{scope.__decl}"
-                            scope.__register = var.__register
-                            scope.__location = var.__location
-                            scope.__decl = var
-                            scope.__type = var_type
-                when "Declaration"
-                    hook_up_refs var, scope.value, var_type
-                when "FnDecl","Lambda"
-                    if (var.__register and var.__register\match("^%$")) or var.__location
-                        hook_up_refs var, scope.body, var_type
-                when "FnCall","MethodCallUpdate"
-                    arg_types = {}
-                    for arg in *scope
-                        hook_up_refs var, arg, var_type
-                        if arg.__tag == "KeywordArg"
-                            arg_types[arg.name[0]] = get_type(arg.value)
-                        else
-                            table.insert arg_types, get_type(arg)
-                    if var_type and var_type\is_a(Types.FnType) and var_type\matches(arg_types)
-                        hook_up_refs var, scope.fn, var_type
-                else
-                    for k,node in pairs scope
-                        if type(node) == 'table' and not (type(k) == 'string' and k\match("^__"))
-                            hook_up_refs var, node, var_type
-
-        for s in coroutine.wrap(-> each_tag(ast, "StructDeclaration", "UnionDeclaration"))
-            var = {__tag:"Var", [0]: s.name[0], __location: @get_string_reg(s.name[0], "typestring"), __parent:s.__parent}
-            hook_up_refs var, s.__parent, Types.TypeString
-
-            for method in *(s.methods or {})
-                method.__register = @fresh_global(method.name[0])
-                method.__decl = method
-                method.name.__register = method.__register
-                method.name.__decl = method
-                m_t = get_type(method)
-                hook_up_refs method.name, s.__parent, m_t
+                    reg = @fresh_local v[0]
+                    decl.__register = reg
+                    v.__register = reg
+            assert v.__register or v.__location, "WTF"
 
         -- Compile modules:
         for use in coroutine.wrap(-> each_tag(ast, "Use"))
+            error "Not implemented"
             module_dirname,module_basename = use.name[0]\match("(.*/)([^/]*)$")
             if not module_dirname
                 module_dirname,module_basename = "",modname
@@ -784,6 +708,7 @@ class Environment
         naked_imports = {}
         -- Hook up naked imports
         for use in coroutine.wrap(-> each_tag(ast, "Use"))
+            error "Not implemented"
             continue if use.as
             i = 1
             while use.__parent[i] != use
@@ -800,29 +725,6 @@ class Environment
                 hook_up_refs pseudo_var, scope, fn_type
                 table.insert naked_imports, pseudo_var
 
-        for vardec in coroutine.wrap(-> each_tag(ast, "Declaration"))
-            scope = if vardec.__parent.__tag == "Block"
-                i = 1
-                while vardec.__parent[i] != vardec
-                    i += 1
-                {table.unpack(vardec.__parent, i+1)}
-            elseif (vardec.__parent.__tag == "Clause" or vardec.__parent.__tag == "While") and vardec == vardec.__parent.condition
-                vardec.__parent.body
-            else vardec.__parent
-
-            t = vardec.type and parse_type(vardec.type) or get_type(vardec.value)
-            if (vardec.__parent.__tag == "Clause" or vardec.__parent.__tag == "While") and vardec == vardec.__parent.condition and t\is_a(Types.OptionalType)
-                t = t.nonnil
-            hook_up_refs vardec.var, scope, t
-
-            block = vardec.__parent
-            loop = block and block.__parent
-            while loop and not loop.__tag
-                loop = loop.__parent
-            if loop and (loop.__tag == "For" or loop.__tag == "While" or loop.__tag == "Repeat")
-                if block == loop.body and loop.between
-                    hook_up_refs vardec.var, loop.between, t
-
         -- Set up externs
         for extern in coroutine.wrap(-> each_tag(ast, "Extern"))
             extern.__register = "$#{extern.name[0]}"
@@ -831,48 +733,6 @@ class Environment
             extern.name.__decl = extern
             t = get_type(extern)
             hook_up_refs extern.name, extern.__parent, t
-
-        -- Set up function names (global):
-        for fndec in coroutine.wrap(-> each_tag(ast, "FnDecl", "Lambda"))
-            fndec.__register or= @fresh_global(fndec.name and fndec.name[0] or "lambda")
-            fndec.__decl = fndec
-            for a in *fndec.args
-                a.arg.__register,a.arg.__location = nil,nil
-                hook_up_refs a.arg, fndec.body, parse_type(a.type)
-            if fndec.name
-                fndec.name.__register = fndec.__register
-                fndec.name.__decl = fndec
-                t = get_type(fndec)
-                hook_up_refs fndec.name, fndec.__parent, t
-                    
-        for for_block in coroutine.wrap(-> each_tag(ast, "For"))
-            if for_block.val
-                for_block.val.__register,for_block.val.__location = nil,nil
-                t = get_type(for_block.val)
-                hook_up_refs for_block.val, for_block.body, t
-                hook_up_refs for_block.val, for_block.between, t if for_block.between
-                hook_up_refs for_block.val, for_block.filter, t if for_block.filter
-            if for_block.index
-                for_block.index.__register,for_block.index.__location = nil,nil
-                t = get_type(for_block.index)
-                hook_up_refs for_block.index, for_block.body, t
-                hook_up_refs for_block.index, for_block.between, t if for_block.between
-                hook_up_refs for_block.index, for_block.filter, t if for_block.filter
-
-        -- Look up which function to use for each callsite:
-        for call in coroutine.wrap(-> each_tag(ast, "FnCall","MethodCallUpdate"))
-            if call.fn.__tag == "Var" and not (call.fn.__register or call.fn.__location)
-                call_sig = "(#{concat [tostring(get_type(a)) for a in *call], ","})"
-                top = call.__parent
-                while top.__parent do top = top.__parent
-                candidates = {}
-                for decl in coroutine.wrap(-> each_tag(top, "FnDecl"))
-                    if decl.name[0] == call.fn[0]
-                        table.insert candidates, "#{call.fn[0]}#{get_type(decl)}"
-
-                node_assert #candidates > 0, call.fn, "There is no function with this name"
-                node_assert #candidates > 1, call.fn, "This function is being called with: #{call.fn[0]}#{call_sig} which doesn't match the definition: #{candidates[1]}"
-                node_error call.fn, "This function is being called with: #{call.fn[0]}#{call_sig} which doesn't match any of the definitions:\n  - #{concat candidates, "\n  - "}"
 
         -- Compile functions:
         for fndec in coroutine.wrap(-> each_tag(ast, "FnDecl", "Lambda"))
@@ -893,7 +753,7 @@ class Environment
         code ..= "data $exports = {#{concat [get_type(e).base_type.." 0" for e in *exports], ","}}\n"
         for var in *naked_imports
             code ..= "data #{var.__location} = {#{get_type(var).base_type} 0}\n"
-        for var in pairs file_scope_vars
+        for var in *file_scope_vars
             code ..= "data #{var.__location} = {#{get_type(var).base_type} 0}\n"
         code ..= "#{@fn_code}\n" if #@fn_code > 0
 
@@ -1298,6 +1158,7 @@ expr_compilers =
                 code ..= "#{chunk_reg} =l copy #{env\get_string_reg chunk, "str.literal"}\n"
             else
                 t = get_type(chunk)
+                node_assert t, chunk, "WTF: #{viz chunk}"
                 val_reg,val_code = env\to_reg chunk
                 code ..= val_code
                 if t == Types.String

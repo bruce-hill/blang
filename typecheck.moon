@@ -107,41 +107,57 @@ bind_type = (typename, decl)=>
                 continue if type(v) != "table" or (type(k) == "string" and k\match("^__"))
                 bind v, varname, decl
 
+table.find = (t, obj)->
+    for k,v in pairs t
+        if v == obj
+            return k
+
 bind_variables = =>
     switch @__tag
-        when "Block"
-            for i, stmt in ipairs @
-                switch stmt.__tag
-                    when "Declaration"
-                        bind stmt.var, stmt.var[0], stmt
-                        for j=i+1,#@
-                            bind @[j], stmt.var[0], stmt
-                        bind_variables stmt.var
-                        bind_variables stmt.value
-                    when "FnDecl"
-                        bind stmt, stmt.name[0], stmt
-                        for arg in *stmt
-                            bind arg.name, arg.name[0], arg
-                        bind stmt.body, arg.name[0], arg
-                        for j=1,#@
-                            bind @[j], stmt.name[0], stmt
-                        bind_variables stmt.body
-                    when "TypeDeclaration","StructDeclaration","UnionDeclaration","EnumDeclaration","UnitDeclaration"
-                        bind_type @, stmt.name[0], stmt
-                        bind_variables stmt
-                    when "Extern"
-                        bind stmt.name, stmt.name[0], stmt
-                        for j=1,#@
-                            bind @[j], stmt.name[0], stmt
-                    when "Use"
-                        error "Not implemented"
-                    else
-                        bind_variables stmt
+        when "Declaration"
+            bind @var, @var[0], @
+            switch @__parent.__tag
+                when "Block"
+                    pos = table.find(@__parent, @)
+                    for i=pos+1,#@__parent
+                        bind @__parent[i], @var[0], @
+                when "Clause"
+                    bind @__parent.body, @var[0], @
+            bind_variables @var
+            bind_variables @value
+        when "FnDecl"
+            bind @, @name[0], @
+            for arg in *@
+                bind arg.name, arg.name[0], arg
+                bind @body, arg.name[0], arg
+            bind @body, @name[0], @
+            bind @__parent, @name[0], @
+            bind_variables @body
         when "Lambda"
             for arg in *@
                 bind arg.name, arg.name[0], arg
             bind @body, arg.name[0], arg
             bind_variables @body
+        when "TypeDeclaration","StructDeclaration","UnionDeclaration","EnumDeclaration","UnitDeclaration"
+            bind_type @__parent, @name[0], @
+            bind_variables @
+        when "Extern"
+            bind @name, @name[0], @
+            bind @__parent, @name[0], @
+        when "Use"
+            error "Not implemented"
+        when "For"
+            if @index
+                bind @index, @index[0], @index
+                bind @body, @index[0], @index
+                bind @between, @index[0], @index if @between
+            if @val
+                bind @val, @val[0], @val
+                bind @body, @val[0], @val
+                bind @between, @val[0], @val if @between
+
+            bind_variables @body
+            bind_variables @between if @between
         else
             for k,v in pairs @
                 continue if type(v) != "table" or (type(k) == "string" and k\match("^__"))
@@ -171,7 +187,7 @@ assign_types = =>
         when "String","Escape","Newline","FieldName"
             for interp in *@content
                 assign_types interp
-            @__type = Types.StringType
+            @__type = Types.String
         when "Interp"
             assign_types @value
             @__type = @value.__type
@@ -269,6 +285,8 @@ assign_types = =>
             else
                 for item in *@
                     assign_types item
+                    if not item.__type
+                        node_error item, "Couldn't get the type here #{item.__tag}"
                 switch @[1].__tag
                     when "For","While","If"
                         item_type = @[1].body[1].__type
@@ -398,6 +416,25 @@ assign_types = =>
             elseif not @elseBody
                 t = type_or(t, Types.NilType)
             @__type = t
+        
+        when "For"
+            assign_types @iterable
+            iter_type = @iterable.__type
+            if iter_type
+                if iter_type\is_a(Types.TableType)
+                    if @index and @val
+                        @index.__type = iter_type.key_type
+                        @val.__type = iter_type.value_type
+                    else
+                        @val.__type = iter_type.key_type
+                elseif iter_type\is_a(Types.ListType)
+                    @index.__type = Types.Int if @index
+                    @val.__type = iter_type.item_type
+                elseif iter_type == Types.Range
+                    @index.__type = Types.Int if @index
+                    @val.__type = Types.Int
+            assign_types @body
+            assign_types @between if @between
 
         when "When"
             assign_types @what
