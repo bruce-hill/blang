@@ -770,7 +770,7 @@ class Environment
 
         for fndec in coroutine.wrap(-> each_tag(ast, "FnDecl"))
             if fndec.name[0] == "main" and #fndec.args == 0
-                code ..= "call #{fndec.name.__register}()\n"
+                code ..= "  call #{fndec.name.__register}()\n"
                 break
 
         for i,e in ipairs exports
