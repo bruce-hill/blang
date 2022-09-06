@@ -169,7 +169,7 @@ assign_types = =>
         when "Nil"
             @__type = Types.NilType
         when "Bool"
-            @__type = Types.BoolType
+            @__type = Types.Bool
         when "String","Escape","Newline","FieldName"
             for interp in *(@content or {})
                 assign_types interp
@@ -432,9 +432,14 @@ assign_types = =>
             @__type = t
 
         when "And","Or","Xor"
+            items = if @__tag == "Xor"
+                {@lhs, @rhs}
+            else
+                @
+            assign_types items[1]
             t = items[1].__type
             return unless t
-            for i,item in ipairs @
+            for i,item in ipairs items
                 assign_types item
                 if item.__type == Types.Abort
                     if @__tag == "Or"
