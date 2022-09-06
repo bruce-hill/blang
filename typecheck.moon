@@ -2,48 +2,51 @@ Types = require 'types'
 import log, viz, id, node_assert, node_error, get_node_pos, print_err, each_tag from require 'util'
 import Measure, register_unit_alias from require 'units'
 concat = table.concat
+local assign_types
 
 parse_type = =>
     return @__parsed_type if @__parsed_type
     switch @__tag
         when "Var","TypeVar"
             if @__declaration
-                return @__declaration.__type
-            elseif Types[@[0]]
-                return Types[@[0]]
+                assign_types @__declaration.__parent unless @__declaration.__type
+                @__parsed_type = node_assert @__declaration.__type, @, "Couldn't figure out this type"
+            else
+                @__parsed_type = Types.NamedType(@[0])
         when "OptionalType"
-            nonnil = parse_type(@nonnil)
-            return unless nonnil
-            return Types.OptionalType(nonnil)
+            nonnil = node_assert parse_type(@nonnil), @nonnil, "Couldn't parse this type"
+            @__parsed_type = Types.OptionalType(nonnil)
         when "MeasureType"
             m = Measure(1, @[0]\gsub("[<>]",""))
-            return Types.MeasureType(m.str)\normalized!
+            @__parsed_type = Types.MeasureType(m.str)\normalized!
         when "TupleType"
             t = Types.StructType("")
+            @__parsed_type = t
             for memgroup in *@members
                 member_type = parse_type memgroup.type
                 return unless member_type
                 for name in *memgroup.names
                     t\add_member name[0], member_type, (name.inline and true or false)
-            return t
         when "TableType"
-            key = parse_type @keyType
-            return unless key
-            val = parse_type @valueType
-            return unless val
-            return Types.TableType(key, val)
+            key = node_assert parse_type(@keyType), @keyType, "Couldn't parse this type"
+            val = node_assert parse_type(@valueType), @valueType, "Couldn't parse this type"
+            @__parsed_type = Types.TableType(key, val)
         when "TableType"
-            item = parse_type @itemtype
-            return unless item
-            return Types.ListType(item)
+            item = node_assert parse_type(@itemtype), @itemType "Couldn't parse this type"
+            @__parsed_type = Types.ListType(item)
         when "FnType"
-            ret_type = parse_type @returnType
+            ret_type = if @returnType
+                node_assert parse_type(@returnType), @returnType, "Couldn't parse this type"
+            else
+                Types.NilType
             arg_types = {}
             for arg in *@args
-                arg_t = parse_type arg
-                return unless arg_t
+                arg_t = node_assert parse_type(arg), arg, "Couldn't parse this type"
                 table.insert arg_types, arg_t
-            return Types.FnType(arg_types, ret_type)
+            @__parsed_type = Types.FnType(arg_types, ret_type)
+        else
+            error "Not implemented"
+    return @__parsed_type
 
 get_fn_type = (fndec)->
     ret_type = node.returnType and parse_type(node.returnType) or Types.NilType
@@ -260,13 +263,14 @@ assign_types = =>
 
         when "StructDeclaration"
             t = Types.StructType(@name[0])
+            @__type = t
+            @name.__type = t if @name
             for member in *@
                 if member.__tag == "StructField"
-                    member_type = parse_type member.type
+                    member_type = node_assert parse_type(member.type), member.type, "Couldn't parse this type"
                     for name in *member.names
                         name.__type = member_type
                         t\add_member name[0], member_type, (name.inline and true or false)
-            @__type = t
             @__methods = {}
             for member in *@
                 if member.__tag == "FnDecl"
@@ -574,11 +578,6 @@ assign_all_types = (ast)->
                 recurse child
         recurse ast
         return vals
-
-    for name, type in pairs(Types)
-        typevar = {[0]:name, __type:type, __tag:"TypeVar"}
-        typevar.__declaration = typevar
-        bind_type ast, typevar
 
     while true
         progress = false

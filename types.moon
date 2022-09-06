@@ -199,7 +199,7 @@ NilType.nil_value = 0
 
 class OptionalType extends Type
     new: (@nonnil)=>
-        assert @nonnil and @nonnil != NilType
+        assert @nonnil and @nonnil != NilType, "Invalid optional value: #{@nonnil}"
         if @nonnil.__class == OptionalType
             @nonnil = assert(@nonnil.nonnil)
         @base_type = @nonnil.base_type
