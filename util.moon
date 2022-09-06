@@ -5,6 +5,13 @@ log = (...)->
     t = {...}
     io.stderr\write concat(t, " ").."\n"
 
+id = =>
+    mt = getmetatable(@)
+    setmetatable(@, nil)
+    ret = tostring(@)
+    setmetatable(@, mt)
+    return ret
+
 viz = =>
     if type(@) != 'table'
         return "\x1b[34m#{@}\x1b[m"
@@ -83,4 +90,4 @@ each_tag = (...)=>
     for k,v in pairs(@)
         each_tag(v, ...) if type(v) == 'table' and not (type(k) == 'string' and k\match("^__"))
 
-return (:log, :viz, :print_err, :set_file, :node_assert, :node_error, :get_node_pos, :each_tag)
+return (:log, :viz, :print_err, :set_file, :node_assert, :node_error, :get_node_pos, :each_tag, :id)

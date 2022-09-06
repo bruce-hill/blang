@@ -1,7 +1,7 @@
 Types = require 'types'
 bp = require 'bp'
 import assign_all_types, get_type, parse_type from require('typecheck')
-import log, viz, node_assert, node_error, get_node_pos, print_err, each_tag from require 'util'
+import log, viz, id, node_assert, node_error, get_node_pos, print_err, each_tag from require 'util'
 import Measure, register_unit_alias from require 'units'
 concat = table.concat
 
@@ -193,6 +193,9 @@ class Environment
 
     declare_function: (fndec)=>
         args = ["#{parse_type(arg.type).base_type} #{arg.name.__register}" for arg in *fndec.args]
+        if fndec.selfVar
+            node_assert fndec.selfVar.__type, fndec.selfVar, "Couldn't find type"
+            table.insert args, 1, "#{fndec.selfVar.__type.base_type} #{fndec.selfVar.__register}"
         fn_scope = @inner_scope {"%#{arg.name[0]}",true for arg in *fndec.args}
 
         fn_type = get_type fndec
@@ -592,7 +595,7 @@ class Environment
             macros[m.name[0]][#m.args] = substitute(m, macro_vars)
 
         apply_macros = (ast)->
-            return ast unless type(ast) == 'table'
+            return ast if type(ast) != 'table'
             if ast.__tag == "Macro"
                 return {[0]:"pass", __tag:"Pass"}
 
@@ -605,7 +608,7 @@ class Environment
                         body = body[1]
                     return apply_macros(substitute(body, {mac.args[i][0], apply_macros(ast[i]) for i=1,#ast}))
 
-            return {k,(if type(k) == 'string' and k\match("^__") then v else apply_macros(v)) for k,v in pairs ast}
+            return {k,apply_macros(v) for k,v in pairs(ast) when k != "__parent"}
                 
         ast = apply_macros(ast)
         add_parenting = (ast)->
@@ -619,6 +622,7 @@ class Environment
 
     compile_program: (ast, filename)=>
         ast = @apply_macros(ast)
+
         @type_code = "type :Range = {l,l,l}\n"
 
         assign_all_types ast, @
@@ -664,6 +668,7 @@ class Environment
             continue if v.__register or v.__location
             if v.__parent.__tag == "FnDecl" and v == v.__parent.name
                 v.__register = @fresh_global v[0]
+                print "BIND GLOBAL #{id v} = #{viz v} #{v.__register}"
             elseif is_file_scope(v)
                 v.__location = @fresh_global v[0]
                 table.insert file_scope_vars, v
@@ -675,6 +680,7 @@ class Environment
             node_assert v.__declaration, v, "No declaration found"
             v.__register = v.__declaration.__register
             v.__location = v.__declaration.__location
+            node_assert v.__register or v.__location, v, "Couldn't figure out what this variable refers to"
 
         print "Finished binding variable registers:"
         print(viz(ast))
@@ -764,7 +770,7 @@ class Environment
 
         for fndec in coroutine.wrap(-> each_tag(ast, "FnDecl"))
             if fndec.name[0] == "main" and #fndec.args == 0
-                code ..= "call #{fndec.__register}()\n"
+                code ..= "call #{fndec.name.__register}()\n"
                 break
 
         for i,e in ipairs exports
@@ -1379,6 +1385,16 @@ expr_compilers =
 
             return value_reg,code
         elseif t\is_a(Types.StructType)
+            if @__method
+                print "METHOD: #{id @__method}"
+                chain = {}
+                node = @__method
+                while node.__parent
+                    table.insert chain, table.find(node.__parent, node)
+                    node = node.__parent
+                node_assert @__method.__register, @__method, "No register found: #{table.concat chain, "."}\n\n#{viz node}"
+                return @__method.__register,""
+
             member = if @index.__tag == "FieldName"
                 member_name = @index[0]
                 node_assert t.members[member_name], @index, "Not a valid struct member of #{t}"
@@ -1865,11 +1881,16 @@ expr_compilers =
                 else
                     table.insert arg_types, get_type(arg)
                     table.insert arg_text, "#{get_type arg}"
+            if @fn.__method
+                table.insert arg_types, 1, get_type(@fn.value)
+                table.insert arg_text, 1, "#{get_type(@fn.value)}"
             node_assert fn_type\matches(arg_types), @,
                 "This function is being called with #{@fn[0]}(#{concat arg_text, ", "}) but is defined as #{fn_type}"
 
             kw_args = {}
             pos_args = {}
+            if @fn.__method
+                table.insert pos_args, {reg: @fn.value.__register, type: get_type(@fn.value), node: @fn.value}
             for arg in *@
                 if arg.__tag == "KeywordArg"
                     arg_reg, arg_code = env\to_reg arg.value

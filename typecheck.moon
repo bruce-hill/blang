@@ -1,5 +1,5 @@
 Types = require 'types'
-import log, viz, node_assert, node_error, get_node_pos, print_err, each_tag from require 'util'
+import log, viz, id, node_assert, node_error, get_node_pos, print_err, each_tag from require 'util'
 import Measure, register_unit_alias from require 'units'
 concat = table.concat
 
@@ -8,7 +8,7 @@ parse_type = =>
     switch @__tag
         when "Var","TypeVar"
             if @__declaration
-                return parse_type @__declaration
+                return @__declaration.__type
             elseif Types[@[0]]
                 return Types[@[0]]
         when "OptionalType"
@@ -79,6 +79,9 @@ bind_type = (scope, typevar)->
         when "TypeDeclaration","StructDeclaration","UnionDeclaration","EnumDeclaration","UnitDeclaration"
             if scope.name[0] == typevar[0]
                 scope.__declaration = typevar
+            for k,child in pairs scope
+                continue if type(child) != "table" or (type(k) == "string" and k\match("^__"))
+                bind_type child, typevar
         else
             for k,child in pairs scope
                 continue if type(child) != "table" or (type(k) == "string" and k\match("^__"))
@@ -241,12 +244,18 @@ assign_types = =>
         when "FnDecl"
             if @selfVar
                 node_assert @__parent.__tag == "StructDeclaration", @, "Method definition is not inside a struct"
-                @selfVar.__type = @__parent.name.__type
+                @selfVar.__type = @__parent.__type
+                return unless @selfVar.__type
             for arg in *@args
                 arg.__type = parse_type(arg.type)
                 arg.name.__type = arg.__type
             ret = @returnType and parse_type(@returnType) or Types.NilType
-            @__type = Types.FnType([a.__type for a in *@args], ret, [a.name[0] for a in *@args])
+            arg_types = [a.__type for a in *@args]
+            arg_names = [a.name[0] for a in *@args]
+            if @selfVar
+                table.insert arg_types, 1, @selfVar.__type
+                table.insert arg_names, 1, @selfVar[0]
+            @__type = Types.FnType(arg_types, ret, arg_names)
             @name.__type = @__type
             assign_types @body
 
@@ -254,7 +263,7 @@ assign_types = =>
             assign_types @fn
             for arg in *@
                 assign_types arg
-            if @fn.__type
+            if not @__type and @fn.__type
                 node_assert @fn.__type\is_a(Types.FnType), @fn, "Not a function"
                 @__type = @fn.__type.return_type
 
@@ -266,11 +275,16 @@ assign_types = =>
                     for name in *member.names
                         name.__type = member_type
                         t\add_member name[0], member_type, (name.inline and true or false)
-                elseif member.__tag == "FnDecl"
+            @__type = t
+            @__methods = {}
+            for member in *@
+                if member.__tag == "FnDecl"
+                    if member.selfVar
+                        member.selfVar.__type = t
+                        @__methods[member.name[0]] = member
                     assign_types member
                 elseif member.__tag == "Declaration"
                     assign_types member
-            @__type = t
 
         when "Struct"
             for member in *@
@@ -290,13 +304,10 @@ assign_types = =>
         when "UnionDeclaration"
             t = Types.StructType(@name[0])
             for member in *@
-                if member.__tag == "StructField"
-                    member_type = parse_type member.type
-                    for name in *member.names
-                        name.__type = member_type
-                        t\add_member name[0], member_type, (name.inline and true or false)
-                elseif member.__tag == "FnDecl"
-                    assign_types member
+                member_type = parse_type member.type
+                for name in *member.names
+                    name.__type = member_type
+                    t\add_member name[0], member_type, (name.inline and true or false)
 
         when "List"
             if @type
@@ -328,7 +339,7 @@ assign_types = =>
                         return unless key_type and value_type
                         @__type = Types.TableType(key_type, value_type)
                     when "For","While","If"
-                        assert_node @[1].body[1].__tag == "TableEntry", @[1].body[1], "Table comprehension should have a [key]=value pair"
+                        node_assert @[1].body[1].__tag == "TableEntry", @[1].body[1], "Table comprehension should have a [key]=value pair"
                         key_type, value_type = @[1].body[1].key.__type, @[1].body[1].value.__type
                         return unless key_type and value_type
                         @__type = Types.TableType(key_type, value_type)
@@ -337,7 +348,7 @@ assign_types = =>
         when "IndexedTerm"
             assign_types @value
             assign_types @index
-            return unless @value.__type and @index.__type
+            return unless @value.__type
 
             value_type = @value.__type
             is_optional = value_type\is_a(Types.OptionalType) and value_type != Types.NilType
@@ -345,6 +356,7 @@ assign_types = =>
             index_type = @index.__type
 
             if t\is_a(Types.ListType)
+                return unless index_type
                 if index_type == Types.Int or index_type == Types.OptionalType(Types.Int)
                     @__type = Types.OptionalType(t.item_type)
                 elseif index_type == Types.Range
@@ -352,14 +364,36 @@ assign_types = =>
                 else
                     node_error @index, "Index has type #{index_type}, but expected Int or Range"
             elseif t\is_a(Types.TableType)
+                return unless index_type
                 node_assert index_type == t.key_type, @index, "This table has type #{t}, but is being indexed with #{index_type}"
                 @__type = Types.OptionalType(t.value_type)
             elseif t\is_a(Types.StructType)
                 if @index.__tag == "FieldName"
                     member_name = @index[0]
-                    node_assert t.members[member_name], @index, "Not a valid struct member of #{t}{#{concat ["#{memb.name}=#{memb.type}" for memb in *t.sorted_members], ", "}}"
-                    member_type = t.members[member_name].type
-                    @__type = is_optional and Types.OptionalType(member_type) or member_type
+                    member_type = if t.members[member_name]
+                        t.members[member_name].type
+                    else
+                        root = @
+                        while root.__parent
+                            root = root.__parent
+
+                        method_type = nil
+                        for dec in coroutine.wrap(-> each_tag(root, "StructDeclaration"))
+                            assign_types dec
+                            -- node_assert dec.__type, dec, "WTF no type: #{viz dec}"
+                            if dec.__type == t
+                                method = dec.__methods[member_name]
+                                if method
+                                    method_type = method.name.__type
+                                    @__method = method.name
+                                    @__declaration = method.name
+                                    print "BIND METHOD: #{@[0]} = #{viz @__method} #{id @__method}"
+                                    break
+                        method_type
+
+                    -- node_assert member_type, @index, "Not a valid struct member of #{t}{#{concat ["#{memb.name}=#{memb.type}" for memb in *t.sorted_members], ", "}}"
+                    if member_type
+                        @__type = is_optional and Types.OptionalType(member_type) or member_type
                 elseif @index.__tag == "Int"
                     i = tonumber(@index[0])
                     member_type = node_assert(t.members[i], @, "Not a valid #{t} field: #{i}").type
@@ -368,6 +402,7 @@ assign_types = =>
                 else
                     node_error @index, "Structs can only be indexed by a field name or Int literal"
             elseif t\is_a(Types.String)
+                return unless index_type
                 if index_type == Types.Int
                     @__type = Types.OptionalType(Types.Int)
                 elseif index_type == Types.Range
@@ -525,6 +560,11 @@ assign_all_types = (ast)->
         recurse ast
         return vals
 
+    for name, type in pairs(Types)
+        typevar = {[0]:name, __type:type, __tag:"TypeVar"}
+        typevar.__declaration = typevar
+        bind_type ast, typevar
+
     while true
         progress = false
 
@@ -551,8 +591,8 @@ assign_all_types = (ast)->
     print "Finished assigning types:"
     print viz(ast)
 
-    for var in coroutine.wrap(-> each_tag("Var","TypeVar"))
-        assert_node var.__declaration, var, "Couldn't determine what this variable refers to"
+    -- for var in coroutine.wrap(-> each_tag(ast, "Var","TypeVar"))
+    --     node_assert var.__declaration, var, "Couldn't determine what this variable refers to"
 
 get_type = (ast)-> ast.__type
 
