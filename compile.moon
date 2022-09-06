@@ -2545,7 +2545,8 @@ stmt_compilers =
     Pass: (env)=> ""
     Fail: (env)=>
         if @message
-            node_assert get_type(@message)\is_a(Types.OptionalType(Types.String)), @message,
+            t = get_type(@message)
+            node_assert t\is_a(Types.OptionalType(Types.String)), @message,
                 "Failure messages must be a String or nil, not #{get_type @message}"
             msg,code = env\to_reg @message
             fail_label,empty_label = env\fresh_labels "failure", "empty.message"

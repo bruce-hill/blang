@@ -198,7 +198,9 @@ assign_types = =>
         when "Pass"
             @__type = Types.NilType
         when "Stop","Skip","Fail"
-            assign_types @target if @target
+            for k,child in pairs @
+                continue if type(child) != "table" or (type(k) == "string" and k\match("^__"))
+                assign_types child
             @__type = Types.Abort
         when "Return"
             assign_types @value if @value
