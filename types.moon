@@ -183,6 +183,7 @@ class UnionType extends Type
     __eq: Type.__eq
 
 NilType = NamedType("NilType")
+NilType.nil_value = 0
 
 class OptionalType extends Type
     new: (@nonnil)=>
