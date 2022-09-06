@@ -137,31 +137,20 @@ bind_variables = =>
                 @index.__declaration = @index
                 bind_var @body, @index
                 bind_var @between, @index if @between
+                bind_var @filter, @index if @filter
             if @val
                 @val.__declaration = @val
                 bind_var @body, @val
                 bind_var @between, @val if @between
+                bind_var @filter, @val if @filter
 
             bind_variables @body
             bind_variables @between if @between
+            bind_variables @filter if @filter
         else
             for k,child in pairs @
                 continue if type(child) != "table" or (type(k) == "string" and k\match("^__"))
                 bind_variables child
-
-type_or = (t1, t2)->
-    if t1 == nil or t2 == nil
-        return t1 or t2
-    elseif t1\is_a(t2)
-        return t2
-    elseif t2\is_a(t1)
-        return t1
-    elseif t1 == Types.Nil
-        return Types.OptionalType(t2)
-    elseif t2 == Types.Nil
-        return Types.OptionalType(t1)
-    else
-        return nil
 
 assign_types = =>
     return unless type(@) == "table"
@@ -313,40 +302,58 @@ assign_types = =>
 
         when "List"
             if @type
-                return Types.ListType(parse_type(@type))
-            else
-                for item in *@
-                    assign_types item
-                    if not item.__type
-                        node_error item, "Couldn't get the type here #{item.__tag}"
-                switch @[1].__tag
-                    when "For","While","If"
-                        item_type = @[1].body[1].__type
-                        return unless item_type
-                        @__type = Types.ListType(item_type)
-                    else
-                        item_type = @[1].__type
-                        return unless item_type
-                        @__type = Types.ListType(item_type)
+                @__type = Types.ListType(parse_type(@type))
+
+            item_type = (item)->
+                if item.__tag == "For" or item.__tag == "While"
+                    return item.body[1].__type
+                elseif item.__tag == "If"
+                    return item[1].body[1].__type
+                else
+                    return item.__type
+
+            for item in *@
+                assign_types item
+                -- node_assert item_type(item), item, "Couldn't get the type here #{item.__tag}"
+
+            t = @__type and @__type.item_type or nil
+            for item in *@
+                t2 = item_type(item)
+                return unless t2
+                t = node_assert t2\orelse(t), item, "This list item has type #{t2}, but earlier items have type #{t}"
+
+            @__type = Types.ListType(t)
 
         when "Table"
             if @type
-                return Types.TableType(parse_type(@type.keyType), parse_type(@type.valueType))
-            else
-                for entry in *@
-                    assign_types entry
-                switch @[1].__tag
-                    when "TableEntry"
-                        key_type, value_type = @[1].key.__type, @[1].value.__type
-                        return unless key_type and value_type
-                        @__type = Types.TableType(key_type, value_type)
-                    when "For","While","If"
-                        node_assert @[1].body[1].__tag == "TableEntry", @[1].body[1], "Table comprehension should have a [key]=value pair"
-                        key_type, value_type = @[1].body[1].key.__type, @[1].body[1].value.__type
-                        return unless key_type and value_type
-                        @__type = Types.TableType(key_type, value_type)
-                        
+                @__type = Types.TableType(parse_type(@type.keyType), parse_type(@type.valueType))
+            
+            for entry in *@
+                assign_types entry
 
+            kv_types = (item)->
+                if item.__tag == "For" or item.__tag == "While"
+                    node_assert item.body[1].__tag == "TableEntry", item.body, "Not a valid table comprehension value (expected `[k]=v`)"
+                    return item.body[1].key.__type, item.body[1].value.__type
+                elseif item.__tag == "If"
+                    node_assert item[1].body[1].__tag == "TableEntry", item[1].body, "Not a valid table comprehension value (expected `[k]=v`)"
+                    return item[1].body[1].key.__type, item[1].body[1].value.__type
+                else
+                    node_assert item.__tag == "TableEntry", "Not a valid table entry, expected [k]=v or k=v"
+                    return item.key.__type, item.value.__type
+
+            kt,vt = if @__type
+                @__type.key_type, @__type.value_type
+            else
+                nil, nil
+            for entry in *@
+                kt2,vt2 = kv_types(entry)
+                return unless kt2 and vt2
+                kt = node_assert kt2\orelse(kt), entry.key, "This table key has type #{kt2}, but earlier keys have type #{kt}"
+                vt = node_assert vt2\orelse(vt), entry.value, "This table value has type #{vt2}, but earlier values have type #{vt}"
+
+            @__type = Types.TableType(kt, vt)
+                
         when "IndexedTerm"
             assign_types @value
             assign_types @index
@@ -430,7 +437,7 @@ assign_types = =>
                     if t and t\is_a(Types.OptionalType)
                         t = t.nonnil
                     break
-                t = node_assert type_or(t, item.__type), item, "Type mismatch with #{t}"
+                t = node_assert item.__type\orelse(t), item, "Type mismatch with #{t}"
             @__type = t
 
         when "And","Or","Xor"
@@ -473,11 +480,11 @@ assign_types = =>
             for clause in *@
                 continue if clause.body.__type == Types.Abort
                 return unless clause.body.__type
-                t = node_assert type_or(t, clause.body.__type), item, "Type mismatch with #{t}"
+                t = node_assert clause.body.__type\orelse(t), item, "Type mismatch with #{t}"
             if @elseBody and @elseBody.__type != Types.Abort
-                t = node_assert type_or(t, @elseBody.__type), item, "Type mismatch with #{t}"
+                t = node_assert @elseBody.__type\orelse(t), item, "Type mismatch with #{t}"
             elseif not @elseBody
-                t = type_or(t, Types.NilType)
+                t = Types.NilType\orelse(t)
             @__type = t
 
         when "When"
@@ -492,11 +499,11 @@ assign_types = =>
             for clause in *@
                 continue if clause.body.__type == Types.Abort
                 return unless clause.body.__type
-                t = node_assert type_or(t, clause.body.__type), item, "Type mismatch with #{t}"
+                t = node_assert clause.body.__type\orelse(t), item, "Type mismatch with #{t}"
             if @elseBody and @elseBody.__type != Types.Abort
-                t = node_assert type_or(t, @elseBody.__type), item, "Type mismatch with #{t}"
+                t = node_assert @elseBody.__type\orelse(t), item, "Type mismatch with #{t}"
             elseif not @elseBody
-                t = type_or(t, Types.NilType)
+                t = Types.NilType\orelse(t)
             @__type = t
 
         when "For"
@@ -517,6 +524,7 @@ assign_types = =>
                     @val.__type = Types.Int
             assign_types @body
             assign_types @between if @between
+            assign_types @filter if @filter
 
         when "Do"
             for block in *@

@@ -3,7 +3,7 @@ concat = table.concat
 import log, viz, print_err, node_assert, node_error, each_tag from require 'util'
 import Measure, register_unit_alias from require 'units'
 
-local Int,Int32,Int16,Int8,Num,Num32
+local Int,Int32,Int16,Int8,Num,Num32,OptionalType,NilType
 
 class Type
     is_a: (cls)=> @ == cls or @.__class == cls or cls\contains @
@@ -16,6 +16,19 @@ class Type
     id_str: => tostring(@)\gsub('[^%w%d.]','')
     __eq: (other)=> type(other) == type(@) and other.__class == @__class and tostring(other) == tostring(@)
     verbose_type: => "#{@}"
+    orelse: (other_type)=>
+        if other_type == nil
+            return @
+        elseif @ == other_type
+            return @
+        elseif other_type\is_a(@)
+            return @
+        elseif @is_a(other_type)
+            return other_type
+        elseif @ == NilType
+            return OptionalType(other_type)
+        elseif other_type == NilType
+            return OptionalType(@)
 
 class NamedType extends Type
     new: (@name)=>
@@ -88,7 +101,6 @@ class TableType extends Type
     __eq: Type.__eq
     nil_value: 0
 
-local OptionalType
 class FnType extends Type
     new: (@arg_types, @return_type, @arg_names=nil)=>
     __tostring: => "#{@arg_signature!}=>#{@return_type}"
