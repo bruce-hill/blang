@@ -1,6 +1,6 @@
 Types = require 'types'
 bp = require 'bp'
-import assign_all_types, get_type, parse_type, bind_var from require('typecheck')
+import assign_all_types, get_type, parse_type, bind_var, bind_type from require('typecheck')
 import log, viz, id, node_assert, node_error, get_node_pos, print_err, each_tag from require 'util'
 import Measure, register_unit_alias from require 'units'
 concat = table.concat
@@ -638,6 +638,13 @@ class Environment
             __register: "$puts",
         }
 
+        for name,t in pairs(Types)
+            bind_type ast, {
+                [0]: name,
+                __tag: "TypeVar",
+                __type: t,
+            }
+
         assign_all_types ast, @
 
         -- Enum field names
@@ -734,15 +741,6 @@ class Environment
                 fn_type = mem.type\is_a(Types.FnType) and mem.type or nil
                 hook_up_refs pseudo_var, scope, fn_type
                 table.insert naked_imports, pseudo_var
-
-        -- Set up externs
-        for extern in coroutine.wrap(-> each_tag(ast, "Extern"))
-            extern.__register = "$#{extern.name[0]}"
-            extern.__decl = extern
-            extern.name.__register = extern.__register
-            extern.name.__decl = extern
-            t = get_type(extern)
-            hook_up_refs extern.name, extern.__parent, t
 
         -- Compile functions:
         for fndec in coroutine.wrap(-> each_tag(ast, "FnDecl", "Lambda"))
@@ -1937,7 +1935,7 @@ expr_compilers =
 
         ret_reg = env\fresh_local "return"
         ret_type = fn_type and fn_type.return_type or get_type(@)
-        code ..= "#{ret_reg} =#{ret_type.base_type} call #{fn_reg}(#{concat arg_list, ", "})\n"
+        code ..= "#{ret_reg} =#{ret_type.base_type} call #{fn_reg}(#{concat arg_list, ", "}) # Ret type: #{ret_type} base: #{ret_type.base_type}\n"
         return ret_reg, code
 
     Lambda: (env)=>

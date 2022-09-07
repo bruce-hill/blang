@@ -40,12 +40,17 @@ parse_type = =>
             else
                 Types.NilType
             arg_types = {}
+            arg_names = {}
             for arg in *@args
-                arg_t = node_assert parse_type(arg), arg, "Couldn't parse this type"
+                table.insert arg_names, arg.name[0] if arg.name
+                arg_t = node_assert parse_type(arg.type), arg, "Couldn't parse this type"
                 table.insert arg_types, arg_t
-            @__parsed_type = Types.FnType(arg_types, ret_type)
+
+            if #arg_names == 0 and #arg_types > 0
+                arg_names = nil
+            @__parsed_type = Types.FnType(arg_types, ret_type, arg_names)
         else
-            error "Not implemented"
+            error "Not implemented: #{@__tag}"
     return @__parsed_type
 
 get_fn_type = (fndec)->
@@ -66,6 +71,8 @@ bind_var = (scope, var)->
                     -- Don't hook up shadowed args
                     return
             bind_var scope.body, var
+        when "FnType"
+            return
         else
             for k,child in pairs scope
                 continue if type(child) != "table" or (type(k) == "string" and k\match("^__"))
@@ -578,6 +585,11 @@ assign_all_types = (ast)->
                 recurse child
         recurse ast
         return vals
+
+    for extern in coroutine.wrap(-> each_tag(ast, "Extern"))
+        bind_var extern.__parent, extern.name
+        extern.name.__type = parse_type extern.type
+        extern.name.__register = "$"..extern.name[0]
 
     while true
         progress = false
