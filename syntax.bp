@@ -66,7 +66,7 @@ DSL:: `% [@name=TypeVar] @string=(
   / @:String=(`> _ @content=@..%AtInterp $)
   / @:String=(@delim:. @curdent:\C $ \n @strdent:\C strdent @content=@..%(@:Newline=(\n strdent) / \n$ / Escape / Interp) (\n curdent delim))
   / @:String=(@delm:. @content=@..%(Escape/Interp) delim) / @:ParseError=(..$ =>"This string has no closing delimiter"))
-List:: `[__`:__@type=@:ListType=(@itemtype=type)__`] / `[ __ +listItem % (__`,__) __[`,__] `]
+List:: `[__`:__@type=@:ListType=(@itemType=type)__`] / `[ __ +listItem % (__`,__) __[`,__] `]
 listItem: PostfixFor / PostfixWhile / PostfixIf / extended-expr
 Table:: `{ __ [`:__ @type=@:TableType=(@keyType=type __ `= __ @valueType=type) __] +tableEntry % (__`,__) __ [`,__] `}
 tableEntry: PostfixFor / PostfixWhile / PostfixIf / TableEntry
@@ -164,7 +164,7 @@ nonoptional-type: (
   / MeasureType
   / TupleType
   / TypeVar
-  / @:ListType=(`[@itemtype=type`])
+  / @:ListType=(`[@itemType=type`])
   / @:FnType=(`(__ @args=@(*@:FnArg=([@name=FieldName __`:__] @type=type) % (__`,__)) __ `) _ "=>" __ @returnType=type)
 )
 TupleType:: `{(__

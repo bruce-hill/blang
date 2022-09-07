@@ -31,8 +31,8 @@ parse_type = =>
             key = node_assert parse_type(@keyType), @keyType, "Couldn't parse this type"
             val = node_assert parse_type(@valueType), @valueType, "Couldn't parse this type"
             @__parsed_type = Types.TableType(key, val)
-        when "TableType"
-            item = node_assert parse_type(@itemtype), @itemType "Couldn't parse this type"
+        when "ListType"
+            item = node_assert parse_type(@itemType), @itemType "Couldn't parse this type"
             @__parsed_type = Types.ListType(item)
         when "FnType"
             ret_type = if @returnType
