@@ -614,4 +614,6 @@ return {
     :assign_all_types,
     :get_type,
     :parse_type,
+    :bind_var,
+    :bind_type,
 }

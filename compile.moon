@@ -1,6 +1,6 @@
 Types = require 'types'
 bp = require 'bp'
-import assign_all_types, get_type, parse_type from require('typecheck')
+import assign_all_types, get_type, parse_type, bind_var from require('typecheck')
 import log, viz, id, node_assert, node_error, get_node_pos, print_err, each_tag from require 'util'
 import Measure, register_unit_alias from require 'units'
 concat = table.concat
@@ -625,6 +625,19 @@ class Environment
 
         @type_code = "type :Range = {l,l,l}\n"
 
+        bind_var ast, {
+            [0]:"args",
+            __tag: "Var",
+            __type: Types.ListType(Types.String),
+            __location: "$args",
+        }
+        bind_var ast, {
+            [0]:"say",
+            __tag: "Var",
+            __type: Types.FnType({Types.String}, Types.NilType, {"text"}),
+            __register: "$puts",
+        }
+
         assign_all_types ast, @
 
         -- Enum field names
@@ -640,16 +653,6 @@ class Environment
             assert t\is_a(Types.UnionType), "#{t}"
             fieldnames = "$#{t\id_str!}.member_names"
             @type_code ..= "data #{fieldnames} = {#{concat ["l 0" for _ in pairs t.members], ", "}}\n"
-
-        for v in coroutine.wrap(-> each_tag(ast, "Var"))
-            if v[0] == "args"
-                v.__declaration = {__location:"$args"}
-                v.__location = "$args"
-                v.__type = Types.ListType(Types.String)
-            elseif v[0] == "say"
-                v.__declaration = {__register:"$puts"}
-                v.__register = "$puts"
-                v.__type = Types.FnType({Types.String}, Types.NilType, {"text"})
 
         is_file_scope = (scope)->
             while scope
@@ -1165,7 +1168,7 @@ expr_compilers =
                 code ..= "#{chunk_reg} =l copy #{env\get_string_reg chunk, "str.literal"}\n"
             else
                 t = get_type(chunk)
-                node_assert t, chunk, "WTF: #{viz chunk}"
+                node_assert t, chunk, "Couldn't determine type for: #{viz chunk}"
                 val_reg,val_code = env\to_reg chunk
                 code ..= val_code
                 if t == Types.String

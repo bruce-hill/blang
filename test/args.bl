@@ -1,7 +1,7 @@
 say "args: $args"
 
 def foo(args:Int)
-    fail unless args == 5
+    fail "Args is: $args" unless args == 5
     say "Shadowing args works"
 
 foo(5)
