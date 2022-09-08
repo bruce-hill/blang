@@ -2,7 +2,7 @@
 def make_list(n:Int):[Int]
     tmp := [:Int]
     for i in 1..n
-        tmp += [i]
+        tmp.append(i)
     return tmp
 
 say "$(make_list(100))"

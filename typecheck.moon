@@ -313,7 +313,7 @@ assign_types = =>
 
         when "List"
             if @type
-                @__type = Types.ListType(parse_type(@type))
+                @__type = parse_type(@type)
 
             item_type = (item)->
                 if item.__tag == "For" or item.__tag == "While"
@@ -381,6 +381,15 @@ assign_types = =>
                     @__type = Types.OptionalType(t.item_type)
                 elseif index_type == Types.Range
                     @__type = is_optional and Types.OptionalType(t) or t
+                elseif @index.__tag == "FieldName"
+                    ListMethods = require 'list_methods'
+                    -- List methods:
+                    if t_fn = ListMethods.types[@index[0]]
+                        @__type = t_fn(t)
+                        @__method = ListMethods.methods[@index[0]]
+                        @__inline_method = ListMethods.methods[@index[0]]
+                    else
+                        node_error @index, "#{@index[0]} is not a valid List method"
                 else
                     node_error @index, "Index has type #{index_type}, but expected Int or Range"
             elseif t\is_a(Types.TableType)
@@ -407,7 +416,6 @@ assign_types = =>
                                     method_type = method.name.__type
                                     @__method = method.name
                                     @__declaration = method.name
-                                    print "BIND METHOD: #{@[0]} = #{viz @__method} #{id @__method}"
                                     break
                         method_type
 

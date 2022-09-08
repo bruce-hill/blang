@@ -3,6 +3,7 @@ bp = require 'bp'
 import assign_all_types, get_type, parse_type, bind_var, bind_type from require('typecheck')
 import log, viz, id, node_assert, node_error, get_node_pos, print_err, each_tag from require 'util'
 import Measure, register_unit_alias from require 'units'
+ListMethods = require 'list_methods'
 concat = table.concat
 
 has_jump = bp.compile('^_("jmp"/"jnz"/"ret")\\b ..$ $$')
@@ -678,7 +679,6 @@ class Environment
             continue if v.__register or v.__location
             if v.__parent.__tag == "FnDecl" and v == v.__parent.name
                 v.__register = @fresh_global v[0]
-                print "BIND GLOBAL #{id v} = #{viz v} #{v.__register}"
             elseif is_file_scope(v)
                 v.__location = @fresh_global v[0]
                 table.insert file_scope_vars, v
@@ -1370,6 +1370,8 @@ expr_compilers =
                     code ..= "#{slice} =l call $bl_list_slice(l #{list_reg}, l #{range}, l #{t.item_type.bytes}, w #{use_aliasing})\n"
                     return code
                 return slice,code
+            elseif @index.__tag == "FieldName"
+                error "unreachable"
             else
                 node_error @index, "Index is #{index_type} instead of Int or Range"
         elseif t\is_a(Types.TableType)
@@ -1387,7 +1389,6 @@ expr_compilers =
             return value_reg,code
         elseif t\is_a(Types.StructType)
             if @__method
-                print "METHOD: #{id @__method}"
                 chain = {}
                 node = @__method
                 while node.__parent
@@ -1868,6 +1869,9 @@ expr_compilers =
         return ret_reg, code
 
     FnCall: (env, skip_ret=false)=>
+        if @fn.__inline_method
+            return @fn.__inline_method(@, env, skip_ret)
+
         fn_type = get_type @fn
         fn_reg,code = env\to_reg @fn
 
@@ -1885,6 +1889,7 @@ expr_compilers =
             if @fn.__method
                 table.insert arg_types, 1, get_type(@fn.value)
                 table.insert arg_text, 1, "#{get_type(@fn.value)}"
+
             node_assert fn_type\matches(arg_types), @,
                 "This function is being called with #{@fn[0]}(#{concat arg_text, ", "}) but is defined as #{fn_type}"
 

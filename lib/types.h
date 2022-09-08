@@ -12,11 +12,11 @@ typedef struct {
 typedef struct {
     int64_t len;
     union {
-        char byte;
-        int16_t i16;
-        int32_t i32;
-        int64_t i64;
-        float f32;
-        double d32;
-    } *items;
+        char *byte;
+        int16_t *i16;
+        int32_t *i32;
+        int64_t *i64;
+        float *f32;
+        double *d32;
+    } items;
 } list_t;
