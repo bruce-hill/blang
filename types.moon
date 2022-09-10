@@ -286,5 +286,5 @@ Range.nil_value = 0
 return {
     :Type, :NamedType, :ListType, :TableType, :FnType, :StructType,
     :Value, :Value32, :Value16, :Value8, :Pointer, :Int, :Int32, :Int16, :Int8, :Num, :Num32, :Percent, :String, :Bool, :Abort, :NilType, :Range,
-    :OptionalType, :MeasureType, :TypeString, :EnumType, :UnionType,
+    :OptionalType, :MeasureType, :TypeString, :EnumType, :UnionType, :DerivedType,
 }

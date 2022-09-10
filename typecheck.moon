@@ -177,9 +177,8 @@ assign_types = =>
             assign_types @value
             @__type = @value.__type
         when "DSL"
-            for interp in *@content
-                assign_types interp
-            if @name and @name[0] != ""
+            assign_types @string
+            if not @name or @name[0] == ""
                 @__type = Types.String
             else
                 @__type = Types.DerivedType(@name[0], Types.String)

@@ -214,37 +214,34 @@ class Environment
         @fn_code ..= "}\n"
 
     get_tostring_fn: (t, scope)=>
-        -- if t != Types.String
-            -- OVERLOAD `tostring()`
-            -- error "Not impl: tostring(#{t})"
-            -- return fn,needs_loading if fn
-
         -- HACK: these primitive values' functions only take 1 arg, but it
         -- should be safe to pass them an extra callstack argument, which
         -- they'll just ignore.
         if t\is_a(Types.Int)
-            return "$bl_tostring_int",false
+            return "$bl_tostring_int"
         elseif t\is_a(Types.Int32)
-            return "$bl_tostring_int32",false
+            return "$bl_tostring_int32"
         elseif t\is_a(Types.Int16)
-            return "$bl_tostring_int16",false
+            return "$bl_tostring_int16"
         elseif t\is_a(Types.Int8)
-            return "$bl_tostring_int8",false
+            return "$bl_tostring_int8"
         elseif t\is_a(Types.Percent)
-            return "$bl_tostring_percent",false
+            return "$bl_tostring_percent"
         elseif t\is_a(Types.Num)
-            return "$bl_tostring_float",false
+            return "$bl_tostring_float"
         elseif t\is_a(Types.Num32)
-            return "$bl_tostring_float32",false
+            return "$bl_tostring_float32"
         elseif t\is_a(Types.Bool)
-            return "$bl_tostring_bool",false
+            return "$bl_tostring_bool"
         elseif t\is_a(Types.String)
-            return "$bl_string",false
+            return "$bl_string"
         elseif t\is_a(Types.Range)
-            return "$bl_tostring_range",false
+            return "$bl_tostring_range"
 
         if @tostring_funcs["#{t}"]
             return @tostring_funcs["#{t}"],false
+
+        -- Overload .as_string()
 
         typename = t\id_str!
         fn_name = @fresh_global "tostring.#{typename}"
@@ -273,10 +270,8 @@ class Environment
                 code ..= "jmp #{end_label}\n"
                 return code
             code ..= @block nonnil_label, ->
-                fn,needs_loading = @get_tostring_fn t.nonnil, scope
-                code = ""
-                code ..= "#{fn} =l loadl #{fn}\n" if needs_loading
-                code ..= "#{dest} =l call #{fn}(#{t.nonnil.base_type} #{reg}, l #{callstack})\n"
+                fn = @get_tostring_fn t.nonnil, scope
+                code = "#{dest} =l call #{fn}(#{t.nonnil.base_type} #{reg}, l #{callstack})\n"
                 code ..= "jmp #{end_label}\n"
                 return code
             code ..= "#{end_label}\n"
@@ -325,8 +320,7 @@ class Environment
                 item = @fresh_local "list.item"
                 code = "#{item} =#{t.item_type.base_type} load#{t.item_type.base_type} #{item_loc}\n"
                 item_str = @fresh_local "item.string"
-                fn,needs_loading = @get_tostring_fn t.item_type, scope
-                code ..= "#{fn} =l loadl #{fn}\n" if needs_loading
+                fn = @get_tostring_fn t.item_type, scope
                 code ..= "#{item_str} =l call #{fn}(#{t.item_type.base_type} #{item}, l #{callstack})\n"
                 code ..= "#{buf} =l call $CORD_cat(l #{buf}, l #{item_str})\n"
                 code ..= "#{len} =l sub #{len}, 1\n"
@@ -368,8 +362,7 @@ class Environment
                 key_reg = @fresh_local "key"
                 code = hash_prep t.key_type, key, key_reg
                 key_str = @fresh_local "key.string"
-                fn,needs_loading = @get_tostring_fn t.key_type, scope
-                code ..= "#{fn} =l loadl #{fn}\n" if needs_loading
+                fn = @get_tostring_fn t.key_type, scope
                 code ..= "#{key_str} =l call #{fn}(#{t.key_type.base_type} #{key_reg}, l #{callstack})\n"
                 code ..= "#{buf} =l call $CORD_cat(l #{buf}, l #{key_str})\n"
                 code ..= "#{buf} =l call $CORD_cat(l #{buf}, l #{@get_string_reg "=", "equals"})\n"
@@ -380,8 +373,7 @@ class Environment
                 code ..= convert_nil t.value_type, @, value_raw, value_reg
                 
                 value_str = @fresh_local "value.string"
-                fn,needs_loading = @get_tostring_fn t.value_type, scope
-                code ..= "#{fn} =l loadl #{fn}\n" if needs_loading
+                fn = @get_tostring_fn t.value_type, scope
                 code ..= "#{value_str} =l call #{fn}(#{t.value_type.base_type} #{value_reg}, l #{callstack})\n"
                 code ..= "#{buf} =l call $CORD_cat(l #{buf}, l #{value_str})\n"
 
@@ -450,8 +442,7 @@ class Environment
                         code ..= "#{dest} =l call $CORD_cat(l #{dest}, l #{@get_string_reg("#{mem.name}=")})\n"
 
                     member_str = @fresh_local "#{t\id_str!\lower!}.#{mem.name}.string"
-                    fn,needs_loading = @get_tostring_fn mem.type, scope
-                    code ..= "#{fn} =l loadl #{fn}\n" if needs_loading
+                    fn = @get_tostring_fn mem.type, scope
                     code ..= "#{member_str} =l call #{fn}(#{mem.type.base_type} #{member_reg}, l #{new_callstack})\n"
 
                     code ..= "#{dest} =l call $CORD_cat(l #{dest}, l #{member_str})\n"
@@ -526,7 +517,7 @@ class Environment
         code = code\gsub("[^\n]+", =>((@\match("^[@}]") or @\match("^function")) and @ or "  "..@))
         @fn_code ..= code
 
-        return fn_name,false
+        return fn_name
 
     to_reg: (node, ...)=>
         node_assert expr_compilers[node.__tag], node, "Expression compiler not implemented for #{node.__tag}"
@@ -1154,8 +1145,7 @@ expr_compilers =
                 if t == Types.String
                     code ..= "#{chunk_reg} =l copy #{val_reg}\n"
                 else
-                    fn,needs_loading = env\get_tostring_fn t, @
-                    code ..= "#{fn} =l loadl #{fn}\n" if needs_loading
+                    fn = env\get_tostring_fn t, @
                     code ..= "#{chunk_reg} =l call #{fn}(#{t.base_type} #{val_reg}, l 0)\n"
 
             code ..= "#{cord_reg} =l call $CORD_cat(l #{cord_reg}, l #{chunk_reg})\n"
@@ -1184,7 +1174,6 @@ expr_compilers =
                 -- OVERLOAD escape()?
                 error "Not impl"
                 node_assert fn_reg, val, "No escape(#{t})=>#{dsl_type} function is implemented, so this value cannot be safely inserted"
-                code ..= "#{fn_reg} =l loadl #{fn_reg}\n" if needs_loading
                 escaped = env\fresh_local "escaped"
                 code ..= "#{escaped} =l call #{fn_reg}(#{t.base_type} #{val_reg})\n"
                 escaped
@@ -2407,11 +2396,7 @@ stmt_compilers =
         return code
     ButWithUpdate: (env)=>
         t = get_type @base
-        if t\is_a(Types.ListType)
-            error "Not impl"
-        elseif t\is_a(Types.String)
-            error "Not impl"
-        elseif t\is_a(Types.StructType)
+        if t\is_a(Types.StructType)
             base_reg,code = env\to_reg @base
             ret = env\fresh_local "#{t.name\lower!}.butwith"
             code ..= "#{ret} =l call $gc_alloc(l #{t.memory_size})\n"
@@ -2435,7 +2420,7 @@ stmt_compilers =
             code ..= "store#{t.base_type} #{base_reg}, #{@base.__location}\n" if @base.__location
             return code
         else
-            node_error @, "| operator is only supported for List and Struct types"
+            node_error @, "| operator is only supported for Struct types"
 
     MethodCallUpdate: (env)=>
         dest = @[1]
