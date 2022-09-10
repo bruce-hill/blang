@@ -692,9 +692,6 @@ class Environment
             v.__location = v.__declaration.__location
             node_assert v.__register or v.__location, v, "Couldn't figure out what this variable refers to"
 
-        print "Finished binding variable registers:"
-        print(viz(ast))
-
         -- Compile modules:
         for use in coroutine.wrap(-> each_tag(ast, "Use"))
             error "Not implemented"

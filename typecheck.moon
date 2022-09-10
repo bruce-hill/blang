@@ -602,7 +602,6 @@ assign_all_types = (ast)->
     while true
         progress = false
 
-        print "Binding variables..."
         pre_decls = get_all("__declaration")
         bind_variables ast
         post_decls = get_all("__declaration")
@@ -611,7 +610,6 @@ assign_all_types = (ast)->
                 progress = true
                 break
         
-        print "Assigning types..."
         pre_types = get_all("__type")
         assign_types ast
         post_types = get_all("__type")
@@ -621,9 +619,6 @@ assign_all_types = (ast)->
                 break
 
         break if not progress
-
-    print "Finished assigning types:"
-    print viz(ast)
 
     -- for var in coroutine.wrap(-> each_tag(ast, "Var","TypeVar"))
     --     node_assert var.__declaration, var, "Couldn't determine what this variable refers to"
