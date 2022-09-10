@@ -545,10 +545,20 @@ assign_types = =>
             assign_types @between if @between
             assign_types @filter if @filter
 
+        when "Block"
+            for stmt in *@
+                assign_types stmt
+            @__type = @[#@].__type
+
         when "Do"
             for block in *@
                 assign_types block
-            @__type = Types.NilType
+
+            t = nil
+            for block in *@
+                return unless block.__type
+                t = block.__type\orelse(t)
+            @__type = t
 
         when "Negative"
             assign_types @value
