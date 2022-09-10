@@ -29,21 +29,6 @@ infixop = (env, op)=>
         code ..= op(ret_reg, lhs_reg, rhs_reg)
     return ret_reg, code
 
-overload_infix = (env, overload_name, regname="result")=>
-    t = get_type @
-    lhs_type, rhs_type = get_type(@lhs), get_type(@rhs)
-
-    -- OVERLOAD infix?
-    error "Not impl"
-    node_assert fn_reg, @, "#{overload_name} is not supported for #{lhs_type} and #{rhs_type}"
-    lhs_reg,rhs_reg,operand_code = env\to_regs @lhs, @rhs
-    code = ""
-    code ..= "#{fn_reg} =l loadl #{fn_reg}\n" if needs_loading
-    code ..= operand_code
-    result = env\fresh_local regname
-    code ..= "#{result} =#{t.base_type} call #{fn_reg}(#{lhs_type.base_type} #{lhs_reg}, #{rhs_type.base_type} #{rhs_reg})\n"
-    return result, code
-
 comparison = (env, cmp)=>
     t1 = get_type @lhs
     t2 = get_type @rhs
@@ -1693,12 +1678,12 @@ expr_compilers =
                     code ..= "call $memcpy(l #{items3}, l #{items2}, l #{size})\n"
                     return code
             else
-                return overload_infix @, env, "add", "sum"
+                node_error @, "Addition is not supported for #{t_lhs} and #{t_rhs}"
         else -- "-"
             if tl_nn == tr_nn and (tl_nn\is_numeric! or tl_nn\is_a(Types.MeasureType))
                 return infixop @, env, "sub"
             else
-                return overload_infix @, env, "subtract", "difference"
+                node_error @, "Subtraction is not supported for #{t_lhs} and #{t_rhs}"
     MulDiv: (env)=>
         t_lhs,t_rhs = get_type(@lhs),get_type(@rhs)
         tl_nn, tr_nn = (t_lhs.nonnil or t_lhs), (t_rhs.nonnil or t_rhs)
@@ -1708,14 +1693,14 @@ expr_compilers =
             elseif (tl_nn\is_a(Types.MeasureType) and tr_nn\is_a(Types.Num)) or (tl_nn\is_a(Types.Num) and tr_nn\is_a(Types.MeasureType)) or (tl_nn\is_a(Types.MeasureType) and tr_nn\is_a(Types.MeasureType))
                 return infixop @, env, "mul"
             else
-                return overload_infix @, env, "multiply", "product"
+                node_error @, "Multiplication is not supported for #{t_lhs} and #{t_rhs}"
         else -- "/"
             if tl_nn == tr_nn and tl_nn\is_numeric!
                 return infixop @, env, "div"
             elseif (tl_nn\is_a(Types.MeasureType) and tr_nn\is_a(Types.Num)) or (tl_nn\is_a(Types.Num) and tr_nn\is_a(Types.MeasureType)) or (tl_nn\is_a(Types.MeasureType) and tr_nn\is_a(Types.MeasureType))
                 return infixop @, env, "div"
             else
-                return overload_infix @, env, "divide", "quotient"
+                node_error @, "Division is not supported for #{t_lhs} and #{t_rhs}"
     Mod: (env)=>
         t = get_type(@)
         if (t.nonnil or t)\is_a(Types.Int) or (t.nonnil or t)\is_a(Types.Num)
@@ -1727,7 +1712,7 @@ expr_compilers =
                 code ..= "#{ret} =d call $sane_fmod(d #{lhs_reg}, d #{rhs_reg})\n"
             return ret, code
         else
-            return overload_infix @, env, "modulus", "remainder"
+            node_error @, "Modulus is not supported for #{get_type(@lhs)} and #{get_type(@rhs)}"
     Pow: (env)=>
         base_type = get_type @base
         exponent_type = get_type @exponent
@@ -1738,7 +1723,7 @@ expr_compilers =
         elseif base_type == exponent_type and base_type\is_a(Types.Num)
             return ret_reg, code.."#{ret_reg} =d call $pow(d #{base_reg}, d #{exponent_reg})\n"
         else
-            return overload_infix @, env, "raise", "raised"
+            node_error @, "Exponentiation is not supported for #{base_type} and #{exponent_type}"
     ButWith: (env)=>
         t = get_type @base
         if t\is_a(Types.ListType)
@@ -2343,62 +2328,11 @@ stmt_compilers =
         elseif lhs_type == rhs_type and lhs_type\is_a(Types.String)
             return code.."#{lhs_reg} =l call $bl_string_append_string(l #{lhs_reg}, l #{rhs_reg})\n"..store_code
         elseif lhs_type\is_a(Types.ListType) and rhs_type\is_a(lhs_type.item_type)
-            old_len,new_len,old_size,new_size,old_items,new_items,tmp = env\fresh_locals "old_len","new_len","old_size","new_size","old_items","new_items","tmp"
-            code ..= "\n# Append\n"
-            code ..= "#{old_len} =l loadl #{lhs_reg}\n"
-            code ..= "#{old_size} =l mul #{old_len}, #{lhs_type.item_type.bytes}\n"
-            code ..= "#{tmp} =l add #{lhs_reg}, 8\n"
-            code ..= "#{old_items} =l loadl #{tmp}\n"
-            code ..= "#{new_len} =l add #{old_len}, 1\n"
-            code ..= "storel #{new_len}, #{lhs_reg}\n"
-            code ..= "#{new_size} =l mul #{new_len}, #{lhs_type.item_type.bytes}\n"
-
-            -- code ..= "#{items} =l call $gc_realloc(l #{items}, l #{size})\n"
-            -- NOTE: for correctness, this is deliberately *not* using realloc, but instead
-            -- using allocation and copying. This is to handle situations where a list
-            -- is being modified while it's being iterated over.
-            code ..= "#{new_items} =l call $gc_alloc(l #{new_size})\n"
-            code ..= "call $memcpy(l #{new_items}, l #{old_items}, l #{old_size})\n"
-
-            code ..= "#{tmp} =l add #{lhs_reg}, 8\n"
-            code ..= "storel #{new_items}, #{tmp}\n"
-            code ..= "#{tmp} =l add #{new_items}, #{old_size}\n"
-            code ..= "storel #{rhs_reg}, #{tmp}\n"
-            code ..= "\n"
-            return code
+            node_error @, "Cannot use += with Lists, use list.append(other) or list = list+other instead"
         elseif lhs_type == rhs_type and lhs_type\is_a(Types.ListType)
-            len1,len2,new_len,size1,size2,new_size,items1,items2,new_items,tmp = env\fresh_locals "len1","len2","new_len","size1","size2","new_size","items1","items2","new_items","tmp"
-            code ..= "\n# Add Update\n"
-            code ..= "#{len1} =l loadl #{lhs_reg}\n"
-            code ..= "#{tmp} =l add #{lhs_reg}, 8\n"
-            code ..= "#{items1} =l loadl #{tmp}\n"
-            code ..= "#{len2} =l loadl #{rhs_reg}\n"
-            code ..= "#{new_len} =l add #{len1}, #{len2}\n"
-            code ..= "#{new_size} =l mul #{new_len}, #{lhs_type.item_type.bytes}\n"
-
-            -- code ..= "#{items1} =l call $gc_realloc(l #{items1}, l #{size})\n"
-            -- NOTE: this uses gc_alloc instead of gc_realloc intentionally, see previous note
-            code ..= "#{new_items} =l call $gc_alloc(l #{new_size})\n"
-            code ..= "#{size1} =l mul #{len1}, #{lhs_type.item_type.bytes}\n"
-            code ..= "call $memcpy(l #{new_items}, l #{items1}, l #{size1})\n"
-
-            p = env\fresh_local "p"
-            code ..= "#{tmp} =l add #{lhs_reg}, 8\n"
-            code ..= "storel #{new_items}, #{tmp}\n"
-            code ..= "#{tmp} =l add #{rhs_reg}, 8\n"
-            code ..= "#{items2} =l loadl #{tmp}\n"
-            code ..= "#{p} =l add #{new_items}, #{size1}\n"
-            code ..= "#{size2} =l mul #{len2}, #{rhs_type.item_type.bytes}\n"
-            code ..= "call $memcpy(l #{p}, l #{items2}, l #{size2})\n"
-            code ..= "storel #{new_len}, #{lhs_reg}\n"
-            code ..= "\n"
-            return code
+            node_error @, "Cannot use += with Lists, use list.append_all(other) or list = list+other instead"
         else
-            -- OVERLOAD add()?
-            error "Not impl"
-            node_assert fn_reg, @, "addition is not supported for #{lhs_type} and #{rhs_type}"
-            code ..= "#{fn_reg} =l loadl #{fn_reg}\n" if needs_loading
-            return code.."#{lhs_reg} =#{lhs_type.base_type} call #{fn_reg}(#{lhs_type.base_type} #{lhs_reg}, #{rhs_type.base_type} #{rhs_reg})\n"..store_code
+            node_error @, "Addition is not supported for #{lhs_type} and #{rhs_type}"
     SubUpdate: (env)=>
         lhs_type,rhs_type = get_type(@lhs),get_type(@rhs)
         lhs_reg,rhs_reg,code = env\to_regs @lhs, @rhs
@@ -2406,11 +2340,7 @@ stmt_compilers =
         if nonnil_eq(lhs_type, rhs_type) and lhs_type\is_numeric!
             return code.."#{lhs_reg} =#{lhs_type.base_type} sub #{lhs_reg}, #{rhs_reg}\n"..store_code
         else
-            -- OVERLOAD subtract()?
-            error "Not impl"
-            node_assert fn_reg, @, "subtraction is not supported for #{lhs_type} and #{rhs_type}"
-            code ..= "#{fn_reg} =l loadl #{fn_reg}\n" if needs_loading
-            return code.."#{lhs_reg} =#{lhs_type.base_type} call #{fn_reg}(#{lhs_type.base_type} #{lhs_reg}, #{rhs_type.base_type} #{rhs_reg})\n"..store_code
+            node_error @, "Subtraction is not supported for #{lhs_type} and #{rhs_type}"
     MulUpdate: (env)=>
         lhs_type,rhs_type = get_type(@lhs),get_type(@rhs)
         lhs_reg,rhs_reg,code = env\to_regs @lhs, @rhs
@@ -2418,11 +2348,7 @@ stmt_compilers =
         if nonnil_eq(lhs_type, rhs_type) and lhs_type\is_numeric!
             return code.."#{lhs_reg} =#{lhs_type.base_type} mul #{lhs_reg}, #{rhs_reg}\n"..store_code
         else
-            -- OVERLOAD multiply()?
-            error "Not impl"
-            node_assert fn_reg, @, "multiplication is not supported for #{lhs_type} and #{rhs_type}"
-            code ..= "#{fn_reg} =l loadl #{fn_reg}\n" if needs_loading
-            return code.."#{lhs_reg} =#{lhs_type.base_type} call #{fn_reg}(#{lhs_type.base_type} #{lhs_reg}, #{rhs_type.base_type} #{rhs_reg})\n"..store_code
+            node_error @, "Multiplication is not supported for #{lhs_type} and #{rhs_type}"
     DivUpdate: (env)=>
         lhs_type,rhs_type = get_type(@lhs),get_type(@rhs)
         lhs_reg,rhs_reg,code = env\to_regs @lhs, @rhs
@@ -2430,12 +2356,7 @@ stmt_compilers =
         if nonnil_eq(lhs_type, rhs_type) and lhs_type\is_numeric!
             return code.."#{lhs_reg} =#{lhs_type.base_type} div #{lhs_reg}, #{rhs_reg}\n"..store_code
         else
-
-            -- OVERLOAD divide()?
-            error "Not impl"
-            node_assert fn_reg, @, "division is not supported for #{lhs_type} and #{rhs_type}"
-            code ..= "#{fn_reg} =l loadl #{fn_reg}\n" if needs_loading
-            return code.."#{lhs_reg} =#{lhs_type.base_type} call #{fn_reg}(#{lhs_type.base_type} #{lhs_reg}, #{rhs_type.base_type} #{rhs_reg})\n"..store_code
+            node_error @, "Division is not supported for #{lhs_type} and #{rhs_type}"
     OrUpdate: (env)=>
         t_lhs, t_rhs = get_type(@lhs), get_type(@rhs)
         true_label,false_label = env\fresh_labels "or.lhs.true", "or.lhs.false"
