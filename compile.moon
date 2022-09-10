@@ -2013,7 +2013,8 @@ expr_compilers =
             if block_type == Types.Abort
                 code ..= env\compile_stmt cond.body
             elseif block_type == Types.NilType
-                code ..= env\compile_stmt cond.body
+                _,block_code = env\to_reg cond.body
+                code ..= block_code
                 unless has_jump\match(code)
                     code ..= set_nil t, env, ret
             else
