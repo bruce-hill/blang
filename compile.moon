@@ -1,7 +1,7 @@
 Types = require 'types'
 bp = require 'bp'
 import assign_all_types, get_type, parse_type, bind_var, bind_type from require('typecheck')
-import log, viz, id, node_assert, node_error, get_node_pos, print_err, each_tag from require 'util'
+import log, viz, id, node_assert, node_error, context_err, each_tag from require 'util'
 import Measure, register_unit_alias from require 'units'
 ListMethods = require 'list_methods'
 concat = table.concat
@@ -2560,11 +2560,11 @@ stmt_compilers =
             code ..= "#{empty_label}\n"
             code ..= "#{msg} =l copy #{env\get_string_reg("Unexpected failure!", "default.failure")}\n"
             code ..= "jmp #{fail_label}\n#{fail_label}\n"
-            code ..= "call $dprintf(l 2, l #{env\get_string_reg(get_node_pos(@)..': %s\n', "failure.location")}, l #{msg})\n"
+            code ..= "call $dprintf(l 2, l #{env\get_string_reg(context_err(@, "%s", 2).."\n", "failure.message")}, l #{msg})\n"
             code ..= "call $_exit(l 1)\n"
             return code
         else
-            code = "call $dprintf(l 2, l #{env\get_string_reg(get_node_pos(@)..': A failure occurred!\n', "failure.location")})\n"
+            code = "call $dprintf(l 2, l #{env\get_string_reg(context_err(@, "A failure occurred!", 2).."\n", "failure.message")})\n"
             code ..= "call $_exit(l 1)\n"
             return code
     TypeDeclaration: (env)=> ""
