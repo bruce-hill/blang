@@ -2,7 +2,10 @@
 extern sqrt(n:Num):Num
 
 def sqrt_optional(n:Num):Num?
-    return n < 0. ? nil; sqrt(n)
+    if n < 0.
+        return nil:Num?
+    else
+        return sqrt(n)
 
 for x in [9.,-1.,-2.,-3.,-999.,4.]
     say "x = $x"
