@@ -561,7 +561,7 @@ assign_types = =>
 
             -- TODO: some `do` blocks have no `stop` and thus
             -- may not be optional
-            @__type = Types.OptionalType(t)
+            @__type = t == Types.NilType and t or Types.OptionalType(t)
 
         when "Negative"
             assign_types @value
