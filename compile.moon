@@ -2037,7 +2037,7 @@ expr_compilers =
         end_label,next_label = env\fresh_labels "do.end", "do.else"
         t = get_type(@)
         ret = t != Types.Abort and env\fresh_local("do.value") or nil
-        code = ""
+        code = "\n# Do block : #{t}\n"
         code ..= set_nil(t, env, ret) if t != Types.Abort and t\is_a(Types.OptionalType)
         for i,block in ipairs @
             for jmp in coroutine.wrap(-> each_tag(block, "Stop"))

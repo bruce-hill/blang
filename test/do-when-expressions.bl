@@ -1,36 +1,43 @@
 // Do/when/if expressions
+def main()
 
-do_values := [:String?]
-when_values := [:String?]
-if_values := [:String?]
+    do_values := [:String?]
+    when_values := [:String?]
+    if_values := [:String?]
 
-for i in 1..3
-    do_values += do
-        skip if i >= 2
-        "one"
-    else
-        stop if i == 3
-        "etc"
+    for i in 1..3
+        do_values.append(
+            do
+                skip if i >= 2
+                "one $i"
+            else
+                stop if i == 3
+                "etc $i"
+        )
 
-    when_values += when i is 1
-        "one"
-    is 2
-        "two"
-    else
-        "etc"
+        when_values.append(
+            when i is 1
+                "one $i"
+            is 2
+                "two $i"
+            else
+                "etc $i"
+        )
 
-    if_values += if i == 1
-        "one"
-    elseif i == 2
-        "two"
-    else
-        "etc"
+        if_values.append(
+            if i == 1
+                "one $i"
+            elseif i == 2
+                "two $i"
+            else
+                "etc $i"
+        )
 
-say "do_values: $do_values"
-fail unless "$do_values" == "[one, etc, nil]"
+    say "do_values: $do_values"
+    fail unless "$do_values" == "[one 1, etc 2, nil]"
 
-say "when_values: $when_values"
-fail unless "$when_values" == "[one, two, etc]"
+    say "when_values: $when_values"
+    fail unless "$when_values" == "[one 1, two 2, etc 3]"
 
-say "if_values: $if_values"
-fail unless "$if_values" == "[one, two, etc]"
+    say "if_values: $if_values"
+    fail unless "$if_values" == "[one 1, two 2, etc 3]"

@@ -558,7 +558,10 @@ assign_types = =>
             for block in *@
                 return unless block.__type
                 t = block.__type\orelse(t)
-            @__type = t
+
+            -- TODO: some `do` blocks have no `stop` and thus
+            -- may not be optional
+            @__type = Types.OptionalType(t)
 
         when "Negative"
             assign_types @value
