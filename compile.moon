@@ -180,8 +180,8 @@ class Environment
     declare_function: (fndec)=>
         args = ["#{parse_type(arg.type).base_type} #{arg.name.__register}" for arg in *fndec.args]
         if fndec.selfVar
-            node_assert fndec.selfVar.__type, fndec.selfVar, "Couldn't find type"
-            table.insert args, 1, "#{fndec.selfVar.__type.base_type} #{fndec.selfVar.__register}"
+            t = get_type fndec.selfVar, true
+            table.insert args, 1, "#{t.base_type} #{fndec.selfVar.__register}"
         fn_scope = @inner_scope {"%#{arg.name[0]}",true for arg in *fndec.args}
 
         fn_type = get_type fndec
@@ -1138,8 +1138,7 @@ expr_compilers =
             if type(chunk) == 'string'
                 code ..= "#{chunk_reg} =l copy #{env\get_string_reg chunk, "str.literal"}\n"
             else
-                t = get_type(chunk)
-                node_assert t, chunk, "Couldn't determine type for: #{viz chunk}"
+                t = get_type(chunk, true)
                 val_reg,val_code = env\to_reg chunk
                 code ..= val_code
                 if t == Types.String
@@ -1264,8 +1263,8 @@ expr_compilers =
             code ..= "#{ret} =w ceq#{t.base_type} #{b}, 0\n"
         return ret, code
     IndexedTerm: (env)=>
-        t = get_type @value
-        t0 = get_type @
+        t = get_type @value, true
+        t0 = get_type @, true
         if t0\is_a(Types.EnumType) and t == Types.TypeString
             value = t0.field_values[@index[0]]
             return "#{value}","" if value
@@ -1734,7 +1733,8 @@ expr_compilers =
                 else
                     node_error override, "I don't know what this is"
 
-                node_assert get_type(override.value)\is_a(member.type), override.value, "Not a #{member.type}"
+                override_type = get_type(override.value, true)
+                node_assert override_type\is_a(member.type), override.value, "Not a #{member.type}"
                 val_reg,val_code = env\to_reg override.value
                 code ..= val_code
                 code ..= "#{p} =l add #{ret}, #{member.offset}\n"
@@ -1921,7 +1921,7 @@ expr_compilers =
         return @__register,""
 
     Struct: (env)=>
-        t = get_type @
+        t = get_type @, true
         ret = env\fresh_local "#{t.name\lower!}"
         code = "#{ret} =l call $gc_alloc(l #{t.memory_size})\n"
         i = 0

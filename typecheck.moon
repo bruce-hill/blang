@@ -297,9 +297,14 @@ assign_types = =>
                     @__type = struct_dec.__type
             else
                 t = Types.StructType("")
+                i = 1
                 for member in *@
                     return unless member.value.__type
-                    t\add_member member.name[0], member.value.__type
+                    if member.name
+                        t\add_member member.name[0], member.value.__type
+                    else
+                        t\add_member i, member.value.__type
+                        i += 1
                 @__type = t
 
         when "UnionDeclaration"
@@ -583,10 +588,10 @@ assign_types = =>
             if @lhs.__type == @rhs.__type and @lhs.__type\is_numeric!
                 @__type = @lhs.__type
 
-        when "ButWith"
+        when "ButWith","ButWithUpdate"
             assign_types @base
             for override in *@
-                assign_types @override
+                assign_types override
             @__type = @base.__type
 
         else
@@ -635,7 +640,11 @@ assign_all_types = (ast)->
     -- for var in coroutine.wrap(-> each_tag(ast, "Var","TypeVar"))
     --     node_assert var.__declaration, var, "Couldn't determine what this variable refers to"
 
-get_type = (ast)-> ast.__type
+get_type = (ast, force)->
+    if force
+        node_assert ast.__type, ast, "Couldn't get type"
+    else
+        ast.__type
 
 return {
     :assign_all_types,
