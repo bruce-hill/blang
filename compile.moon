@@ -98,9 +98,9 @@ check_nil = (t, env, reg, nonnil_label, nil_label)->
 
 set_nil = (t, env, reg)->
     if t.base_type == "s" or t.base_type == "d"
-        return "#{reg} =#{t.base_type} cast #{t.nil_value}\n"
+        return "#{reg} =#{t.base_type} cast #{t.nil_value} # Set to nil\n"
     else
-        return "#{reg} =#{t.base_type} copy #{t.nil_value}\n"
+        return "#{reg} =#{t.base_type} copy #{t.nil_value} # Set to nil\n"
 
 convert_nil = (t, env, src_reg, dest_reg)->
     assert t and env and src_reg and dest_reg, "XXX"
@@ -1867,7 +1867,9 @@ expr_compilers =
             kw_args = {}
             pos_args = {}
             if @fn.__method
-                table.insert pos_args, {reg: @fn.value.__register, type: get_type(@fn.value), node: @fn.value}
+                arg_reg,arg_code = env\to_reg @fn.value
+                code ..= arg_code
+                table.insert pos_args, {reg: arg_reg, type: get_type(@fn.value), node: @fn.value}
             for arg in *@
                 if arg.__tag == "KeywordArg"
                     arg_reg, arg_code = env\to_reg arg.value
@@ -1931,7 +1933,7 @@ expr_compilers =
                 i += 1
                 t.members[i] or t.sorted_members[i]
 
-            node_assert memb, field, "Not a valid struct member"
+            node_assert memb, field, "Not a valid struct member of #{t\verbose_type!}"
             m_t = get_type field.value
             node_assert m_t\is_a(memb.type), field, "Expected this value to have type #{memb.type}, but got #{m_t}"
 
