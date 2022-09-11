@@ -587,6 +587,8 @@ assign_types = =>
             return unless @lhs.__type and @rhs.__type
             if @lhs.__type == @rhs.__type and @lhs.__type\is_numeric!
                 @__type = @lhs.__type
+            else
+                node_error @, "Operands are not the same types: #{@lhs.__type} vs #{@rhs.__type}"
 
         when "ButWith","ButWithUpdate"
             assign_types @base
