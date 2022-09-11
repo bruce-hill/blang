@@ -2166,7 +2166,7 @@ stmt_compilers =
             code ..= "#{done_label}\n"
         return code
     Declaration: (env)=>
-        value_type = get_type @value
+        value_type = get_type @value, true
         val_reg,code = env\to_reg @value
         if @var.__register
             code ..= "#{@var.__register} =#{value_type.base_type} copy #{val_reg}\n"
