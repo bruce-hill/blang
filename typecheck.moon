@@ -463,7 +463,7 @@ assign_types = =>
                         t = t.nonnil
                         break
                 else
-                    node_assert item.__type\is_a(t), item, "Expected a value of type #{t}, but got #{item.__type}"
+                    node_assert item.__type\is_a(t), item, "Expected a value of type `#{t}`, but got `#{item.__type}`"
 
             @__type = t
 
