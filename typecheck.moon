@@ -456,14 +456,18 @@ assign_types = =>
             t = nil
             for item in *@
                 return unless item.__type
-                if item.__type == Types.Abort
-                    if t and t\is_a(Types.OptionalType)
+                if not t
+                    t = item.__type
+                elseif t\is_a(Types.OptionalType)
+                    if item.__type == Types.Abort or item.__type == t.nonnil
                         t = t.nonnil
-                    break
-                t = node_assert item.__type\orelse(t), item, "Type mismatch with #{t}"
+                        break
+                else
+                    node_assert item.__type\is_a(t), item, "Expected a value of type #{t}, but got #{item.__type}"
+
             @__type = t
 
-        when "And","Or","Xor"
+        when "And","Xor"
             items = if @__tag == "Xor"
                 {@lhs, @rhs}
             else
@@ -474,11 +478,7 @@ assign_types = =>
             for i,item in ipairs items
                 assign_types item
                 if item.__type == Types.Abort
-                    if @__tag == "Or"
-                        if t\is_a(Types.OptionalType)
-                            t = t.nonnil
-                    else
-                        t = Types.Abort
+                    t = Types.Abort
                 elseif item.__type\is_a(Types.OptionalType)
                     node_assert item.__type.nonnil\is_a(t), item, "Type mismatch with #{t}"
                     t = Types.OptionalType(t)
@@ -584,11 +584,28 @@ assign_types = =>
         when "Mod","AddSub","MulDiv","Pow"
             assign_types @lhs
             assign_types @rhs
-            return unless @lhs.__type and @rhs.__type
-            if @lhs.__type == @rhs.__type and @lhs.__type\is_numeric!
-                @__type = @lhs.__type
-            else
-                node_error @, "Operands are not the same types: #{@lhs.__type} vs #{@rhs.__type}"
+            lhs_t, rhs_t = @lhs.__type, @rhs.__type
+            return unless lhs_t and rhs_t
+            if lhs_t == rhs_t and lhs_t\is_numeric!
+                @__type = lhs_t
+                return
+
+            if @__tag == "AddSub" and @op[0] == "+"
+                if lhs_t\is_a(Types.String) and rhs_t == lhs_t
+                    @__type = lhs_t
+                    return
+                elseif lhs_t\is_a(Types.ListType)
+                    if rhs_t == lhs_t
+                        @__type = lhs_t
+                        return
+                    elseif rhs_t\is_a(lhs_t.item_type)
+                        @__type = lhs_t
+                        return
+                elseif rhs_t\is_a(Types.ListType) and lhs_t\is_a(rhs_t.item_type)
+                    @__type = rhs_t
+                    return
+
+            node_error @, "Operands are not the same types: #{lhs_t} vs #{rhs_t}"
 
         when "ButWith","ButWithUpdate"
             assign_types @base
