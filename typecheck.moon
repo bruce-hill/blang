@@ -298,8 +298,8 @@ assign_types = =>
             else
                 t = Types.StructType("")
                 for member in *@
-                    return unless member.__type
-                    t\add_member member.name, member.__type
+                    return unless member.value.__type
+                    t\add_member member.name[0], member.value.__type
                 @__type = t
 
         when "UnionDeclaration"
