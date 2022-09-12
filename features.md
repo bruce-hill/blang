@@ -145,43 +145,44 @@ Optional types in many programming languages are either verbose and annoying to
 use, overengineered and complex, or totally absent. Blang takes an approach to
 values which may or may not exist that is simple and pragmatic. `nil` is used
 to indicate the absence of a value. Any operation that may or may not have a
-value will have an optional type. For example, indexing into a list won't have
-a value if the index is outside the bounds of the list. This is not something
-that can be checked at compile time, since lists can have dynamic lengths. One
-solution to this would be to handle it as an exception, but this is heavy-handed.
+value will have an optional type. For example, table lookup won't have
+a value if the key is not present in the table. This is not something
+that can be checked at compile time, since tables can have change at runtime.
 Blang's approach is to have the operation defined to return `nil`.
 
 ```python
-l := [40,50,60]
-// l[99] == nil
+t := {["x"]=1, ["y"]=2}
+// t["z"] ==> nil
 ```
 
 This means that the resulting value has an Optional type (in this case, for a
-list of type `[Int]` accessing one of its values has type `Int?`). How do you
-use such an optional value? Well, for some cases, you don't need to do
+table of type `{String=Int}` accessing one of its values has type `Int?`). How
+do you use such an optional value? Well, for some cases, you don't need to do
 anything, because optional values are accepted without complaint. String
-interpolation, for example will simply put "(nil)" for `nil` values and
+interpolation, for example will simply put "nil" for `nil` values and
 interpolate other values as you might expect.
 
 However, when dealing with a situation where a non-optional value is really
 required, there are three options available: provide a fallback value, fail
-(exit the program with an error status) if a nil value appears, or manually
-check for nil and cast the result if it's safe to do so:
+(exit the program with an error status) if a nil value appears, or pattern
+match for a non-nil value:
 
 ```python
-// nums:[Int]
-n := nums[x]
-// Provide a fallback in case of nil:
-set_my_num(n or 0)
+// nums:{Int=Int}
 
-// Exit the program if nil is encountered:
-set_my_num(n or fail)
-// Failure messages are optional:
-set_my_num(n or fail "Oh no! There was a bug!")
+// Option 1: Fallback value
+n := nums[x] or 0
+do_thing(n)
 
-// Check for nil and cast:
-if n:
-    set_my_num(n:Int)
+// Option 2: Exit if nil is encountered:
+n := nums[x] or fail "Not a valid key: $x"
+do_thing(n)
+
+// Option 3: Pattern match
+if n := nums[x]:
+    do_thing(n)
+else
+    missing_num_logic()
 ```
 
 Now, this would be sort of tedious for chained lookups, so Blang's semantics
