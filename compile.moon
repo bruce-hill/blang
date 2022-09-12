@@ -79,56 +79,6 @@ check_truthiness = (t, env, reg, truthy_label, falsey_label)->
     else
         return "jmp #{truthy_label}\n"
 
-check_nil = (t, env, reg, nonnil_label, nil_label)->
-    if t == Types.NilType
-        return "jmp #{nil_label}\n"
-    elseif not t\is_a(Types.OptionalType)
-        return "jmp #{nonnil_label}\n"
-    elseif t.nil_value == 0
-        return "jnz #{reg}, #{nonnil_label}, #{nil_label}\n"
-    elseif t.nonnil.base_type == "d"
-        is_not_nan = env\fresh_local "is.not.NaN"
-        return "#{is_not_nan} =w cod #{reg}, d_0.0 # Test for NaN\njnz #{is_not_nan}, #{nonnil_label}, #{nil_label}\n"
-    elseif t.nonnil.base_type == "s"
-        is_not_nan = env\fresh_local "is.not.NaN"
-        return "#{is_not_nan} =w cos #{reg}, s_0.0 # Test for NaN\njnz #{is_not_nan}, #{nonnil_label}, #{nil_label}\n"
-    else
-        tmp = env\fresh_local "is.nonnil"
-        return "#{tmp} =w cne#{t.base_type} #{reg}, #{t.nil_value}\njnz #{tmp}, #{nonnil_label}, #{nil_label}\n"
-
-set_nil = (t, env, reg)->
-    if t.base_type == "s" or t.base_type == "d"
-        return "#{reg} =#{t.base_type} cast #{t.nil_value} # Set to nil\n"
-    else
-        return "#{reg} =#{t.base_type} copy #{t.nil_value} # Set to nil\n"
-
-convert_nil = (t, env, src_reg, dest_reg)->
-    assert t and env and src_reg and dest_reg, "XXX"
-    if t.base_type == "s" or t.base_type == "d"
-        bits = env\fresh_local "bits"
-        code = "#{bits} =#{if t.base_type == "s" then "w" else "l"} xor #{src_reg}, #{t.nil_value}\n"
-        code ..= "#{dest_reg} =#{t.base_type} cast #{bits}\n"
-        return code
-    elseif t.nil_value != 0
-        return "#{dest_reg} =#{t.base_type} xor #{src_reg}, #{t.nil_value}\n"
-    else
-        return "#{dest_reg} =#{t.base_type} copy #{src_reg}\n"
-
-hash_prep = (value_t, value_reg, dest_reg)->
-    assert value_t and value_reg and dest_reg, "XXX"
-    if value_t.base_type == "s" or value_t.base_type == "d"
-        code = "#{dest_reg} =l cast #{value_reg}\n"
-        return code.."#{dest_reg} =l xor #{dest_reg}, #{value_t.nil_value}\n"
-    else
-        code = if value_t.bytes == 8
-            "#{dest_reg} =l copy #{value_reg}\n"
-        else
-            "#{dest_reg} =l extu#{value_t.abi_type} #{value_reg}\n"
-
-        if value_t.nil_value != 0
-            code ..= "#{dest_reg} =l xor #{dest_reg}, #{value_t.nil_value}\n"
-        return code
-
 class Environment
     new: (@filename)=>
         @strings = {}
@@ -341,17 +291,17 @@ class Environment
             buf = @fresh_local "buf"
             code ..= "#{buf} =l copy #{@get_string_reg "{", "lbracket"}\n"
 
-            key = @fresh_local "key.raw"
-            code ..= "#{key} =l copy 0\n"
+            key_raw = @fresh_local "key.raw"
+            code ..= "#{key_raw} =l copy 0\n"
 
             loop_label,body_label,comma_label,end_label = @fresh_labels "table.loop", "table.loop.body", "table.loop.comma", "table.loop.end"
 
-            code ..= "#{key} =l call $hashmap_next(l #{reg}, l #{key})\n"
-            code ..= "jnz #{key}, #{body_label}, #{end_label}\n"
+            code ..= "#{key_raw} =l call $hashmap_next(l #{reg}, l #{key_raw})\n"
+            code ..= "jnz #{key_raw}, #{body_label}, #{end_label}\n"
 
             code ..= @block loop_label, ->
-                code = "#{key} =l call $hashmap_next(l #{reg}, l #{key})\n"
-                code ..= "jnz #{key}, #{comma_label}, #{end_label}\n"
+                code = "#{key_raw} =l call $hashmap_next(l #{reg}, l #{key_raw})\n"
+                code ..= "jnz #{key_raw}, #{comma_label}, #{end_label}\n"
                 return code
 
             code ..= @block comma_label, ->
@@ -360,7 +310,8 @@ class Environment
 
             code ..= @block body_label, ->
                 key_reg = @fresh_local "key"
-                code = hash_prep t.key_type, key, key_reg
+                TableMethods = require 'table_methods'
+                code = TableMethods.from_table_format t.key_type, key_raw, key_reg
                 key_str = @fresh_local "key.string"
                 fn = @get_tostring_fn t.key_type, scope
                 code ..= "#{key_str} =l call #{fn}(#{t.key_type.base_type} #{key_reg}, l #{callstack})\n"
@@ -368,9 +319,9 @@ class Environment
                 code ..= "#{buf} =l call $CORD_cat(l #{buf}, l #{@get_string_reg "=", "equals"})\n"
 
                 value_raw = @fresh_local "value.raw"
-                code ..= "#{value_raw} =l call $hashmap_get(l #{reg}, l #{key})\n"
+                code ..= "#{value_raw} =l call $hashmap_get(l #{reg}, l #{key_raw})\n"
                 value_reg = @fresh_local "value"
-                code ..= convert_nil t.value_type, @, value_raw, value_reg
+                code ..= TableMethods.from_table_format t.value_type, value_raw, value_reg
                 
                 value_str = @fresh_local "value.string"
                 fn = @get_tostring_fn t.value_type, scope
@@ -546,6 +497,29 @@ class Environment
 
         node_assert stmt_compilers[node.__tag], node, "Not implemented: #{node.__tag}"
         return stmt_compilers[node.__tag](node, @)
+
+    check_nil: (t, reg, nonnil_label, nil_label)=>
+        if t == Types.NilType
+            return "jmp #{nil_label}\n"
+        elseif not t\is_a(Types.OptionalType)
+            return "jmp #{nonnil_label}\n"
+        elseif t.nil_value == 0
+            return "jnz #{reg}, #{nonnil_label}, #{nil_label}\n"
+        elseif t.nonnil.base_type == "d"
+            is_not_nan = @fresh_local "is.not.NaN"
+            return "#{is_not_nan} =w cod #{reg}, d_0.0 # Test for NaN\njnz #{is_not_nan}, #{nonnil_label}, #{nil_label}\n"
+        elseif t.nonnil.base_type == "s"
+            is_not_nan = @fresh_local "is.not.NaN"
+            return "#{is_not_nan} =w cos #{reg}, s_0.0 # Test for NaN\njnz #{is_not_nan}, #{nonnil_label}, #{nil_label}\n"
+        else
+            tmp = @fresh_local "is.nonnil"
+            return "#{tmp} =w cne#{t.base_type} #{reg}, #{t.nil_value}\njnz #{tmp}, #{nonnil_label}, #{nil_label}\n"
+
+    set_nil: (t, reg)=>
+        if t.base_type == "s" or t.base_type == "d"
+            return "#{reg} =#{t.base_type} cast #{t.nil_value} # Set to nil\n"
+        else
+            return "#{reg} =#{t.base_type} copy #{t.nil_value} # Set to nil\n"
 
     apply_macros: (ast)=>
         substitute = (ast, replacements)->
@@ -838,11 +812,12 @@ for_loop = (env, make_body)=>
         return code
 
     code ..= env\block body_label, ->
+        TableMethods = require 'table_methods'
         code = ""
         if @index
             index_reg = assert @index.__register, "Index variable isn't hooked up"
             if iter_type\is_a(Types.TableType)
-                code ..= convert_nil(iter_type.key_type, env, i, index_reg)
+                code ..= TableMethods.from_table_format(iter_type.key_type, i, index_reg)
             else
                 code ..= "#{index_reg} =l copy #{i}\n"
 
@@ -852,9 +827,9 @@ for_loop = (env, make_body)=>
                 if @index
                     value_raw = env\fresh_local "value.raw"
                     code ..= "#{value_raw} =l call $hashmap_get(l #{iter_reg}, l #{i})\n"
-                    code ..= convert_nil(iter_type.value_type, env, value_raw, var_reg)
+                    code ..= TableMethods.from_table_format(iter_type.value_type, value_raw, var_reg)
                 else
-                    code ..= convert_nil(iter_type.key_type, env, i, var_reg)
+                    code ..= TableMethods.from_table_format(iter_type.key_type, i, var_reg)
             elseif iter_type\is_a(Types.Range)
                 -- TODO: optimize to not use function call and just do var=start ... var += step
                 code ..= "#{var_reg} =l call $range_nth(l #{iter_reg}, l #{i})\n"
@@ -1277,86 +1252,30 @@ expr_compilers =
                 return get_nonnil_code!
 
             ifnil,ifnonnil,done = env\fresh_labels "if.nil", "if.nonnil", "if.nil.done"
-            code = check_nil get_type(@value), env, check_reg, ifnonnil, ifnil
+            code = env\check_nil get_type(@value), check_reg, ifnonnil, ifnil
             code ..= env\block ifnonnil, -> (get_nonnil_code!.."jmp #{done}\n")
-            code ..= env\block ifnil, -> set_nil(output_type, env, output_reg)
+            code ..= env\block ifnil, -> env\set_nil(output_type, output_reg)
             code ..= "#{done}\n"
             return code
             
         if t\is_a(Types.ListType)
             item_type = t.item_type
             index_type = get_type(@index)
-            list_reg, index_reg, code = env\to_regs @value, @index
-            if index_type\is_a(Types.Int) or index_type == Types.OptionalType(Types.Int)
-                item = env\fresh_local "list.item"
-                code = nil_guard list_reg, item, item_type, ->
-                    not_too_low,not_too_high,outside_bounds,done = env\fresh_labels "not.too.low", "not.too.high", "outside.bounds", "done"
-                    len, bounds_check = env\fresh_locals "len", "bounds.check"
-                    unless index_reg\match("^%d+$")
-                        code ..= "#{bounds_check} =w csgel #{index_reg}, 1\n"
-                        code ..= "jnz #{bounds_check}, #{not_too_low}, #{outside_bounds}\n"
-                        code ..= "#{not_too_low}\n"
-
-                    code ..= "#{len} =l loadl #{list_reg}\n"
-                    code ..= "#{bounds_check} =w cslel #{index_reg}, #{len}\n"
-                    code ..= "jnz #{bounds_check}, #{not_too_high}, #{outside_bounds}\n"
-
-                    code ..= env\block not_too_high, ->
-                        code = ""
-                        items = env\fresh_local "items"
-                        code ..= "#{items} =l add #{list_reg}, 8\n"
-                        code ..= "#{items} =l loadl #{items}\n"
-                        offset = env\fresh_local "offset"
-                        code ..= "#{offset} =l sub #{index_reg}, 1\n"
-                        code ..= "#{offset} =l mul #{offset}, #{item_type.bytes}\n"
-                        code ..= "#{items} =l add #{items}, #{offset}\n"
-                        if item_type.base_type == "d" or item_type.base_type == "s"
-                            tmp = env\fresh_local "list.item.as_int"
-                            int_type = item_type.base_type == "d" and "l" or "w"
-                            code ..= "#{tmp} =#{int_type} load#{int_type} #{items}\n"
-                            code ..= "#{item} =d cast #{tmp}\n"
-                        elseif item_type.bytes < 8
-                            code ..= "#{item} =#{item_type.base_type} loadu#{item_type.abi_type} #{items}\n"
-                        else
-                            code ..= "#{item} =l loadl #{items}\n"
-                        return code .. "jmp #{done}\n"
-
-                    code ..= env\block outside_bounds, ->
-                        code = set_nil(item_type, env, item)
-                        return code.."jmp #{done}\n"
-
-                    return code.."#{done}\n"
-
-                return item,code
+            list_reg, code = env\to_regs @value
+            ListMethods = require 'list_methods'
+            if index_type\is_a(Types.Int)
+                index_reg, index_code = env\to_regs @index
+                return code..index_code..ListMethods.methods.get_or_fail(@, env)
             elseif index_type\is_a(Types.Range)
-                slice = env\fresh_local "slice"
-                code ..= nil_guard list_reg, slice, t, ->
-                    range,code = env\to_reg @index
-                    -- use_aliasing = if @__parent.__tag == "For" and @ == @__parent.iterable
-                    --     "1"
-                    -- else
-                    --     "0"
-                    use_aliasing = "1" -- Should always be safe
-                    code ..= "#{slice} =l call $bl_list_slice(l #{list_reg}, l #{range}, l #{t.item_type.bytes}, w #{use_aliasing})\n"
-                    return code
-                return slice,code
+                index_reg, index_code = env\to_regs @index
+                return code..index_code..ListMethods.methods.range(@, env)
             elseif @index.__tag == "FieldName"
-                error "unreachable"
+                node_error @, "Field access on lists is not currently supported"
             else
                 node_error @index, "Index is #{index_type} instead of Int or Range"
         elseif t\is_a(Types.TableType)
-            tab_reg, index_reg, code = env\to_regs @value, @index
-            value_reg = env\fresh_local "value"
-            code ..= nil_guard tab_reg, value_reg, t.key_type, ->
-                code = ""
-                key_getter = env\fresh_local "key.getter"
-                code ..= hash_prep t.key_type, index_reg, key_getter
-                raw_value = env\fresh_local "value.raw"
-                code ..= "#{raw_value} =l call $hashmap_get(l #{tab_reg}, l #{key_getter})\n"
-                code ..= convert_nil t.value_type, @, raw_value, value_reg
-                return code
-
-            return value_reg,code
+            TableMethods = require "table_methods"
+            return TableMethods.methods.get_or_fail(@)
         elseif t\is_a(Types.StructType)
             if @__method
                 chain = {}
@@ -1404,7 +1323,7 @@ expr_compilers =
                 code ..= "jmp #{done}\n"
                 return code
             code ..= env\block use_nil, ->
-                set_nil(member.type, env, ret).."jmp #{done}\n"
+                env\set_nil(member.type, ret).."jmp #{done}\n"
             code ..= "#{done}\n"
             return ret,code
         elseif t\is_a(Types.Range)
@@ -1498,8 +1417,11 @@ expr_compilers =
         if #@ == 0
             return tab, code
 
+        TableMethods = require "table_methods"
         add_entry = (entry)->
+            return TableMethods.methods.set({tab,entry.key,entry.value})
             key_reg, value_reg, code = env\to_regs entry.key, entry.value
+
             key_setter = env\fresh_local "key.setter"
             code ..= hash_prep t.key_type, key_reg, key_setter
             value_setter = env\fresh_local "value.setter"
@@ -1887,7 +1809,7 @@ expr_compilers =
                     arg_reg = kw_args[name] or (table.remove(pos_args, 1) or {}).reg
                     if not arg_reg
                         arg_reg = env\fresh_local name
-                        code ..= set_nil fn_type.arg_types[i], env, arg_reg
+                        code ..= env\set_nil fn_type.arg_types[i], arg_reg
                     table.insert arg_list, "#{fn_type.arg_types[i].base_type} #{arg_reg}"
             else
                 node_assert not next(kw_args), @, "Keyword arguments supplied to a function that doesn't have names for its arguments"
@@ -1992,7 +1914,7 @@ expr_compilers =
                 _,block_code = env\to_reg cond.body
                 code ..= block_code
                 unless has_jump\match(code)
-                    code ..= set_nil t, env, ret
+                    code ..= env\set_nil t, ret
             else
                 block_reg,block_code = env\to_reg cond.body
                 code ..= block_code
@@ -2009,7 +1931,7 @@ expr_compilers =
                 code ..= env\compile_stmt @elseBody
             elseif else_type == Types.NilType
                 code ..= env\compile_stmt @elseBody
-                code ..= set_nil(t, env, ret) unless t == Types.Abort or has_jump\match(code)
+                code ..= env\set_nil(t, ret) unless t == Types.Abort or has_jump\match(code)
             else
                 block_reg,block_code = env\to_reg @elseBody
                 code ..= block_code
@@ -2019,7 +1941,7 @@ expr_compilers =
             unless has_jump\match(code)
                 code ..= "jmp #{end_label}\n"
         else
-            code ..= set_nil(t, env, ret) unless t == Types.Abort or has_jump\match(code)
+            code ..= env\set_nil(t, ret) unless t == Types.Abort or has_jump\match(code)
 
         code ..= "#{end_label}\n"
         return ret,code
@@ -2029,7 +1951,7 @@ expr_compilers =
         t = get_type(@)
         ret = t != Types.Abort and env\fresh_local("do.value") or nil
         code = "\n# Do block : #{t}\n"
-        code ..= set_nil(t, env, ret) if t != Types.Abort and t\is_a(Types.OptionalType)
+        code ..= env\set_nil(t, ret) if t != Types.Abort and t\is_a(Types.OptionalType)
         for i,block in ipairs @
             for jmp in coroutine.wrap(-> each_tag(block, "Stop"))
                 if not jmp.target or jmp.target[0] == "do"
@@ -2043,7 +1965,7 @@ expr_compilers =
                 code ..= env\compile_stmt block
             elseif block_type == Types.NilType
                 code ..= env\compile_stmt block
-                code ..= set_nil t, env, ret
+                code ..= env\set_nil t, ret
             else
                 block_reg,block_code = env\to_reg block
                 code ..= block_code
@@ -2082,7 +2004,7 @@ expr_compilers =
                 code ..= env\compile_stmt branch.body
             elseif block_type == Types.NilType
                 code ..= env\compile_stmt branch.body
-                code ..= set_nil t, env, ret
+                code ..= env\set_nil t, ret
             else
                 block_reg,block_code = env\to_reg branch.body
                 code ..= block_code
@@ -2099,7 +2021,7 @@ expr_compilers =
                 code ..= env\compile_stmt @elseBody
             elseif else_type == Types.NilType
                 code ..= env\compile_stmt @elseBody
-                code ..= set_nil(t, env, ret) unless t == Types.Abort
+                code ..= env\set_nil(t, ret) unless t == Types.Abort
             else
                 block_reg,block_code = env\to_reg @elseBody
                 code ..= block_code
@@ -2109,7 +2031,7 @@ expr_compilers =
                 code ..= "jmp #{end_label}\n"
         else
             code ..= "#{next_case}\n"
-            code ..= set_nil(t, env, ret)
+            code ..= env\set_nil(t, ret)
             code ..= "jmp #{end_label}\n"
         code ..= "#{end_label}\n"
         return ret,code
@@ -2133,7 +2055,7 @@ expr_compilers =
         code = "#{mod} =l call $bl_use(l #{env\get_string_reg env.filename, "current_file"}, l #{env\get_string_reg name, name})\n"
         if @orElse
             success_label,fail_label = env\fresh_labels "use.success","use.fail"
-            code ..= check_nil Types.OptionalType(get_type(@)), env, mod, success_label, fail_label
+            code ..= env\check_nil Types.OptionalType(get_type(@)), mod, success_label, fail_label
             code ..= env\block fail_label, -> env\compile_stmt(@orElse)
             code ..= "jmp #{success_label}\n" unless has_jump\match(code)
             code ..= "#{success_label}\n"
@@ -2149,7 +2071,7 @@ stmt_compilers =
         code = "#{mod} =l call $bl_use(l #{env\get_string_reg env.filename, "current_file"}, l #{env\get_string_reg name, name})\n"
         success_label,fail_label,done_label = env\fresh_labels "use.success","use.fail","use.done"
         if @orElse
-            code ..= check_nil Types.OptionalType(get_type(@)), env, mod, success_label, fail_label
+            code ..= env\check_nil Types.OptionalType(get_type(@)), mod, success_label, fail_label
             code ..= env\block fail_label, -> env\compile_stmt(@orElse)
             code ..= "jmp #{done_label}\n" unless has_jump\match(code)
             code ..= "#{success_label}\n"
@@ -2207,7 +2129,7 @@ stmt_compilers =
                     table.insert lhs_stores, (rhs_reg)->
                         nonnil_label, end_label = env\fresh_labels "if.nonnil", "if.nonnil.done"
                         local code
-                        code = check_nil get_type(lhs.value), env, list_reg, nonnil_label, end_label
+                        code = env\check_nil get_type(lhs.value), list_reg, nonnil_label, end_label
                         code ..= env\block nonnil_label, ->
                             not_too_low,not_too_high = env\fresh_labels "not.too.low", "not.too.high"
                             len, bounds_check = env\fresh_locals "len", "bounds.check"
@@ -2258,7 +2180,7 @@ stmt_compilers =
                     code ..= hash_prep t.value_type, rhs_reg, value_setter
 
                     nonnil_label, end_label = env\fresh_labels "if.nonnil", "if.nonnil.done"
-                    code ..= check_nil lhs_type, env, tab_reg, nonnil_label, end_label
+                    code ..= env\check_nil lhs_type, tab_reg, nonnil_label, end_label
 
                     code ..= env\block nonnil_label, ->
                         ("call $hashmap_set(l #{tab_reg}, l #{key_setter}, l #{value_setter})\n"..
@@ -2282,7 +2204,7 @@ stmt_compilers =
                 table.insert lhs_stores, (rhs_reg)->
                     nonnil_label, end_label = env\fresh_labels "if.nonnil", "if.nonnil.done"
                     local code
-                    code = check_nil get_type(lhs.value), env, struct_reg, nonnil_label, end_label
+                    code = env\check_nil get_type(lhs.value), struct_reg, nonnil_label, end_label
                     code ..= env\block nonnil_label, ->
                         loc = env\fresh_local "member.loc"
                         code = "#{loc} =l add #{struct_reg}, #{memb.offset}\n"
@@ -2389,7 +2311,7 @@ stmt_compilers =
             "#{lhs_reg} =#{t_lhs.base_type} copy #{rhs_reg}\n"..store_code
         code ..= env\block use_false, ->
             if t_lhs\is_a(Types.Optional)
-                code ..= set_nil t_lhs, env, lhs_reg
+                code ..= env\set_nil t_lhs, lhs_reg
             else
                 code ..= "#{lhs_reg} =l copy 0"..store_code
             code ..= "jmp #{xor_true}\n"

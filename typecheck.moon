@@ -374,17 +374,15 @@ assign_types = =>
             assign_types @index
             return unless @value.__type
 
-            value_type = @value.__type
-            is_optional = value_type\is_a(Types.OptionalType) and value_type != Types.NilType
-            t = is_optional and value_type.nonnil or value_type
+            t = @value.__type
             index_type = @index.__type
 
             if t\is_a(Types.ListType)
                 return unless index_type
-                if index_type == Types.Int or index_type == Types.OptionalType(Types.Int)
-                    @__type = Types.OptionalType(t.item_type)
+                if index_type == Types.Int
+                    @__type = t.item_type
                 elseif index_type == Types.Range
-                    @__type = is_optional and Types.OptionalType(t) or t
+                    @__type = t
                 elseif @index.__tag == "FieldName"
                     ListMethods = require 'list_methods'
                     -- List methods:
@@ -399,7 +397,7 @@ assign_types = =>
             elseif t\is_a(Types.TableType)
                 return unless index_type
                 node_assert index_type == t.key_type, @index, "This table has type #{t}, but is being indexed with #{index_type}"
-                @__type = Types.OptionalType(t.value_type)
+                @__type = t.value_type
             elseif t\is_a(Types.StructType)
                 if @index.__tag == "FieldName"
                     member_name = @index[0]
@@ -425,18 +423,18 @@ assign_types = =>
 
                     -- node_assert member_type, @index, "Not a valid struct member of #{t}{#{concat ["#{memb.name}=#{memb.type}" for memb in *t.sorted_members], ", "}}"
                     if member_type
-                        @__type = is_optional and Types.OptionalType(member_type) or member_type
+                        @__type = member_type
                 elseif @index.__tag == "Int"
                     i = tonumber(@index[0])
                     member_type = node_assert(t.members[i], @, "Not a valid #{t} field: #{i}").type
                     node_assert member_type, @index, "#{t} doesn't have a member #{i}"
-                    @__type = is_optional and Types.OptionalType(member_type) or member_type
+                    @__type = member_type
                 else
                     node_error @index, "Structs can only be indexed by a field name or Int literal"
             elseif t\is_a(Types.String)
                 return unless index_type
                 if index_type == Types.Int
-                    @__type = Types.OptionalType(Types.Int)
+                    @__type = Types.Int
                 elseif index_type == Types.Range
                     @__type = t
                 else
@@ -605,7 +603,7 @@ assign_types = =>
                     @__type = rhs_t
                     return
 
-            node_error @, "Operands are not the same types: #{lhs_t} vs #{rhs_t}"
+            node_error @, "Operands are not the same types: `#{lhs_t}` vs `#{rhs_t}`"
 
         when "ButWith","ButWithUpdate"
             assign_types @base
