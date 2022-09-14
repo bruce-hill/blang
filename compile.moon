@@ -311,7 +311,7 @@ class Environment
             code ..= @block body_label, ->
                 key_reg = @fresh_local "key"
                 TableMethods = require 'table_methods'
-                code = TableMethods.from_table_format t.key_type, key_raw, key_reg
+                code = TableMethods.from_table_format @, t.key_type, key_raw, key_reg
                 key_str = @fresh_local "key.string"
                 fn = @get_tostring_fn t.key_type, scope
                 code ..= "#{key_str} =l call #{fn}(#{t.key_type.base_type} #{key_reg}, l #{callstack})\n"
@@ -321,7 +321,7 @@ class Environment
                 value_raw = @fresh_local "value.raw"
                 code ..= "#{value_raw} =l call $hashmap_get(l #{reg}, l #{key_raw})\n"
                 value_reg = @fresh_local "value"
-                code ..= TableMethods.from_table_format t.value_type, value_raw, value_reg
+                code ..= TableMethods.from_table_format @, t.value_type, value_raw, value_reg
                 
                 value_str = @fresh_local "value.string"
                 fn = @get_tostring_fn t.value_type, scope
@@ -817,7 +817,7 @@ for_loop = (env, make_body)=>
         if @index
             index_reg = assert @index.__register, "Index variable isn't hooked up"
             if iter_type\is_a(Types.TableType)
-                code ..= TableMethods.from_table_format(iter_type.key_type, i, index_reg)
+                code ..= TableMethods.from_table_format(env, iter_type.key_type, i, index_reg)
             else
                 code ..= "#{index_reg} =l copy #{i}\n"
 
@@ -827,9 +827,9 @@ for_loop = (env, make_body)=>
                 if @index
                     value_raw = env\fresh_local "value.raw"
                     code ..= "#{value_raw} =l call $hashmap_get(l #{iter_reg}, l #{i})\n"
-                    code ..= TableMethods.from_table_format(iter_type.value_type, value_raw, var_reg)
+                    code ..= TableMethods.from_table_format(env, iter_type.value_type, value_raw, var_reg)
                 else
-                    code ..= TableMethods.from_table_format(iter_type.key_type, i, var_reg)
+                    code ..= TableMethods.from_table_format(env, iter_type.key_type, i, var_reg)
             elseif iter_type\is_a(Types.Range)
                 -- TODO: optimize to not use function call and just do var=start ... var += step
                 code ..= "#{var_reg} =l call $range_nth(l #{iter_reg}, l #{i})\n"
@@ -1275,7 +1275,7 @@ expr_compilers =
                 node_error @index, "Index is #{index_type} instead of Int or Range"
         elseif t\is_a(Types.TableType)
             TableMethods = require "table_methods"
-            return TableMethods.methods.get_or_fail(@)
+            return TableMethods.methods.get_or_fail(@, env)
         elseif t\is_a(Types.StructType)
             if @__method
                 chain = {}
@@ -1419,14 +1419,7 @@ expr_compilers =
 
         TableMethods = require "table_methods"
         add_entry = (entry)->
-            return TableMethods.methods.set({tab,entry.key,entry.value})
-            key_reg, value_reg, code = env\to_regs entry.key, entry.value
-
-            key_setter = env\fresh_local "key.setter"
-            code ..= hash_prep t.key_type, key_reg, key_setter
-            value_setter = env\fresh_local "value.setter"
-            code ..= hash_prep t.value_type, value_reg, value_setter
-            code ..= "call $hashmap_set(l #{tab}, l #{key_setter}, l #{value_setter})\n"
+            _,code = TableMethods.methods.set({tab,entry.key,entry.value}, env)
             return code
 
         next_label = nil
@@ -1746,20 +1739,6 @@ expr_compilers =
                 code ..= "#{result} =w cne#{lhs_type.base_type} #{lhs_reg}, #{rhs_reg}\n"
             return result,code
         return comparison @, env, "cnel"
-    TernaryOp: (env)=>
-        overall_type = get_type @
-        cond_reg,code = env\to_reg @condition
-        true_reg,true_code = env\to_reg @ifTrue
-        false_reg,false_code = env\to_reg @ifFalse
-        true_label,false_label,end_label = env\fresh_labels "ternary.true","ternary.false","ternary.end"
-        ret_reg = env\fresh_local "ternary.result"
-        code ..= check_truthiness get_type(@condition), env, cond_reg, true_label, false_label
-        code ..= env\block true_label, ->
-            "#{true_code}#{ret_reg} =#{overall_type.base_type} copy #{true_reg}\njmp #{end_label}\n"
-        code ..= env\block false_label, ->
-            "#{false_code}#{ret_reg} =#{overall_type.base_type} copy #{false_reg}\njmp #{end_label}\n"
-        code ..= "#{end_label}\n"
-        return ret_reg, code
 
     FnCall: (env, skip_ret=false)=>
         if @fn.__inline_method

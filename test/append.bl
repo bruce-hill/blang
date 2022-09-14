@@ -2,10 +2,11 @@
 def make_list(n:Int):[Int]
     tmp := [:Int]
     for i in 1..n
-        tmp.append(i)
+        tmp.insert(i)
     return tmp
 
-say "$(make_list(100))"
+say "$(make_list(5))"
+fail unless "$(make_list(5))" == "[1, 2, 3, 4, 5]"
 
 def make_string(n:Int):String
     tmp := ""
@@ -14,4 +15,5 @@ def make_string(n:Int):String
     between tmp += ","
     return tmp
 
-say(make_string 100)
+say(make_string 5)
+fail unless "$(make_string(5))" == "1,2,3,4,5"

@@ -12,7 +12,7 @@ typedef struct {
 typedef struct {
     int64_t len;
     union {
-        char *byte;
+        char *i8;
         int16_t *i16;
         int32_t *i32;
         int64_t *i64;
