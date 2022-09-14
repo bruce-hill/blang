@@ -214,7 +214,7 @@ class Environment
             code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("Abort", "Abort")})\n"
         elseif t\is_a(Types.OptionalType)
             nil_label,nonnil_label,end_label = @fresh_labels "optional.nil", "optional.nonnil", "optional.end"
-            code ..= @check_nil t, @, reg, nonnil_label, nil_label
+            code ..= @check_nil t, reg, nonnil_label, nil_label
             code ..= @block nil_label, ->
                 code = "#{dest} =l call $bl_string(l #{@get_string_reg("nil", "nil")})\n"
                 code ..= "jmp #{end_label}\n"
