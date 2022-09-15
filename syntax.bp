@@ -136,7 +136,7 @@ methodDecl: @:FnDecl=(@curdent:\C \b"def"\b _ @selfVar=Var _`._ @name=Var _ (
       / @:Return=(@value=required-extended-expr) _ [comment])))
    / @body=maybeIndentedBlock)))
 Extern:: \b"extern"\b _ @name=Var _ (
-  @type=@:FnType=(`( __ @args=@(*((@:FnArg=([@name=FieldName__`:__]@type=type) / @:ParseError=(Var =>"This argument doesn't have a type")))%(__`,__))__[`,__@varargs="..."__] [`,__]`)_
+  @type=@:FnType=(`( __ @args=@(*((@:FnArg=([@name=FieldName__`:__]@type=type) / @:ParseError=(FieldName =>"This argument doesn't have a type")))%(__`,__))__[`,__@varargs="..."__] [`,__]`)_
   `: _ @returnType=type)
   / (`: _ @type=type)
 )

@@ -12,7 +12,9 @@ parse_type = =>
                 assign_types @__declaration.__parent unless @__declaration.__type
                 @__parsed_type = node_assert @__declaration.__type, @, "Couldn't figure out this type"
             else
-                @__parsed_type = Types.NamedType(@[0])
+                error "This type variable wasn't figured out in time"
+                node_error @, "This type variable wasn't figured out in time"
+                -- @__parsed_type = Types.NamedType(@[0])
         when "OptionalType"
             nonnil = node_assert parse_type(@nonnil), @nonnil, "Couldn't parse this type"
             @__parsed_type = Types.OptionalType(nonnil)
@@ -97,6 +99,16 @@ bind_type = (scope, typevar)->
                 continue if type(child) != "table" or (type(k) == "string" and k\match("^__"))
                 bind_type child, typevar
 
+bind_all_types = =>
+    switch @__tag
+        when "TypeDeclaration","StructDeclaration","UnionDeclaration","EnumDeclaration","UnitDeclaration"
+            @name.__declaration = @name
+            bind_type @__parent, @name
+        else
+            for k,child in pairs @
+                continue if type(child) != "table" or (type(k) == "string" and k\match("^__"))
+                bind_all_types child
+
 table.find = (t, obj)->
     for k,v in pairs t
         if v == obj
@@ -132,13 +144,12 @@ bind_variables = =>
                 bind_var @body, arg.name
             bind_variables @body
         when "TypeDeclaration","StructDeclaration","UnionDeclaration","EnumDeclaration","UnitDeclaration"
-            @name.__declaration = @name
-            bind_type @__parent, @name
             for k,child in pairs @
                 continue if type(child) != "table" or (type(k) == "string" and k\match("^__"))
                 bind_variables child
         when "Extern"
             @name.__declaration = @name
+            @name.__register = "$"..@name[0]
             bind_var @__parent, @name
         when "Use"
             error "Not implemented"
@@ -225,6 +236,9 @@ assign_types = =>
             @__type = @value.__type
             @var.__type = @value.__type
 
+        when "Extern"
+            @name.__type = parse_type @type
+
         when "Cast"
             assign_types @expr
             @__type = parse_type(@type)
@@ -309,11 +323,16 @@ assign_types = =>
 
         when "UnionDeclaration"
             t = Types.StructType(@name[0])
+            @__type = t
             for member in *@
                 member_type = parse_type member.type
                 for name in *member.names
                     name.__type = member_type
                     t\add_member name[0], member_type, (name.inline and true or false)
+
+        when "TypeDeclaration"
+            @__type = Types.DerivedType(@name[0], parse_type(@derivesFrom))
+            @name.__type = @__type
 
         when "List"
             if @type
@@ -630,11 +649,19 @@ assign_all_types = (ast)->
 
     for extern in coroutine.wrap(-> each_tag(ast, "Extern"))
         bind_var extern.__parent, extern.name
-        extern.name.__type = parse_type extern.type
+        -- extern.name.__type = parse_type extern.type
         extern.name.__register = "$"..extern.name[0]
 
     while true
         progress = false
+
+        pre_decls = get_all("__declaration")
+        bind_all_types ast
+        post_decls = get_all("__declaration")
+        for k,v in pairs post_decls
+            if pre_decls[k] != post_decls[k]
+                progress = true
+                break
 
         pre_decls = get_all("__declaration")
         bind_variables ast

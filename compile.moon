@@ -598,6 +598,8 @@ class Environment
 
         assign_all_types ast, @
 
+        -- print "\n\n#{viz ast}"
+
         -- Enum field names
         for e in coroutine.wrap(-> each_tag(ast, "EnumDeclaration"))
             t = get_type(e)
@@ -1754,10 +1756,10 @@ expr_compilers =
             for arg in *@
                 if arg.__tag == "KeywordArg"
                     arg_types[arg.name[0]] = get_type(arg.value)
-                    table.insert arg_text, "#{arg.name[0]}=#{get_type arg.value}"
+                    table.insert arg_text, "#{arg.name[0]}=#{get_type(arg.value)\verbose_type!}"
                 else
                     table.insert arg_types, get_type(arg)
-                    table.insert arg_text, "#{get_type arg}"
+                    table.insert arg_text, "#{get_type(arg)\verbose_type!}"
             if @fn.__method
                 table.insert arg_types, 1, get_type(@fn.value)
                 table.insert arg_text, 1, "#{get_type(@fn.value)}"

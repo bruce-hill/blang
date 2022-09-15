@@ -71,6 +71,7 @@ class DerivedType extends Type
         @bytes = @derived_from.bytes
         @nil_value = @derived_from.nil_value
     __tostring: => @name
+    verbose_type: => "(#{@name}:#{@derived_from\verbose_type!})"
     __eq: Type.__eq
     is_a: (cls)=> @ == cls or @derived_from\is_a(cls) or @.__class == cls or cls\contains(@)
 
