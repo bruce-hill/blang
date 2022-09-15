@@ -226,7 +226,7 @@ assign_types = =>
             @var.__type = @value.__type
 
         when "Cast"
-            assign_types @value
+            assign_types @expr
             @__type = parse_type(@type)
 
         when "Var"
