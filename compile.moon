@@ -153,8 +153,13 @@ class Environment
             ret_reg, tmp = fn_scope\to_reg fndec.body
             "#{tmp}ret #{ret_reg}\n"
         body_code = body_code\gsub("[^\n]+", =>(@\match("^%@") and @ or "  "..@))
-        node_assert fndec.name.__register, fndec, "Function has no name"
-        fn_name = fndec.name.__register
+        fn_name = if fndec.name
+            node_assert fndec.name.__register, fndec, "Function has no name"
+            fndec.name.__register
+        else
+            name = @fresh_global "lambda"
+            fndec.__register = name
+            name
         @fn_code ..= "\nfunction #{ret_type\is_a(Types.Abort) and "" or ret_type.base_type.." "}"
         @fn_code ..= "#{fn_name}(#{concat args, ", "}) {\n@start\n#{body_code}"
         if ret_type\is_a(Types.Abort) and not has_jump\match(@fn_code)
