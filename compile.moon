@@ -153,13 +153,7 @@ class Environment
             ret_reg, tmp = fn_scope\to_reg fndec.body
             "#{tmp}ret #{ret_reg}\n"
         body_code = body_code\gsub("[^\n]+", =>(@\match("^%@") and @ or "  "..@))
-        fn_name = if fndec.name
-            node_assert fndec.name.__register, fndec, "Function has no name"
-            fndec.name.__register
-        else
-            name = @fresh_global "lambda"
-            fndec.__register = name
-            name
+        fn_name = fndec.__register or node_assert fndec.name.__register, fndec, "Function has no name"
         @fn_code ..= "\nfunction #{ret_type\is_a(Types.Abort) and "" or ret_type.base_type.." "}"
         @fn_code ..= "#{fn_name}(#{concat args, ", "}) {\n@start\n#{body_code}"
         if ret_type\is_a(Types.Abort) and not has_jump\match(@fn_code)
@@ -697,6 +691,8 @@ class Environment
                 table.insert naked_imports, pseudo_var
 
         -- Compile functions:
+        for lambda in coroutine.wrap(-> each_tag(ast, "Lambda"))
+            lambda.__register = @fresh_global "lambda"
         for fndec in coroutine.wrap(-> each_tag(ast, "FnDecl", "Lambda"))
             @declare_function fndec
 
@@ -1690,7 +1686,8 @@ expr_compilers =
         elseif haystack_type\is_a(Types.TableType) and needle_type\is_a(haystack_type.key_type)
             needle_reg,haystack_reg,code = env\to_regs @needle, @haystack
             key_getter = env\fresh_local "key.getter"
-            code ..= hash_prep haystack_type.key_type, needle_reg, key_getter
+            TableMethods = require 'table_methods'
+            code ..= TableMethods.to_table_format env, haystack_type.key_type, needle_reg, key_getter
             found = env\fresh_local "found"
             code ..= "#{found} =l call $hashmap_get(l #{haystack_reg}, l #{key_getter})\n"
             code ..= "#{found} =l cnel #{found}, 0\n"
@@ -2158,21 +2155,10 @@ stmt_compilers =
                 tab_reg,key_reg,new_code = env\to_regs lhs.value, lhs.index
                 code ..= new_code
 
+                TableMethods = require 'table_methods'
                 table.insert lhs_stores, (rhs_reg)->
-                    key_setter = env\fresh_local "key.setter"
-                    local code
-                    code = hash_prep t.key_type, key_reg, key_setter
-                    value_setter = env\fresh_local "value.setter"
-                    code ..= hash_prep t.value_type, rhs_reg, value_setter
-
-                    nonnil_label, end_label = env\fresh_labels "if.nonnil", "if.nonnil.done"
-                    code ..= env\check_nil lhs_type, tab_reg, nonnil_label, end_label
-
-                    code ..= env\block nonnil_label, ->
-                        ("call $hashmap_set(l #{tab_reg}, l #{key_setter}, l #{value_setter})\n"..
-                         "jmp #{end_label}\n")
-                    code ..= "#{end_label}\n"
-                    return code
+                    _,code2 = TableMethods.methods.set {tab_reg, key_reg, rhs_reg}, env, true, t
+                    return code2
             elseif t\is_a(Types.StructType)
                 memb = if lhs.index.__tag == "FieldName"
                     member_name = lhs.index[0]
