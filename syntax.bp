@@ -68,7 +68,7 @@ DSL:: `% [@name=TypeVar] @string=(
   / @:String=(@delm:. @content=@..%(Escape/Interp) delim) / @:ParseError=(..$ =>"This string has no closing delimiter"))
 List:: `[__`:__@type=@:ListType=(@itemType=type)__`] / `[ __ +listItem % (__`,__) __[`,__] `]
 listItem: PostfixFor / PostfixWhile / PostfixIf / extended-expr
-Table:: `{ __ [`:__ @type=@:TableType=(@keyType=type __ `= __ @valueType=type) __] +tableEntry % (__`,__) __ [`,__] `}
+Table:: `{ __ [`:__ @type=@:TableType=(@keyType=type __ `= __ @valueType=type) __] *tableEntry % (__`,__) __ [`,__] `}
 tableEntry: PostfixFor / PostfixWhile / PostfixIf / TableEntry
 TableEntry:: (`[__@key=required-extended-expr__`] / @key=@:String=(@content=FieldName / @key=String)) __`= __ @value=required-extended-expr
 postfixConditional: \b"if"\b _ @condition=required-extended-expr / \b"unless"\b_ @condition=@:Not=(@value=required-extended-expr)
