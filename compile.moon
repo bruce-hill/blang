@@ -89,6 +89,7 @@ class Environment
         @fn_code = ""
         @main_code = ""
         @tostring_funcs = {}
+        @convert_funcs = {}
 
     inner_scope: (inner_vars=nil)=>
         return setmetatable({used_names:setmetatable(inner_vars or {}, __index:@used_vars)}, {
@@ -620,7 +621,7 @@ class Environment
             while scope
                 return true if scope == ast
                 switch scope.__tag
-                    when "FnDecl","Lambda","Macro","For"
+                    when "FnDecl","Lambda","Macro","For","ConvertDecl"
                         return false
                 scope = scope.__parent
             error("Unexpectedly reached a node not parented to top-level AST")
@@ -693,10 +694,32 @@ class Environment
                 hook_up_refs pseudo_var, scope, fn_type
                 table.insert naked_imports, pseudo_var
 
+        -- Conversion functions
+        bind_conversion = (fn)=>
+            switch @__tag
+                when "As"
+                    src_t, dest_t = @expr.__type, parse_type(@type)
+                    if src_t and dest_t and fn.__type\matches({src_t}, dest_t)
+                        @__converter = fn
+                    bind_conversion @expr, fn
+                when "Interp"
+                    src_t, dest_t = @value.__type, @__parent.__parent.__type
+                    if src_t and dest_t and fn.__type\matches({src_t}, dest_t)
+                        @__converter = fn
+                    bind_conversion @value, fn
+                else
+                    for k,child in pairs @
+                        continue if type(child) != "table" or (type(k) == "string" and k\match("^__"))
+                        bind_conversion child, fn
+
+        for conv in coroutine.wrap(-> each_tag(ast, "ConvertDecl"))
+            conv.__register = @fresh_global "convert"
+            bind_conversion conv.__parent, conv
+
         -- Compile functions:
         for lambda in coroutine.wrap(-> each_tag(ast, "Lambda"))
             lambda.__register = @fresh_global "lambda"
-        for fndec in coroutine.wrap(-> each_tag(ast, "FnDecl", "Lambda"))
+        for fndec in coroutine.wrap(-> each_tag(ast, "FnDecl", "Lambda", "ConvertDecl"))
             @declare_function fndec
 
         exports = {}
@@ -1088,6 +1111,16 @@ expr_compilers =
         else
             code ..= "#{c} =#{cbt} cast #{reg}\n"
         return c,code
+
+    As: (env)=>
+        src_type, dest_type = @expr.__type, @__type
+        fndec = node_assert @__converter, @, "Couldn't figure out how to convert #{src_type} into #{dest_type}"
+        fn_reg = fndec.__register
+        reg,code = env\to_reg @expr
+        converted = env\fresh_local "converted"
+        code ..= "#{converted} =#{dest_type.base_type} call #{fn_reg}(#{src_type.base_type} #{reg})\n"
+        return converted,code
+
     TypeOf: (env)=>
         return env\get_string_reg(get_type(@expression), "typename"), ""
     SizeOf: (env)=>
@@ -1124,6 +1157,8 @@ expr_compilers =
                 code ..= val_code
                 if t == Types.String
                     code ..= "#{chunk_reg} =l copy #{val_reg}\n"
+                elseif chunk.__converter
+                    code ..= "#{chunk_reg} =l call #{chunk.__converter.__register}(#{t.base_type} #{val_reg})\n"
                 else
                     fn = env\get_tostring_fn t, @
                     code ..= "#{chunk_reg} =l call #{fn}(#{t.base_type} #{val_reg}, l 0)\n"
@@ -1148,14 +1183,12 @@ expr_compilers =
             t = get_type(val)
             val_reg,val_code = env\to_reg val
             code ..= val_code
-            safe = if t == dsl_type
+            safe = if t == dsl_type or val.__tag == "Escape"
                 val_reg
             else
-                -- OVERLOAD escape()?
-                error "Not impl"
-                node_assert fn_reg, val, "No escape(#{t})=>#{dsl_type} function is implemented, so this value cannot be safely inserted"
+                converter = node_assert val.__converter, val, "Couldn't figure out how to convert #{val.value.__type} to #{dsl_type}"
                 escaped = env\fresh_local "escaped"
-                code ..= "#{escaped} =l call #{fn_reg}(#{t.base_type} #{val_reg})\n"
+                code ..= "#{escaped} =l call #{converter.__register}(#{t.base_type} #{val_reg})\n"
                 escaped
             code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{safe})\n"
 
@@ -2349,6 +2382,7 @@ stmt_compilers =
         return code
 
     FnDecl: (env)=> ""
+    ConvertDecl: (env)=> ""
     Extern: (env)=> ""
     Macro: (env)=> ""
     Pass: (env)=> ""

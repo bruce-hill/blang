@@ -65,7 +65,7 @@ bind_var = (scope, var)->
         when "Var"
             if scope[0] == var[0]
                 scope.__declaration = var
-        when "FnDecl","Lambda"
+        when "FnDecl","Lambda","ConvertDecl"
             if scope.selfVar and scope.selfVar[0] == var[0]
                 return
             for arg in *scope.args
@@ -127,21 +127,16 @@ bind_variables = =>
                     bind_var @__parent.body, @var
             bind_variables @var
             bind_variables @value
-        when "FnDecl"
-            @name.__declaration = @name
+        when "FnDecl","Lambda","ConvertDecl"
+            @name.__declaration = @name if @name
             if @selfVar
                 @selfVar.__declaration = @selfVar
                 bind_var @body, @selfVar
             for arg in *@args
                 arg.name.__declaration = arg.name
                 bind_var @body, arg.name
-            bind_var @body, @name
-            bind_var @__parent, @name
-            bind_variables @body
-        when "Lambda"
-            for arg in *@args
-                arg.name.__declaration = arg.name
-                bind_var @body, arg.name
+            bind_var @body, @name if @name
+            bind_var @__parent, @name if @name
             bind_variables @body
         when "TypeDeclaration","StructDeclaration","UnionDeclaration","EnumDeclaration","UnitDeclaration"
             for k,child in pairs @
@@ -239,7 +234,7 @@ assign_types = =>
         when "Extern"
             @name.__type = parse_type @type
 
-        when "Cast"
+        when "Cast","As"
             assign_types @expr
             @__type = parse_type(@type)
 
@@ -271,6 +266,19 @@ assign_types = =>
                 table.insert arg_names, 1, @selfVar[0]
             @__type = Types.FnType(arg_types, ret, arg_names)
             @name.__type = @__type
+            assign_types @body
+
+        when "ConvertDecl"
+            for arg in *@args
+                arg.__type = parse_type(arg.type)
+                arg.name.__type = arg.__type
+            ret = @returnType and parse_type(@returnType) or Types.NilType
+            arg_types = [a.__type for a in *@args]
+            arg_names = [a.name[0] for a in *@args]
+            if @selfVar
+                table.insert arg_types, 1, @selfVar.__type
+                table.insert arg_names, 1, @selfVar[0]
+            @__type = Types.FnType(arg_types, ret, arg_names)
             assign_types @body
 
         when "FnCall"
@@ -670,7 +678,7 @@ assign_all_types = (ast)->
             if pre_decls[k] != post_decls[k]
                 progress = true
                 break
-        
+
         pre_types = get_all("__type")
         assign_types ast
         post_types = get_all("__type")
