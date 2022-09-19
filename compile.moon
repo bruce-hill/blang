@@ -123,7 +123,7 @@ class Environment
         unless @strings[str]
             name = @fresh_global suggestion
             @strings[str] = name
-            chunks = str\gsub('[^ !#-[^-~%]]', (c)->"\",b #{c\byte(1)},b\"")\gsub("\n", "\\n")
+            chunks = tostring(str)\gsub('[^ !#-[^-~%]]', (c)->"\",b #{c\byte(1)},b\"")\gsub("\n", "\\n")
             @string_code ..= "data #{name} = {b\"#{chunks}\",b 0}\n"
         return @strings[str]
 
@@ -147,7 +147,10 @@ class Environment
 
         check_returns fndec.body
 
-        body_code = if fndec.body.__tag == "Block"
+        body_code = if fndec.__tag == "Lambda"
+            ret_reg, tmp = fn_scope\to_reg fndec.body
+            "#{tmp}ret #{ret_reg}\n"
+        elseif fndec.body.__tag == "Block"
             fn_scope\compile_stmt fndec.body
         else
             ret_reg, tmp = fn_scope\to_reg fndec.body
@@ -1086,7 +1089,7 @@ expr_compilers =
             code ..= "#{c} =#{cbt} cast #{reg}\n"
         return c,code
     TypeOf: (env)=>
-        return env\get_string_reg(get_type(@expression)\verbose_type!, "typename"), ""
+        return env\get_string_reg(get_type(@expression), "typename"), ""
     SizeOf: (env)=>
         t = get_type(@expression)
         return "#{t.bytes}", ""

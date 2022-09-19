@@ -142,7 +142,7 @@ Extern:: \b"extern"\b _ @name=Var _ (
 )
 Lambda:: (@curdent:\C
   @args=@[`(__*@:FnArg=(@name=Var__`:__@type=type)%(__`,__)__[`,__]`)]
-  _"=>"_ (@body=(indentedBlock / _ line-statement) / @:ParseError=(..$ =>"Invalid lambda body"))
+  _"=>"_ (@body=maybeIndentedBlock / @:ParseError=(..$ =>"Invalid lambda body"))
 )
 Assignment:: @lhs=@(1+(IndexedTerm / Var) % (_`,__)) _ `= _ @rhs=@(*extended-expr % (__`,__))
 AddUpdate:: @lhs=Var _ "+=" _ @rhs=required-extended-expr
