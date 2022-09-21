@@ -5,7 +5,7 @@ extern bl_string_replace(text:String, pat:BP, replacement:String):String
 def hl(s:String):String
     return "\x1b[36;7m$s\x1b[m"
 
-def escape(str:String):BP
+def (str:String):BP
     return ("\"$(str | bl_string_replace(%BP{`",\}, '\@0'))\""):BP
 
 def replace(str:String, pat:String, replacement:String):String
@@ -13,10 +13,10 @@ def replace(str:String, pat:String, replacement:String):String
 
 deftype SQL:String
 
-def escape(str:String):SQL
+def (str:String):SQL
     return "'$(str|replace("'", "''")|hl)'":SQL
 
-def escape(n:Int):SQL
+def (n:Int):SQL
     return ("$n"|hl):SQL
 
 limit := 10
@@ -26,10 +26,10 @@ query := %SQL[select * from users where name = $name limit $limit]
 say "\x1b[1mSQL Query:\x1b[m $query"
 
 deftype Shell:String
-def escape(str:String):Shell
+def (str:String):Shell
     return ("'" + (str | replace("'", "'\"'\"'") | hl) + "'"):Shell
 
-def escape(strings:[String]):Shell
+def (strings:[String]):Shell
     ret := %Shell""
     for str in strings
         ret += %Shell[$str]
@@ -43,7 +43,7 @@ say "\x1b[1mShell command:\x1b[m $cmd"
 
 deftype HTML:String
 
-def escape(str:String):HTML
+def (str:String):HTML
     return (str | replace("&","&amp;") | replace("<","&lt;") | replace(">","&gt;") | replace('"',"&quot;") | replace("'","&#39;")|hl):HTML
 
 message := "I <3 things and don't care"

@@ -7,6 +7,7 @@ local Int,Int32,Int16,Int8,Num,Num32,OptionalType,NilType
 
 class Type
     is_a: (cls)=> @ == cls or @.__class == cls or cls\contains @
+    works_like_a: (cls)=> @ == cls or @.__class == cls or cls\contains @
     is_numeric: => @is_a(Int) or @is_a(Num) or @is_a(Int32) or @is_a(Int16) or @is_a(Int8) or @is_a(Num32)
     contains: (other)=> @ == other
     base_type: 'l'
@@ -73,7 +74,8 @@ class DerivedType extends Type
     __tostring: => @name
     verbose_type: => "(#{@name}:#{@derived_from\verbose_type!})"
     __eq: Type.__eq
-    is_a: (cls)=> @ == cls or @derived_from\is_a(cls) or @.__class == cls or cls\contains(@)
+    is_a: (cls)=> @ == cls or @.__class == cls or cls\contains(@)
+    works_like_a: (cls)=> @ == cls or cls == @derived_from or @.__class == cls or cls\contains @
 
 class MeasureType extends Type
     new: (@units)=>
@@ -91,6 +93,7 @@ class ListType extends Type
     id_str: => "#{@item_type\id_str!}.List"
     __eq: Type.__eq
     is_a: (cls)=> cls == @ or cls == @__class or (cls.__class == ListType and @item_type\is_a(cls.item_type)) or cls\contains(@) or cls\contains(@)
+    works_like_a: (cls)=> cls == @ or cls == @__class or (cls.__class == ListType and @item_type\works_like_a(cls.item_type)) or cls\contains(@) or cls\contains(@)
     nil_value: 0
 
 class TableType extends Type
@@ -99,6 +102,7 @@ class TableType extends Type
     __tostring: => "{#{@key_type}=#{@value_type}}"
     id_str: => "#{@key_type\id_str!}.#{@value_type\id_str!}.Table"
     is_a: (cls)=> cls == @ or cls == @__class or (cls.__class == TableType and @key_type\is_a(cls.key_type) and @value_type\is_a(cls.value_type)) or cls\contains(@)
+    works_like_a: (cls)=> cls == @ or cls == @__class or (cls.__class == TableType and @key_type\works_like_a(cls.key_type) and @value_type\works_like_a(cls.value_type)) or cls\contains(@)
     __eq: Type.__eq
     nil_value: 0
 

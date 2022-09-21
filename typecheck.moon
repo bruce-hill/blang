@@ -183,7 +183,7 @@ assign_types = =>
             assign_types @value
             @__type = @value.__type
         when "DSL"
-            assign_types @string
+            assign_types @content
             if not @name or @name[0] == ""
                 @__type = Types.String
             else
@@ -404,7 +404,7 @@ assign_types = =>
             t = @value.__type
             index_type = @index.__type
 
-            if t\is_a(Types.ListType)
+            if t\works_like_a(Types.ListType)
                 return unless index_type
                 if index_type == Types.Int
                     @__type = t.item_type
@@ -421,11 +421,11 @@ assign_types = =>
                         node_error @index, "#{@index[0]} is not a valid List method"
                 else
                     node_error @index, "Index has type #{index_type}, but expected Int or Range"
-            elseif t\is_a(Types.TableType)
+            elseif t\works_like_a(Types.TableType)
                 return unless index_type
                 node_assert index_type == t.key_type, @index, "This table has type #{t}, but is being indexed with #{index_type}"
                 @__type = t.value_type
-            elseif t\is_a(Types.StructType)
+            elseif t\works_like_a(Types.StructType)
                 if @index.__tag == "FieldName"
                     member_name = @index[0]
                     member_type = if t.members[member_name]
@@ -458,7 +458,7 @@ assign_types = =>
                     @__type = member_type
                 else
                     node_error @index, "Structs can only be indexed by a field name or Int literal"
-            elseif t\is_a(Types.String)
+            elseif t\works_like_a(Types.String)
                 return unless index_type
                 if index_type == Types.Int
                     @__type = Types.Int
@@ -558,13 +558,13 @@ assign_types = =>
             assign_types @iterable
             iter_type = @iterable.__type
             if iter_type
-                if iter_type\is_a(Types.TableType)
+                if iter_type\works_like_a(Types.TableType)
                     if @index and @val
                         @index.__type = iter_type.key_type
                         @val.__type = iter_type.value_type
                     else
                         @val.__type = iter_type.key_type
-                elseif iter_type\is_a(Types.ListType)
+                elseif iter_type\works_like_a(Types.ListType)
                     @index.__type = Types.Int if @index
                     @val.__type = iter_type.item_type
                 elseif iter_type == Types.Range
@@ -616,17 +616,17 @@ assign_types = =>
                 return
 
             if @__tag == "AddSub" and @op[0] == "+"
-                if lhs_t\is_a(Types.String) and rhs_t == lhs_t
+                if lhs_t\works_like_a(Types.String) and rhs_t == lhs_t
                     @__type = lhs_t
                     return
-                elseif lhs_t\is_a(Types.ListType)
+                elseif lhs_t\works_like_a(Types.ListType)
                     if rhs_t == lhs_t
                         @__type = lhs_t
                         return
                     elseif rhs_t\is_a(lhs_t.item_type)
                         @__type = lhs_t
                         return
-                elseif rhs_t\is_a(Types.ListType) and lhs_t\is_a(rhs_t.item_type)
+                elseif rhs_t\works_like_a(Types.ListType) and lhs_t\is_a(rhs_t.item_type)
                     @__type = rhs_t
                     return
 

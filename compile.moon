@@ -89,7 +89,6 @@ class Environment
         @fn_code = ""
         @main_code = ""
         @tostring_funcs = {}
-        @convert_funcs = {}
 
     inner_scope: (inner_vars=nil)=>
         return setmetatable({used_names:setmetatable(inner_vars or {}, __index:@used_vars)}, {
@@ -170,31 +169,29 @@ class Environment
         -- HACK: these primitive values' functions only take 1 arg, but it
         -- should be safe to pass them an extra callstack argument, which
         -- they'll just ignore.
-        if t\is_a(Types.Int)
+        if t\works_like_a(Types.Int)
             return "$bl_tostring_int"
-        elseif t\is_a(Types.Int32)
+        elseif t\works_like_a(Types.Int32)
             return "$bl_tostring_int32"
-        elseif t\is_a(Types.Int16)
+        elseif t\works_like_a(Types.Int16)
             return "$bl_tostring_int16"
-        elseif t\is_a(Types.Int8)
+        elseif t\works_like_a(Types.Int8)
             return "$bl_tostring_int8"
-        elseif t\is_a(Types.Percent)
+        elseif t\works_like_a(Types.Percent)
             return "$bl_tostring_percent"
-        elseif t\is_a(Types.Num)
+        elseif t\works_like_a(Types.Num)
             return "$bl_tostring_float"
-        elseif t\is_a(Types.Num32)
+        elseif t\works_like_a(Types.Num32)
             return "$bl_tostring_float32"
-        elseif t\is_a(Types.Bool)
+        elseif t\works_like_a(Types.Bool)
             return "$bl_tostring_bool"
-        elseif t\is_a(Types.String)
+        elseif t\works_like_a(Types.String)
             return "$bl_string"
-        elseif t\is_a(Types.Range)
+        elseif t\works_like_a(Types.Range)
             return "$bl_tostring_range"
 
         if @tostring_funcs["#{t}"]
             return @tostring_funcs["#{t}"],false
-
-        -- Overload .as_string()
 
         typename = t\id_str!
         fn_name = @fresh_global "tostring.#{typename}"
@@ -211,11 +208,11 @@ class Environment
         -- structs, not lists/tables, so cycles can only be achieved with structs.
 
         dest = @fresh_local "string"
-        if t\is_a(Types.NilType)
+        if t\works_like_a(Types.NilType)
             code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("nil", "nil")})\n"
-        elseif t\is_a(Types.Abort)
+        elseif t\works_like_a(Types.Abort)
             code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("Abort", "Abort")})\n"
-        elseif t\is_a(Types.OptionalType)
+        elseif t\works_like_a(Types.OptionalType)
             nil_label,nonnil_label,end_label = @fresh_labels "optional.nil", "optional.nonnil", "optional.end"
             code ..= @check_nil t, reg, nonnil_label, nil_label
             code ..= @block nil_label, ->
@@ -230,7 +227,7 @@ class Environment
             code ..= "#{end_label}\n"
         elseif t == Types.Value or t == Types.Value32 or t == Types.Value16 or t == Types.Value8
             code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("<#{t.name}>", t.name)})\n"
-        elseif t\is_a(Types.EnumType)
+        elseif t\works_like_a(Types.EnumType)
             init_fields,fields_exist = @fresh_labels "make_fields", "fields_exist"
             tmp = @fresh_local "fieldname"
             code ..= "#{tmp} =l loadl $#{t\id_str!}.fields\n"
@@ -249,7 +246,7 @@ class Environment
             code ..= "#{reg} =l mul #{reg}, 8\n"
             code ..= "#{tmp} =l add $#{t\id_str!}.fields, #{reg}\n"
             code ..= "#{dest} =l loadl #{tmp}\n"
-        elseif t\is_a(Types.ListType)
+        elseif t\works_like_a(Types.ListType)
             len = @fresh_local "len"
             code ..= "#{len} =l loadl #{reg}\n"
 
@@ -287,7 +284,7 @@ class Environment
                 code ..= "#{dest} =l call $bl_string(l #{buf})\n"
                 return code
 
-        elseif t\is_a(Types.TableType)
+        elseif t\works_like_a(Types.TableType)
             len = @fresh_local "len"
             code ..= "#{len} =l call $hashmap_length(l #{reg})\n"
 
@@ -340,7 +337,7 @@ class Environment
                 code ..= "#{dest} =l call $bl_string(l #{buf})\n"
                 return code
 
-        elseif t\is_a(Types.StructType)
+        elseif t\works_like_a(Types.StructType)
             if t.name\match "^Tuple%.[0-9]+$"
                 code ..= "#{dest} =l call $CORD_from_char_star(l #{@get_string_reg("{", "curly")})\n"
             else
@@ -410,7 +407,7 @@ class Environment
                 code ..= "#{dest} =l call $bl_string(l #{dest})\n"
                 return code
 
-        elseif t\is_a(Types.UnionType)
+        elseif t\works_like_a(Types.UnionType)
             init_fields,fields_exist = @fresh_labels "make_fields", "fields_exist"
             tmp = @fresh_local "fieldname"
             code ..= "#{tmp} =l loadl $#{t\id_str!}.member_names\n"
@@ -456,12 +453,12 @@ class Environment
             code ..= "#{dest} =l call $CORD_to_const_char_star(l #{dest})\n"
             code ..= "#{dest} =l call $bl_string(l #{dest})\n"
 
-        elseif t\is_a(Types.FnType)
+        elseif t\works_like_a(Types.FnType)
             code ..= "#{dest} =l call $bl_string(l #{@get_string_reg("#{t}")})\n"
-        elseif t\is_a(Types.MeasureType)
+        elseif t\works_like_a(Types.MeasureType)
             code ..= "#{dest} =l call $bl_tostring_float(d #{reg})\n"
             code ..= "#{dest} =l call $bl_string_append_string(l #{dest}, l #{@get_string_reg("<"..t.units..">", "units")})\n"
-        elseif t\is_a(Types.Pointer)
+        elseif t\works_like_a(Types.Pointer)
             code ..= "#{dest} =l call $bl_tostring_hex(l #{reg})\n"
         else
             error "Unsupported tostring type: #{t}"
@@ -1170,10 +1167,9 @@ expr_compilers =
         return str,code
 
     DSL: (env)=>
-        content = @string.content
         str = env\fresh_local "str"
-        if #content == 0
-            code = "#{str} =l call $bl_string(l #{env\get_string_reg(content[0])})\n"
+        if #@content == 0
+            code = "#{str} =l call $bl_string(l #{env\get_string_reg(@content[0])})\n"
             return str, code
 
         code = "#{str} =l call $bl_string(l #{env\get_string_reg("", "emptystr")})\n"
@@ -1183,7 +1179,7 @@ expr_compilers =
             t = get_type(val)
             val_reg,val_code = env\to_reg val
             code ..= val_code
-            safe = if t == dsl_type or val.__tag == "Escape"
+            safe = if t == dsl_type or val.__tag == "Escape" or val.__tag == "Newline"
                 val_reg
             else
                 converter = node_assert val.__converter, val, "Couldn't figure out how to convert #{val.value.__type} to #{dsl_type}"
@@ -1192,17 +1188,17 @@ expr_compilers =
                 escaped
             code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{safe})\n"
 
-        i = content.start
-        for interp in *content
+        i = @content.start
+        for interp in *@content
             if interp.start > i
-                chunk = content[0]\sub(1+(i-content.start), interp.start-content.start)
+                chunk = @content[0]\sub(1+(i-@content.start), interp.start-@content.start)
                 code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{env\get_string_reg chunk})\n"
 
             stringify(interp)
             i = interp.after
 
-        if content.after > i
-            chunk = content[0]\sub(1+(i-content.start), content.after-content.start)
+        if @content.after > i
+            chunk = @content[0]\sub(1+(i-@content.start), @content.after-@content.start)
             code ..= "#{str} =l call $bl_string_append_string(l #{str}, l #{env\get_string_reg chunk})\n"
 
         return str,code
@@ -1554,10 +1550,10 @@ expr_compilers =
         if @op[0] == "+"
             if tl_nn == tr_nn and (tl_nn\is_numeric! or tl_nn\is_a(Types.MeasureType))
                 return infixop @, env, "add"
-            elseif t_lhs == t_rhs and t_lhs\is_a(Types.String)
+            elseif t_lhs == t_rhs and t_lhs\works_like_a(Types.String)
                 return infixop @, env, (ret,lhs,rhs)->
                     "#{ret} =l call $bl_string_append_string(l #{lhs}, l #{rhs})\n"
-            elseif t_lhs\is_a(Types.ListType) and t_rhs\is_a(t_lhs.item_type)
+            elseif t_lhs\works_like_a(Types.ListType) and t_rhs\is_a(t_lhs.item_type)
                 return infixop @, env, (ret,lhs,rhs)->
                     list_reg,item_reg,item_type = lhs,rhs,t_rhs
                     new_len,len,new_items,items,new_size,size,tmp = env\fresh_locals "new.len","len","new.items","items","new.size","size","tmp"
@@ -1577,7 +1573,7 @@ expr_compilers =
                     code ..= "storel #{new_items}, #{tmp}\n"
                     code ..= "\n"
                     return code
-            elseif t_rhs\is_a(Types.ListType) and t_lhs\is_a(t_rhs.item_type)
+            elseif t_rhs\works_like_a(Types.ListType) and t_lhs\is_a(t_rhs.item_type)
                 return infixop @, env, (ret,lhs,rhs)->
                     list_reg,item_reg,item_type = rhs,lhs,t_lhs
                     new_len,len,new_items,items,new_size,size,tmp = env\fresh_locals "new.len","len","new.items","items","new.size","size","tmp"
@@ -1598,7 +1594,7 @@ expr_compilers =
                     code ..= "storel #{new_items}, #{tmp}\n"
                     code ..= "\n"
                     return code
-            elseif t_lhs == t_rhs and t_lhs\is_a(Types.ListType)
+            elseif t_lhs == t_rhs and t_lhs\works_like_a(Types.ListType)
                 return infixop @, env, (ret,lhs,rhs)->
                     len1,len2,len3,items1,items2,items3,size,tmp = env\fresh_locals "len1","len2","len3","items1","items2","items3","size","tmp"
                     code = "#{len1} =l loadl #{lhs}\n"
@@ -2246,11 +2242,11 @@ stmt_compilers =
         store_code = @lhs.__location and "store#{lhs_type.base_type} #{lhs_reg}, #{@lhs.__location}\n" or ""
         if nonnil_eq(lhs_type, rhs_type) and lhs_type\is_numeric!
             return code.."#{lhs_reg} =#{lhs_type.base_type} add #{lhs_reg}, #{rhs_reg}\n"..store_code
-        elseif lhs_type == rhs_type and lhs_type\is_a(Types.String)
+        elseif lhs_type == rhs_type and lhs_type\works_like_a(Types.String)
             return code.."#{lhs_reg} =l call $bl_string_append_string(l #{lhs_reg}, l #{rhs_reg})\n"..store_code
-        elseif lhs_type\is_a(Types.ListType) and rhs_type\is_a(lhs_type.item_type)
+        elseif lhs_type\works_like_a(Types.ListType) and rhs_type\is_a(lhs_type.item_type)
             node_error @, "Cannot use += with Lists, use list.append(other) or list = list+other instead"
-        elseif lhs_type == rhs_type and lhs_type\is_a(Types.ListType)
+        elseif lhs_type == rhs_type and lhs_type\works_like_a(Types.ListType)
             node_error @, "Cannot use += with Lists, use list.append_all(other) or list = list+other instead"
         else
             node_error @, "Addition is not supported for #{lhs_type} and #{rhs_type}"
