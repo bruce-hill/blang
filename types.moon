@@ -283,7 +283,6 @@ Bool.nil_value = 0x7F
 
 String = NamedType("String")
 String.nil_value = 0
-TypeString = DerivedType("TypeString", String)
 Range = StructType("Range", {{name:"first",type:Int},{name:"next",type:Int},{name:"last",type:Int}})
 Range.item_type = Int
 Range.nil_value = 0
@@ -297,5 +296,5 @@ class TypeValue extends Type
 return {
     :Type, :NamedType, :ListType, :TableType, :FnType, :StructType,
     :Value, :Value32, :Value16, :Value8, :Pointer, :Int, :Int32, :Int16, :Int8, :Num, :Num32, :Percent, :String, :Bool, :Abort, :NilType, :Range,
-    :OptionalType, :MeasureType, :TypeString, :TypeValue, :EnumType, :UnionType, :DerivedType,
+    :OptionalType, :MeasureType, :TypeValue, :EnumType, :UnionType, :DerivedType,
 }

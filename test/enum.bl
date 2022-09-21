@@ -2,6 +2,7 @@ enum Color{Red, Green, Blue}
 
 x := Color.Red
 say "x = $x"
+say "Color: $(Color)"
 
 for c in [Color.Red, Color.Green, Color.Blue]
     when c is Color.Blue

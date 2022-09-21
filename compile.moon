@@ -188,7 +188,7 @@ class Environment
             return "$bl_tostring_float32"
         elseif t\works_like_a(Types.Bool)
             return "$bl_tostring_bool"
-        elseif t\works_like_a(Types.String)
+        elseif t\works_like_a(Types.String) or t\is_a(Types.TypeValue)
             return "$bl_string"
         elseif t\works_like_a(Types.Range)
             return "$bl_tostring_range"
@@ -464,7 +464,7 @@ class Environment
         elseif t\works_like_a(Types.Pointer)
             code ..= "#{dest} =l call $bl_tostring_hex(l #{reg})\n"
         else
-            error "Unsupported tostring type: #{t}"
+            error "Unsupported tostring type: #{t\verbose_type!}"
 
         code ..= "ret #{dest}\n"
         code ..= "}\n"
@@ -603,14 +603,17 @@ class Environment
 
         -- print "\n\n#{viz ast}"
 
+        -- Type names:
+        for typedecl in coroutine.wrap(-> each_tag(ast, "EnumDeclaration","StructDeclaration","UnionDeclaration","TypeDeclaration"))
+            t = get_type(typedecl)
+            type_name = "$#{t.type\id_str!}.name"
+            @type_code ..= "data #{type_name} = #{@string_as_data tostring(t.type)}\n"
+            typedecl.name.__register = type_name
+
         -- Enum field names
         for e in coroutine.wrap(-> each_tag(ast, "EnumDeclaration"))
             t = get_type(e)
             enum_t = t.type
-            enum_name = "$#{enum_t\id_str!}.name"
-            @type_code ..= "data #{enum_name} = #{@string_as_data tostring(enum_t)}\n"
-            e.name.__register = enum_name
-
             fieldnames = "$#{enum_t\id_str!}.fields"
             @type_code ..= "data #{fieldnames} = {#{("l 0,")\rep(enum_t.next_value)}}\n"
 
@@ -1861,6 +1864,7 @@ expr_compilers =
 
     Struct: (env)=>
         t = get_type @, true
+        t = t.type
         ret = env\fresh_local "#{t.name\lower!}"
         code = "#{ret} =l call $gc_alloc(l #{t.memory_size})\n"
         i = 0
