@@ -23,7 +23,9 @@ types = {
     sorted: => FnType({@,OptionalType(FnType(@item_type,@item_type,Bool)),Bool}, @, {"list","by","reversed"})
 }
 
-get = (use_failure)=>
+get = (env, use_failure)=>
+    assert @__type, "No type"
+    assert @value.__type\is_a(ListType), "WTF: #{@__type}"
     local list,index
     if @__tag == "IndexedTerm"
         list,index = @value,@index
@@ -45,7 +47,7 @@ get = (use_failure)=>
     if use_failure
         code ..= "call $dprintf(l 2, l #{env\get_string_reg(context_err(index, "Invalid index: %ld (list size = %ld)", 2).."\n", "index_error")}, l #{index_reg}, l #{len})\n"
         code ..= "call $_exit(l 1)\n"
-        code ..= "jmp #{done}\n"
+        code ..= "jmp #{index_error}\n"
     else
         code ..= env\set_nil @__type.value_type, item
         code ..= "jmp #{done}\n"
@@ -56,6 +58,7 @@ get = (use_failure)=>
     code ..= "#{items} =l loadl #{items}\n"
     offset,item_loc = env\fresh_locals "offset","item_location"
     code ..= "#{offset} =l sub #{index_reg}, 1\n"
+    item_type = @value.__type.item_type
     code ..= "#{offset} =l mul #{offset}, #{item_type.bytes}\n"
     code ..= "#{item_loc} =l add #{items}, #{offset}\n"
     if item_type.base_type == "d" or item_type.base_type == "s"
@@ -74,8 +77,8 @@ get = (use_failure)=>
     return item, code
 
 methods = {
-    get: (env)=> get(env, false)
-    get_or_fail: (env)=> get(env, true)
+    get: (env)=> get(@, env, false)
+    get_or_fail: (env)=> get(@, env, true)
 
     data_pointer: (env)=>
         list_reg,code = env\to_regs @[1]

@@ -60,7 +60,7 @@ get_fn_type = (fndec)->
     return Types.FnType([parse_type a.type for a in *node.args], ret_type, [a.name[0] for a in *node.args])
 
 bind_var = (scope, var)->
-    assert var.__tag == "Var", "Not a Var: #{var.__tag}"
+    assert var.__tag == "Var" or var.__tag == "TypeVar", "Not a Var: #{var.__tag}"
     switch scope.__tag
         when "Var"
             if scope[0] == var[0]
@@ -85,12 +85,8 @@ bind_type = (scope, typevar)->
         when "TypeVar"
             if scope[0] == typevar[0]
                 scope.__declaration = typevar
-        when "Var"
-            if scope[0] == typevar[0]
-                scope.__declaration = typevar
         when "TypeDeclaration","StructDeclaration","UnionDeclaration","EnumDeclaration","UnitDeclaration"
-            if scope.name[0] == typevar[0]
-                scope.__declaration = typevar
+            return if scope.name[0] == typevar[0] -- Shadowing
             for k,child in pairs scope
                 continue if type(child) != "table" or (type(k) == "string" and k\match("^__"))
                 bind_type child, typevar
@@ -104,6 +100,11 @@ bind_all_types = =>
         when "TypeDeclaration","StructDeclaration","UnionDeclaration","EnumDeclaration","UnitDeclaration"
             @name.__declaration = @name
             bind_type @__parent, @name
+            bind_var @__parent, @name
+            for k,child in pairs @
+                continue if type(child) != "table" or (type(k) == "string" and k\match("^__"))
+                bind_type child, @name
+                bind_var child, @name
         else
             for k,child in pairs @
                 continue if type(child) != "table" or (type(k) == "string" and k\match("^__"))
@@ -190,7 +191,7 @@ assign_types = =>
                 @__type = Types.DerivedType(@name[0], Types.String)
         when "TypeOf"
             assign_types @expression
-            @__type = Types.TypeString
+            @__type = Types.TypeValue(@expression.__type) if @expression.__type
         when "SizeOf"
             assign_types @expression
             @__type = Types.Int
@@ -291,8 +292,8 @@ assign_types = =>
 
         when "StructDeclaration"
             t = Types.StructType(@name[0])
-            @__type = t
-            @name.__type = t if @name
+            @__type = Types.TypeValue(t)
+            @name.__type = @__type if @name
             for member in *@
                 if member.__tag == "StructField"
                     member_type = node_assert parse_type(member.type), member.type, "Couldn't parse this type"
@@ -308,6 +309,15 @@ assign_types = =>
                     assign_types member
                 elseif member.__tag == "Declaration"
                     assign_types member
+
+        when "EnumDeclaration"
+            t = Types.EnumType(@name[0])
+            @__type = Types.TypeValue(t)
+            @name.__type = @__type if @name
+            for member in *@
+                if member.__tag == "EnumField"
+                    value = member.value and tonumber(member.value[0])
+                    t\add_field member.name[0], value
 
         when "Struct"
             for member in *@
@@ -466,6 +476,13 @@ assign_types = =>
                     @__type = t
                 else
                     node_error @index, "Strings can only be indexed by Ints or Ranges"
+            elseif t\is_a(Types.TypeValue)
+                if t.type\is_a(Types.EnumType)
+                    node_assert @index.__tag == "FieldName", @index, "The Enum class #{t} can only be indexed by a valid field name"
+                    node_assert t.type.field_values[@index[0]], "#{t.type}.#{@index[0]} is not a valid field in the Enum #{t.type}"
+                    @__type = t.type
+                else
+                    node_error @, "Only Enum types can be indexed, not #{t.type}"
             else
                 node_error @value, "Indexing is not valid on type #{t}"
 

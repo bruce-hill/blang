@@ -123,9 +123,12 @@ class Environment
         unless @strings[str]
             name = @fresh_global suggestion
             @strings[str] = name
-            chunks = tostring(str)\gsub('[^ !#-[^-~%]]', (c)->"\",b #{c\byte(1)},b\"")\gsub("\n", "\\n")
-            @string_code ..= "data #{name} = {b\"#{chunks}\",b 0}\n"
+            @string_code ..= "data #{name} = #{@string_as_data str}\n"
         return @strings[str]
+
+    string_as_data: (str)=>
+        chunks = tostring(str)\gsub('[^ !#-[^-~%]]', (c)->"\",b #{c\byte(1)},b\"")\gsub("\n", "\\n")
+        return "{b\"#{chunks}\",b 0}\n"
 
     declare_function: (fndec)=>
         args = ["#{parse_type(arg.type).base_type} #{arg.name.__register}" for arg in *fndec.args]
@@ -603,9 +606,13 @@ class Environment
         -- Enum field names
         for e in coroutine.wrap(-> each_tag(ast, "EnumDeclaration"))
             t = get_type(e)
-            assert t\is_a(Types.EnumType), "#{t}"
-            fieldnames = "$#{t\id_str!}.fields"
-            @type_code ..= "data #{fieldnames} = {#{("l 0,")\rep(t.next_value)}}\n"
+            enum_t = t.type
+            enum_name = "$#{enum_t\id_str!}.name"
+            @type_code ..= "data #{enum_name} = #{@string_as_data tostring(enum_t)}\n"
+            e.name.__register = enum_name
+
+            fieldnames = "$#{enum_t\id_str!}.fields"
+            @type_code ..= "data #{fieldnames} = {#{("l 0,")\rep(enum_t.next_value)}}\n"
 
         -- Union field names
         for u in coroutine.wrap(-> each_tag(ast, "UnionDeclaration", "UnionType"))
@@ -970,15 +977,13 @@ while_loop = (env, make_body)=>
 
 expr_compilers =
     Var: (env)=>
-        if @__register
-            return @__register, ""
-        elseif @__location
-            t = get_type(@)
+        return @__register, "" if @__register
+        t = get_type(@)
+        if @__location
             tmp = env\fresh_local "#{@[0]}.value"
             return tmp, "#{tmp} =#{t.base_type} load#{t.base_type} #{@__location}\n"
-        elseif get_type(@) == Types.TypeString
-            t = parse_type(@)
-            return env\get_string_reg(t\verbose_type!, @[0]), ""
+        elseif t\is_a(Types.TypeValue)
+            return env\get_string_reg(t.type\verbose_type!, @[0]), ""
         node_error @, "This variable is not defined"
     Declaration: (env)=>
         code = env\compile_stmt @
@@ -1274,11 +1279,9 @@ expr_compilers =
         return ret, code
     IndexedTerm: (env)=>
         t = get_type @value, true
-        t0 = get_type @, true
-        if t0\is_a(Types.EnumType) and t == Types.TypeString
-            value = t0.field_values[@index[0]]
-            return "#{value}","" if value
-            node_error @, "Couldn't find enum field: .#{@index[0]} on type #{t0}"
+        if t\is_a(Types.TypeValue) and t.type\is_a(Types.EnumType) and @index.__tag == "FieldName"
+            value = node_assert t.type.field_values[@index[0]], @, "Couldn't find enum field: .#{@index[0]} on type #{t.type}"
+            return "#{value}",""
 
         is_optional = t\is_a(Types.OptionalType) and t != Types.NilType
         t = t.nonnil if is_optional
@@ -1299,11 +1302,10 @@ expr_compilers =
             list_reg, code = env\to_regs @value
             ListMethods = require 'list_methods'
             if index_type\is_a(Types.Int)
-                index_reg, index_code = env\to_regs @index
-                return code..index_code..ListMethods.methods.get_or_fail(@, env)
+                return ListMethods.methods.get_or_fail(@, env)
             elseif index_type\is_a(Types.Range)
                 index_reg, index_code = env\to_regs @index
-                return code..index_code..ListMethods.methods.range(@, env)
+                return ListMethods.methods.range(@, env)
             elseif @index.__tag == "FieldName"
                 node_error @, "Field access on lists is not currently supported"
             else
@@ -1384,7 +1386,7 @@ expr_compilers =
             else
                 node_error @index, "Index is #{index_type} instead of Int or Range"
         else
-            node_error @value, "Indexing is not valid on type #{t}"
+            node_error @value, "Indexing is not valid on type #{t\verbose_type!}"
     List: (env)=>
         list,list_items,size,p = env\fresh_locals "list", "list.items", "list.size", "p"
         code = "#{list} =l call $gc_alloc(l 16)\n"

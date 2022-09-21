@@ -288,8 +288,14 @@ Range = StructType("Range", {{name:"first",type:Int},{name:"next",type:Int},{nam
 Range.item_type = Int
 Range.nil_value = 0
 
+class TypeValue extends Type
+    new: (@type)=>
+    __tostring: => tostring(@type)
+    __eq: Type.__eq
+    verbose_type: => "TypeValue(#{@type\verbose_type!})"
+
 return {
     :Type, :NamedType, :ListType, :TableType, :FnType, :StructType,
     :Value, :Value32, :Value16, :Value8, :Pointer, :Int, :Int32, :Int16, :Int8, :Num, :Num32, :Percent, :String, :Bool, :Abort, :NilType, :Range,
-    :OptionalType, :MeasureType, :TypeString, :EnumType, :UnionType, :DerivedType,
+    :OptionalType, :MeasureType, :TypeString, :TypeValue, :EnumType, :UnionType, :DerivedType,
 }
