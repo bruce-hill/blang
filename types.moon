@@ -3,7 +3,7 @@ concat = table.concat
 import log, viz, print_err, node_assert, node_error, each_tag from require 'util'
 import Measure, register_unit_alias from require 'units'
 
-local Int,Int32,Int16,Int8,Num,Num32,OptionalType,NilType
+local Int,Int32,Int16,Int8,Num,Num32,OptionalType,NilType,TypeValue
 
 class Type
     is_a: (cls)=> @ == cls or @.__class == cls or cls\contains @
@@ -283,15 +283,17 @@ Bool.nil_value = 0x7F
 
 String = NamedType("String")
 String.nil_value = 0
-Range = StructType("Range", {{name:"first",type:Int},{name:"next",type:Int},{name:"last",type:Int}})
-Range.item_type = Int
-Range.nil_value = 0
 
 class TypeValue extends Type
     new: (@type)=>
     __tostring: => tostring(@type)
     __eq: Type.__eq
     verbose_type: => "TypeValue(#{@type\verbose_type!})"
+    nil_value: 0
+
+Range = StructType("Range", {{name:"first",type:Int},{name:"next",type:Int},{name:"last",type:Int}})
+Range.item_type = Int
+Range.nil_value = 0
 
 return {
     :Type, :NamedType, :ListType, :TableType, :FnType, :StructType,

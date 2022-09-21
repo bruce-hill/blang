@@ -10,7 +10,7 @@ parse_type = =>
         when "Var","TypeVar"
             if @__declaration
                 assign_types @__declaration.__parent unless @__declaration.__type
-                @__parsed_type = node_assert @__declaration.__type, @, "Couldn't figure out this type"
+                @__parsed_type = node_assert @__declaration.__type.type, @, "Couldn't figure out this type"
             else
                 error "This type variable wasn't figured out in time"
                 node_error @, "This type variable wasn't figured out in time"
@@ -326,7 +326,7 @@ assign_types = =>
                 if @name.__declaration
                     struct_dec = @name.__declaration.__parent
                     node_assert struct_dec.__tag == "StructDeclaration", @name, "This isn't a struct name, it's a #{struct_dec.__tag}"
-                    @__type = struct_dec.__type
+                    @__type = struct_dec.__type.type
             else
                 t = Types.StructType("")
                 i = 1

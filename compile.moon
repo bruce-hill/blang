@@ -1864,7 +1864,6 @@ expr_compilers =
 
     Struct: (env)=>
         t = get_type @, true
-        t = t.type
         ret = env\fresh_local "#{t.name\lower!}"
         code = "#{ret} =l call $gc_alloc(l #{t.memory_size})\n"
         i = 0
@@ -1878,7 +1877,7 @@ expr_compilers =
 
             node_assert memb, field, "Not a valid struct member of #{t\verbose_type!}"
             m_t = get_type field.value
-            node_assert m_t\is_a(memb.type), field, "Expected this value to have type #{memb.type}, but got #{m_t}"
+            node_assert m_t\is_a(memb.type), field, "Expected this value to have type #{memb.type\verbose_type!}, but got #{m_t\verbose_type!}"
 
             loc = env\fresh_local "#{t\id_str!\lower!}.#{memb.name}.loc"
             code ..= "#{loc} =l add #{ret}, #{memb.offset}\n"
