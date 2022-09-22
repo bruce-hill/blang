@@ -474,7 +474,7 @@ class Environment
         return fn_name
 
     to_reg: (node, ...)=>
-        node_assert expr_compilers[node.__tag], node, "Expression compiler not implemented for #{node.__tag}"
+        assert expr_compilers[node.__tag], "Expression compiler not implemented for #{node.__tag}"
         return expr_compilers[node.__tag](node, @, ...)
 
     to_regs: (...)=>
@@ -482,7 +482,7 @@ class Environment
         regs = {}
         codes = {}
         for node in *nodes
-            node_assert expr_compilers[node.__tag], node, "Expression compiler not implemented for #{node.__tag}"
+            assert expr_compilers[node.__tag], "Expression compiler not implemented for #{node.__tag}"
             reg,node_code = expr_compilers[node.__tag](node, @)
             table.insert(codes, node_code)
             table.insert(regs, reg)
@@ -831,8 +831,7 @@ for_loop = (env, make_body)=>
         code ..= "#{list_item} =l add #{iter_reg}, 8\n"
         code ..= "#{list_item} =l loadl #{list_item}\n"
     elseif iter_type\is_a(Types.TableType)
-        _=nil -- Len is not used for tables
-        -- code ..= "#{len} =l call $hashmap_len(l #{iter_reg})\n"
+        len = nil -- Len is not used for tables
     else
         node_error @iterable, "Expected an iterable type, not #{iter_type}"
     code ..= "jmp #{next_label}\n"
