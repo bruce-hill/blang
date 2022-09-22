@@ -99,12 +99,12 @@ bind_all_types = =>
     switch @__tag
         when "TypeDeclaration","StructDeclaration","UnionDeclaration","EnumDeclaration","UnitDeclaration"
             @name.__declaration = @name
-            bind_type @__parent, @name
             bind_var @__parent, @name
+            bind_type @__parent, @name
             for k,child in pairs @
                 continue if type(child) != "table" or (type(k) == "string" and k\match("^__"))
-                bind_type child, @name
                 bind_var child, @name
+                bind_type child, @name
         else
             for k,child in pairs @
                 continue if type(child) != "table" or (type(k) == "string" and k\match("^__"))
@@ -341,16 +341,19 @@ assign_types = =>
 
         when "UnionDeclaration"
             t = Types.StructType(@name[0])
-            @__type = t
+            @__type = Types.TypeValue(t)
             for member in *@
                 member_type = parse_type member.type
                 for name in *member.names
                     name.__type = member_type
                     t\add_member name[0], member_type, (name.inline and true or false)
+            @name.__type = @__type if @name
 
         when "TypeDeclaration"
-            @__type = Types.DerivedType(@name[0], parse_type(@derivesFrom))
-            @name.__type = @__type
+            derived = parse_type(@derivesFrom)
+            if derived
+                @__type = Types.TypeValue(Types.DerivedType(@name[0], derived))
+                @name.__type = @__type
 
         when "List"
             if @type
@@ -674,7 +677,6 @@ assign_all_types = (ast)->
 
     for extern in coroutine.wrap(-> each_tag(ast, "Extern"))
         bind_var extern.__parent, extern.name
-        -- extern.name.__type = parse_type extern.type
         extern.name.__register = "$"..extern.name[0]
 
     while true

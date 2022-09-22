@@ -596,7 +596,7 @@ class Environment
             bind_type ast, {
                 [0]: name,
                 __tag: "TypeVar",
-                __type: t,
+                __type: Types.TypeValue(t),
             }
 
         assign_all_types ast, @
