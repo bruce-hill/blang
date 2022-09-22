@@ -5,23 +5,27 @@
 
 static const int64_t INT_NIL = 0x7FFFFFFFFFFFFFFF;
 
+#include <stdio.h>
 void list_insert_all(list_t *list, size_t item_size, int64_t index, list_t *other, const char *err_fmt) {
     if (index == INT_NIL) index = list->len + 1;
     else if (__builtin_expect((index < 1) | (index > list->len + 1), 0))
         errx(1, err_fmt, index);
-    list->items.i8 = gc_realloc(list->items.i8, item_size * (list->len + other->len));
-    memmove(list->items.i8 + (index-1)*item_size, list->items.i8 + (index-1 + other->len)*item_size, (list->len - index + 1)*item_size);
+    printf("Insert at: %ld\n", index);
+    char *old_items = list->items.i8;
+    list->items.i8 = gc_alloc(item_size * (list->len + other->len));
+    memcpy(list->items.i8, old_items, item_size*(index-1));
+    memcpy(list->items.i8 + (index-1)*item_size, other->items.i8, other->len*item_size);
+    memcpy(list->items.i8 + (index-1 + other->len)*item_size, old_items+item_size*(index-1), item_size*(list->len - (index-1)));
     list->len += other->len;
-    memcpy(&list->items.i8[(index-1)*item_size], other->items.i8, other->len*item_size);
 }
 
 void list_insert(list_t *list, size_t item_size, int64_t index, int64_t item, const char *err_fmt) {
     if (index == INT_NIL) index = list->len + 1;
     else if (__builtin_expect((index < 1) | (index > list->len + 1), 0))
         errx(1, err_fmt, index);
-    list->items.i8 = gc_realloc(list->items.i8, item_size * (list->len + 1));
-    memmove(list->items.i8 + (index-1)*item_size, list->items.i8 + (index-1 + 1)*item_size, (list->len - index + 1)*item_size);
-    list->len += 1;
+    char *old_items = list->items.i8;
+    list->items.i8 = gc_alloc(item_size * (list->len + 1));
+    memcpy(list->items.i8, old_items, item_size*(index-1));
     switch (item_size) {
         case 8: list->items.i64[index-1] = *((int64_t*)&item); break;
         case 4: list->items.i32[index-1] = *((int32_t*)&item); break;
@@ -29,6 +33,8 @@ void list_insert(list_t *list, size_t item_size, int64_t index, int64_t item, co
         case 1: list->items.i8[index-1]  = *((int8_t*)&item); break;
         default: break;
     }
+    memcpy(list->items.i8+item_size*index, old_items+item_size*(index-1), item_size*(list->len - (index-1)));
+    list->len += 1;
 }
 
 void list_remove(list_t *list, size_t item_size, int64_t first, int64_t last) {

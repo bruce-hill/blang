@@ -171,10 +171,18 @@ methods = {
 
         list_t = list.__type
         list_reg, items_reg, code = env\to_regs(list, items)
+
+        index_reg = if index
+            reg,index_code = env\to_reg index
+            code ..= index_code
+            reg
+        else
+            "#{Int.nil_value}"
+
         items_t = items.__type
         node_assert items_t == list_t, @, "Cannot put item from #{items_t} in a list of type #{list_t}"
         err_fmt = env\get_string_reg(context_err(@, "Invalid list index: %ld", 2).."\n", "index_error")
-        code ..= "call $list_insert_all(l #{list_reg}, l #{list_t.item_type.bytes}, l #{Int.nil_value}, l #{items_reg}, l #{err_fmt})\n"
+        code ..= "call $list_insert_all(l #{list_reg}, l #{list_t.item_type.bytes}, l #{index_reg}, l #{items_reg}, l #{err_fmt})\n"
         return "0", code
 
     equal_items: (env)=>
