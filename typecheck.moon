@@ -500,16 +500,29 @@ assign_types = =>
 
             t = nil
             for item in *@
+                print "Scanning: #{t} #{item.__type}"
                 return unless item.__type
                 if not t
                     t = item.__type
+                elseif t == Types.NilType
+                    if item.__type == Types.Abort
+                        t = Types.Abort
+                        break
                 elseif t\is_a(Types.OptionalType)
                     if item.__type == Types.Abort or item.__type == t.nonnil
                         t = t.nonnil
                         break
+                elseif item.__type\is_a(Types.Abort)
+                    t = Types.Abort
+                elseif item.__type == Types.NilType
+                    t = if t
+                        Types.OptionalType(t)
+                    else
+                        Types.NilType
                 else
                     node_assert item.__type\is_a(t), item, "Expected a value of type `#{t}`, but got `#{item.__type}`"
 
+            print "Final: #{t}"
             @__type = t
 
         when "And","Xor"

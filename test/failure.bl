@@ -1,4 +1,6 @@
-maybe_nil := yes ? "safe"; nil
+maybe_nil := if yes
+    "safe"
+else nil
 say "maybe: $maybe_nil"
 x := maybe_nil or fail "Oh no!"
 say x
