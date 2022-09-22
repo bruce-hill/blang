@@ -2,36 +2,18 @@ say "Modifying while iterating:"
 xs := [1,2,3,4]
 for x in xs
     say "$x"
-    xs += [10*x]
+    xs.insert(10*x)
 
 say "$xs"
 fail unless "$xs" == "[1, 2, 3, 4, 10, 20, 30, 40]"
 
 say "Modifying while iterating:"
 xs := [1,2,3,4]
-for x in xs
-    say "$x"
-    xs += [10*x]
-
-say "$xs"
-fail unless "$xs" == "[1, 2, 3, 4, 10, 20, 30, 40]"
-
-
-say "Modifying while iterating:"
-xs := [1,2,3,4]
 for x in xs[2..]
     say "$x"
-    xs += [10*x]
+    xs.insert(10*x)
 
 say "$xs"
 fail unless "$xs" == "[1, 2, 3, 4, 20, 30, 40]"
 
-say "Modifying while iterating:"
-xs := [1,2,3,4]
-for x in xs[2..]
-    say "$x"
-    xs += [10*x]
-
-say "$xs"
-fail unless "$xs" == "[1, 2, 3, 4, 20, 30, 40]"
 // Don't need to test tables, they work, but you may run into recently inserted keys
