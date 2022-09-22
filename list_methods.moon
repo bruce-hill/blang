@@ -94,7 +94,7 @@ methods = {
 
         t = list.__type
         list_reg,range_reg,code = env\to_regs list,range
-        use_aliasing = "0" -- TODO: re-enable when it's safe to do so
+        use_aliasing = "1" -- TODO: re-enable when it's safe to do so
         slice = env\fresh_local "slice"
         code ..= "#{slice} =l call $list_slice(l #{list_reg}, l #{range_reg}, l #{t.item_type.bytes}, w #{use_aliasing})\n"
         return slice,code

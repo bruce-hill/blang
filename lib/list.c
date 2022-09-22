@@ -98,7 +98,7 @@ list_t *list_slice(list_t *list, range_t *r, size_t list_item_size, bool allow_a
     slice->len = len;
 
     if (step == 1 && allow_aliasing) {
-        slice->items.i8 = &list->items.i8[first-1];
+        slice->items.i8 = list->items.i8 + (first-1)*list_item_size;
     } else if (len > 0) {
         void *p = gc_alloc(len * list_item_size);
         slice->items.i8 = p;
