@@ -79,7 +79,7 @@ List:: `[__`:__@type=@:ListType=(@itemType=type)__`] / `[ __ +listItem % (__`,__
 listItem: PostfixFor / PostfixWhile / PostfixIf / extended-expr
 Table:: `{ __ [`:__ @type=@:TableType=(@keyType=type __ `= __ @valueType=type) __] *tableEntry % (__`,__) __ [`,__] `}
 tableEntry: PostfixFor / PostfixWhile / PostfixIf / TableEntry
-TableEntry:: (`[__@key=required-extended-expr__`] / @key=@:String=(@content=FieldName / @key=String)) __`= __ @value=required-extended-expr
+TableEntry:: (`[__@key=required-extended-expr__`] / @key=@:String=(@content=FieldName) / @key=String) __`= __ @value=required-extended-expr
 postfixConditional: \b"if"\b _ @condition=required-extended-expr / \b"unless"\b_ @condition=@:Not=(@value=required-extended-expr)
 Cast:: @expr=(Cast / methodCall / IndexedTerm / term)_`:_@type=type
 As:: @expr=(Cast / methodCall / IndexedTerm / term)_\b"as"\b_@type=type
