@@ -104,10 +104,13 @@ methods = {
         local index, item
         positional = {}
         for arg in *@
-            if arg.__tag == "KeywordArg" and arg.name[0] == "at"
-                index = arg.value
-            elseif arg.__tag == "KeywordArg" and arg.name[0] == "item"
-                item = arg.value
+            if arg.__tag == "KeywordArg"
+                if arg.name[0] == "at"
+                    index = arg.value
+                elseif arg.name[0] == "item"
+                    item = arg.value
+                else
+                    node_error arg.name, "Not a valid keyword argument, expected `at=` or `item=`"
             else
                 table.insert positional, arg
         if not item
@@ -151,10 +154,13 @@ methods = {
         local index, items
         positional = {}
         for arg in *@
-            if arg.__tag == "KeywordArg" and arg.name[0] == "at"
-                index = arg.value
-            elseif arg.__tag == "KeywordArg" and arg.name[0] == "items"
-                items = arg.value
+            if arg.__tag == "KeywordArg"
+                if arg.name[0] == "at"
+                    index = arg.value
+                elseif arg.name[0] == "items"
+                    items = arg.value
+                else
+                    node_error arg.name, "Not a valid keyword argument, expected `at=` or `items=`"
             else
                 table.insert positional, arg
         if not items
@@ -166,8 +172,8 @@ methods = {
         list_t = list.__type
         list_reg, items_reg, code = env\to_regs(list, items)
         items_t = items.__type
-        node_assert items_t == list_t.item_type, item, "Cannot put item from #{items_t} in a list of type #{list_t}"
-        err_fmt = env\get_string_reg(context_err(index, "Invalid list index: %ld", 2).."\n", "index_error")
+        node_assert items_t == list_t, @, "Cannot put item from #{items_t} in a list of type #{list_t}"
+        err_fmt = env\get_string_reg(context_err(@, "Invalid list index: %ld", 2).."\n", "index_error")
         code ..= "call $list_insert_all(l #{list_reg}, l #{list_t.item_type.bytes}, l #{Int.nil_value}, l #{items_reg}, l #{err_fmt})\n"
         return "0", code
 
