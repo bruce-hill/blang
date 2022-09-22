@@ -5,12 +5,10 @@
 
 static const int64_t INT_NIL = 0x7FFFFFFFFFFFFFFF;
 
-#include <stdio.h>
 void list_insert_all(list_t *list, size_t item_size, int64_t index, list_t *other, const char *err_fmt) {
     if (index == INT_NIL) index = list->len + 1;
     else if (__builtin_expect((index < 1) | (index > list->len + 1), 0))
         errx(1, err_fmt, index);
-    printf("Insert at: %ld\n", index);
     char *old_items = list->items.i8;
     list->items.i8 = gc_alloc(item_size * (list->len + other->len));
     memcpy(list->items.i8, old_items, item_size*(index-1));
@@ -106,7 +104,7 @@ list_t *list_slice(list_t *list, range_t *r, size_t list_item_size, bool allow_a
         slice->items.i8 = p;
         void *src_items = list->items.i8;
         if (step == 1) {
-            memcpy(slice->items.i8, &list->items.i8[(first-1)*list_item_size], len);
+            memcpy(slice->items.i8, &list->items.i8[(first-1)*list_item_size], len * list_item_size);
         } else {
             int64_t actual_len = 0;
             for (int64_t i = first; step > 0 ? (i <= last) : (i >= last); i += step) {
