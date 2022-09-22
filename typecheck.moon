@@ -546,9 +546,14 @@ assign_types = =>
                     node_assert item.__type == t, item, "Type mismatch with #{t}"
             @__type = t
 
-        when "Equal","NotEqual","Less","LessEq","Greater","GreaterEq","In"
+        when "Equal","NotEqual","Less","LessEq","Greater","GreaterEq"
             assign_types @lhs
             assign_types @rhs
+            @__type = Types.Bool
+
+        when "In"
+            assign_types @haystack
+            assign_types @needle
             @__type = Types.Bool
 
         when "If"

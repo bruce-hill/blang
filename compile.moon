@@ -1700,8 +1700,8 @@ expr_compilers =
         else
             node_error @, "| operator is only supported for List and Struct types"
     In: (env)=>
-        haystack_type = get_type(@haystack)
-        needle_type = get_type(@needle)
+        haystack_type = get_type(@haystack, true)
+        needle_type = get_type(@needle, true)
         if haystack_type\is_a(Types.ListType) and needle_type\is_a(haystack_type.item_type)
             found = env\fresh_locals "found"
             done = env\fresh_label "in.done"
