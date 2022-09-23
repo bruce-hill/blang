@@ -1644,6 +1644,15 @@ expr_compilers =
                 return infixop @, env, "div"
             else
                 node_error @, "Division is not supported for #{t_lhs} and #{t_rhs}"
+
+    AddUpdate: (env)=> "0", env\compile_stmt(@)
+    SubUpdate: (env)=> "0", env\compile_stmt(@)
+    MulUpdate: (env)=> "0", env\compile_stmt(@)
+    OrUpdate: (env)=> "0", env\compile_stmt(@)
+    AndUpdate: (env)=> "0", env\compile_stmt(@)
+    XorUpdate: (env)=> "0", env\compile_stmt(@)
+    ButWithUpdate: (env)=> "0", env\compile_stmt(@)
+
     Mod: (env)=>
         t = get_type(@)
         if (t.nonnil or t)\is_a(Types.Int) or (t.nonnil or t)\is_a(Types.Num)
