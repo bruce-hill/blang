@@ -1391,7 +1391,7 @@ expr_compilers =
             node_error @value, "Indexing is not valid on type #{t\verbose_type!}"
     List: (env)=>
         list,list_items,size,p = env\fresh_locals "list", "list.items", "list.size", "p"
-        code = "#{list} =l call $gc_alloc(l 16)\n"
+        code = "#{list} =l call $gc_alloc(l 17)\n"
         if #@ == 0
             return list, code
 
@@ -1444,6 +1444,7 @@ expr_compilers =
         items_loc = env\fresh_local "items.loc"
         code ..= "#{items_loc} =l add #{list}, 8\n"
         code ..= "storel #{list_items}, #{items_loc}\n"
+        -- List slack is zero, no need to set
 
         return list, code
     Table: (env)=>

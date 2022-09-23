@@ -9,11 +9,18 @@ void list_insert_all(list_t *list, size_t item_size, int64_t index, list_t *othe
     if (index == INT_NIL) index = list->len + 1;
     else if (__builtin_expect((index < 1) | (index > list->len + 1), 0))
         errx(1, err_fmt, index);
-    char *old_items = list->items.i8;
-    list->items.i8 = gc_alloc(item_size * (list->len + other->len));
-    memcpy(list->items.i8, old_items, item_size*(index-1));
-    memcpy(list->items.i8 + (index-1)*item_size, other->items.i8, other->len*item_size);
-    memcpy(list->items.i8 + (index-1 + other->len)*item_size, old_items+item_size*(index-1), item_size*(list->len - (index-1)));
+
+    if (index == list->len + 1 && list->slack >= other->len) {
+        memcpy(list->items.i8 + (index-1)*item_size, other->items.i8, other->len*item_size);
+        list->slack -= other->len;
+    } else {
+        char *old_items = list->items.i8;
+        list->items.i8 = gc_alloc(item_size * (list->len + other->len));
+        list->slack = 0;
+        memcpy(list->items.i8, old_items, item_size*(index-1));
+        memcpy(list->items.i8 + (index-1)*item_size, other->items.i8, other->len*item_size);
+        memcpy(list->items.i8 + (index-1 + other->len)*item_size, old_items+item_size*(index-1), item_size*(list->len - (index-1)));
+    }
     list->len += other->len;
 }
 
@@ -21,17 +28,24 @@ void list_insert(list_t *list, size_t item_size, int64_t index, int64_t item, co
     if (index == INT_NIL) index = list->len + 1;
     else if (__builtin_expect((index < 1) | (index > list->len + 1), 0))
         errx(1, err_fmt, index);
-    char *old_items = list->items.i8;
-    list->items.i8 = gc_alloc(item_size * (list->len + 1));
-    memcpy(list->items.i8, old_items, item_size*(index-1));
+
+    if (index == list->len + 1 && list->slack >= 1) {
+        list->slack -= 1;
+    } else {
+        char *old_items = list->items.i8;
+        list->slack = 8;
+        list->items.i8 = gc_alloc(item_size * (list->len + 1 + list->slack));
+        memcpy(list->items.i8, old_items, item_size*(index-1));
+        memcpy(list->items.i8+item_size*index, old_items+item_size*(index-1), item_size*(list->len - (index-1)));
+    }
+
     switch (item_size) {
-        case 8: list->items.i64[index-1] = *((int64_t*)&item); break;
-        case 4: list->items.i32[index-1] = *((int32_t*)&item); break;
-        case 2: list->items.i16[index-1] = *((int16_t*)&item); break;
         case 1: list->items.i8[index-1]  = *((int8_t*)&item); break;
+        case 2: list->items.i16[index-1] = *((int16_t*)&item); break;
+        case 4: list->items.i32[index-1] = *((int32_t*)&item); break;
+        case 8: list->items.i64[index-1] = *((int64_t*)&item); break;
         default: break;
     }
-    memcpy(list->items.i8+item_size*index, old_items+item_size*(index-1), item_size*(list->len - (index-1)));
     list->len += 1;
 }
 
@@ -43,12 +57,26 @@ void list_remove(list_t *list, size_t item_size, int64_t first, int64_t last) {
     if (last > list->len) last = list->len;
     if (last < first) return;
 
-    int64_t len = last - first + 1;
-    if (len <= 0) len = 0;
+    int64_t to_remove = last - first + 1;
+    if (to_remove <= 0) to_remove = 0;
 
-    memmove(&list->items.i8[item_size*(first-1)], &list->items.i8[item_size*last], item_size * len);
-    list->len -= len;
-    if (list->len == 0) list->items.i8 = NULL;
+    // Even if there is free memory, writing there would break invariants (like 
+    // preserving slice/iteration content), so it's no longer slack
+    list->slack = 0;
+
+    if (last == list->len) {
+        list->len -= to_remove;
+        if (list->len == 0)
+            list->items.i8 = NULL;
+        return;
+    }
+
+    char *old_items = list->items.i8;
+    list->items.i8 = gc_alloc(item_size * (list->len - to_remove));
+    if (first > 1)
+        memcpy(list->items.i8, old_items, item_size*(first-2));
+    memcpy(list->items.i8 + first*item_size, old_items+item_size*(last-1), item_size*(list->len - (last-1)));
+    list->len -= to_remove;
 }
 
 bool list_equal(list_t *a, list_t *b, size_t item_size) {

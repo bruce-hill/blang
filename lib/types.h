@@ -19,4 +19,5 @@ typedef struct {
         float *f32;
         double *d32;
     } items;
+    uint8_t slack;
 } list_t;
