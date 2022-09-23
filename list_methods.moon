@@ -209,33 +209,44 @@ methods = {
 
     remove: (env)=>
         list = node_assert @fn.value, @, "No list provided"
-        local index
+        local first,last
         positional = {}
         for arg in *@
             if arg.__tag == "KeywordArg"
                 if arg.name[0] == "at"
-                    index = arg.value
+                    first = arg.value
+                elseif arg.name[0] == "through"
+                    last = arg.value
                 else
                     node_error arg.name, "Not a valid keyword argument, expected `at=`"
             else
                 table.insert positional, arg
-        if not index
-            index = table.remove(positional,1)
+        if not first
+            first = table.remove(positional,1)
+        if not last
+            last = table.remove(positional,1)
 
         list_reg, code = env\to_regs(list)
-        index_reg = if index
-            reg,index_code = env\to_reg index
-            code ..= index_code
+        first_reg = if first
+            reg,first_code = env\to_reg first
+            code ..= first_code
+            reg
+        else
+            "#{Int.nil_value}"
+
+        last_reg = if first
+            reg,last_code = env\to_reg first
+            code ..= last_code
             reg
         else
             "#{Int.nil_value}"
 
         item_t = list.__type.item_type
-        err_fmt = if index
-            env\get_string_reg(context_err(index, "Invalid removal range: %ld..%ld", 2).."\n", "index_error")
+        err_fmt = if first
+            env\get_string_reg(context_err(@, "Invalid removal range: %ld..%ld", 2).."\n", "index_error")
         else
             env\get_string_reg("", "empty")
-        code ..= "call $list_remove(l #{list_reg}, l #{item_t.bytes}, l #{index_reg}, l #{index_reg}, l #{err_fmt})\n"
+        code ..= "call $list_remove(l #{list_reg}, l #{item_t.bytes}, l #{first_reg}, l #{last_reg}, l #{err_fmt})\n"
         return "0", code
 }
 
