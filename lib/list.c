@@ -49,13 +49,12 @@ void list_insert(list_t *list, size_t item_size, int64_t index, int64_t item, co
     list->len += 1;
 }
 
-void list_remove(list_t *list, size_t item_size, int64_t first, int64_t last) {
+void list_remove(list_t *list, size_t item_size, int64_t first, int64_t last, const char *err_fmt) {
+    if (first == INT_NIL) first = list->len;
     if (last == INT_NIL) last = first;
 
-    if (first > list->len) return;
-    if (first < 1) first = 1;
-    if (last > list->len) last = list->len;
-    if (last < first) return;
+    if (__builtin_expect((first < 1) | (last < first) | (last > list->len), 0))
+        errx(1, err_fmt, first, last);
 
     int64_t to_remove = last - first + 1;
     if (to_remove <= 0) to_remove = 0;
@@ -74,8 +73,8 @@ void list_remove(list_t *list, size_t item_size, int64_t first, int64_t last) {
     char *old_items = list->items.i8;
     list->items.i8 = gc_alloc(item_size * (list->len - to_remove));
     if (first > 1)
-        memcpy(list->items.i8, old_items, item_size*(first-2));
-    memcpy(list->items.i8 + first*item_size, old_items+item_size*(last-1), item_size*(list->len - (last-1)));
+        memcpy(list->items.i8, old_items, item_size*(first-1));
+    memcpy(list->items.i8 + (first-1)*item_size, old_items+item_size*last, item_size*(list->len - last));
     list->len -= to_remove;
 }
 

@@ -633,7 +633,7 @@ assign_types = =>
         when "Negative"
             assign_types @value
             return unless @value.__type
-            node_assert @value.__type\is_numeric!, "Not a valid type to negate: #{@value.__type}"
+            node_assert @value.__type\is_numeric!, @value, "Not a valid type to negate: #{@value.__type}"
             @__type = @value.__type
 
         when "Not"

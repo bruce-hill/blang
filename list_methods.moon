@@ -206,7 +206,37 @@ methods = {
         copy_reg = env\fresh_locals "copy"
         code ..= "#{copy_reg} =l call $list_copy(l #{list_reg}, l #{list_t.item_type.bytes})\n"
         return copy_reg,code
-        
+
+    remove: (env)=>
+        list = node_assert @fn.value, @, "No list provided"
+        local index
+        positional = {}
+        for arg in *@
+            if arg.__tag == "KeywordArg"
+                if arg.name[0] == "at"
+                    index = arg.value
+                else
+                    node_error arg.name, "Not a valid keyword argument, expected `at=`"
+            else
+                table.insert positional, arg
+        if not index
+            index = table.remove(positional,1)
+
+        list_reg, code = env\to_regs(list)
+        index_reg = if index
+            reg,index_code = env\to_reg index
+            code ..= index_code
+            reg
+        else
+            "#{Int.nil_value}"
+
+        item_t = list.__type.item_type
+        err_fmt = if index
+            env\get_string_reg(context_err(index, "Invalid removal range: %ld..%ld", 2).."\n", "index_error")
+        else
+            env\get_string_reg("", "empty")
+        code ..= "call $list_remove(l #{list_reg}, l #{item_t.bytes}, l #{index_reg}, l #{index_reg}, l #{err_fmt})\n"
+        return "0", code
 }
 
 return {:methods, :types}
