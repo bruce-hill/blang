@@ -21,3 +21,33 @@ int64_t ipow(int64_t base, int64_t exp) {
     }
     return result;
 }
+
+double d_mid(double x, double lo, double hi) {
+    if (hi < lo) {
+        double tmp = lo;
+        lo = hi;
+        hi = tmp;
+    }
+
+    if (x < lo)
+        return lo;
+    else if (x > hi)
+        return hi;
+    else
+        return x;
+}
+
+int64_t l_mid(int64_t x, int64_t lo, int64_t hi) {
+    if (hi < lo) {
+        int64_t tmp = lo;
+        lo = hi;
+        hi = tmp;
+    }
+
+    if (x < lo)
+        return lo;
+    else if (x > hi)
+        return hi;
+    else
+        return x;
+}
