@@ -660,9 +660,9 @@ assign_types = =>
             @__type = Types.Int
 
         when "Mod","AddSub","MulDiv","Pow"
-            assign_types @lhs
-            assign_types @rhs
-            lhs_t, rhs_t = @lhs.__type, @rhs.__type
+            assign_types @lhs or @base
+            assign_types @rhs or @exponent
+            lhs_t, rhs_t = (@lhs or @base).__type, (@rhs or @exponent).__type
             return unless lhs_t and rhs_t
             if lhs_t == rhs_t and lhs_t\is_numeric!
                 @__type = lhs_t
