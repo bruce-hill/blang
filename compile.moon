@@ -1937,11 +1937,11 @@ expr_compilers =
             code ..= check_truthiness get_type(cond.condition), env, r, true_label, false_label
             code ..= "#{true_label}\n"
             block_type = get_type(cond.body)
+            print block_type
             if block_type == Types.Abort
                 code ..= env\compile_stmt cond.body
             elseif block_type == Types.NilType
-                _,block_code = env\to_reg cond.body
-                code ..= block_code
+                code ..= env\compile_stmt cond.body
                 unless has_jump\match(code)
                     code ..= env\set_nil t, ret
             else
