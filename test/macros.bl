@@ -36,7 +36,8 @@ def foo(y:String)
 usefn "asdf"
 
 macro best(xs, x, expr)
-    if x := xs[1]
+    if #xs > 0
+        x := xs[1]
         best := x
         best_score := expr
         for x in xs[2..]
@@ -54,7 +55,8 @@ say "Tallest of $things: $tallest"
 fail unless "$tallest" == "Foo{height=5}"
 
 macro max(xs)
-    if best := xs[1]
+    if #xs > 0
+        best := xs[1]
         for x in xs[2..]
             if x > best
                 best = x
