@@ -1,8 +1,6 @@
-def multiply(x:Num,y:Percent):Num = x*(y:Num)
-def multiply(x:Percent,y:Num):Num = (x:Num)*y
 x := 23.5
-y := 10%
-say "$x*$y = $(x*y)"
+y_pct := 10%
+say "$y_pct.of($x) = $(y_pct.of(x))"
 
-z := 5%
-say "$y+$z = $(y+z)"
+z_pct := 5%
+say "$y_pct+$z_pct = $(y_pct+z_pct)"
