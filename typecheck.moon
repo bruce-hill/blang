@@ -124,6 +124,11 @@ bind_variables = =>
                     pos = table.find(@__parent, @)
                     for i=pos+1,#@__parent
                         bind_var @__parent[i], @var
+                    if @__parent.__parent
+                        switch @__parent.__parent.__tag
+                            when "For","While","Repeat"
+                                if @__parent == @__parent.__parent.body and @__parent.__parent.between
+                                    bind_var @__parent.__parent.between, @var
                 when "Clause"
                     bind_var @__parent.body, @var
             bind_variables @var
@@ -139,6 +144,11 @@ bind_variables = =>
             bind_var @body, @name if @name
             bind_var @__parent, @name if @name
             bind_variables @body
+            if @__parent.__parent
+                switch @__parent.__parent.__tag
+                    when "For","While","Repeat"
+                        if @__parent == @__parent.__parent.body and @__parent.__parent.between
+                            bind_var @__parent.__parent.between, @name
         when "TypeDeclaration","StructDeclaration","UnionDeclaration","EnumDeclaration","UnitDeclaration"
             for k,child in pairs @
                 continue if type(child) != "table" or (type(k) == "string" and k\match("^__"))
@@ -147,6 +157,11 @@ bind_variables = =>
             @name.__declaration = @name
             @name.__register = "$"..@name[0]
             bind_var @__parent, @name
+            if @__parent.__parent
+                switch @__parent.__parent.__tag
+                    when "For","While","Repeat"
+                        if @__parent == @__parent.__parent.body and @__parent.__parent.between
+                            bind_var @__parent.__parent.between, @name
         when "Use"
             error "Not implemented"
         when "For"
