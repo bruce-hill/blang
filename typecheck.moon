@@ -510,21 +510,22 @@ assign_types = =>
                 assign_types item
 
             t = nil
-            for item in *@
-                print "Scanning: #{t} #{item.__type}"
+            for i, item in ipairs @
                 return unless item.__type
-                if not t
+                node_assert not t or t\is_a(Types.Bool) or t\is_a(Types.OptionalType), item,
+                    "This code is unreachable because the previous value is a #{t}, which is guaranteed to be truthy"
+                if not t or t == Types.NilType
                     t = item.__type
-                elseif t == Types.NilType
-                    if item.__type == Types.Abort
-                        t = Types.Abort
-                        break
                 elseif t\is_a(Types.OptionalType)
-                    if item.__type == Types.Abort or item.__type == t.nonnil
+                    if item.__type == t.nonnil
                         t = t.nonnil
-                        break
+                    elseif item.__type == Types.Abort
+                        t = t.nonnil
+                        node_assert i == #@, @[i+1], "This code is unreachable"
+                    else
+                        node_assert item.__type\is_a(t), item, "Expected a value of type `#{t}`, but got `#{item.__type}`"
                 elseif item.__type\is_a(Types.Abort)
-                    t = Types.Abort
+                    node_assert i == #@, @[i+1], "This code is unreachable"
                 elseif item.__type == Types.NilType
                     t = if t
                         Types.OptionalType(t)
@@ -533,7 +534,6 @@ assign_types = =>
                 else
                     node_assert item.__type\is_a(t), item, "Expected a value of type `#{t}`, but got `#{item.__type}`"
 
-            print "Final: #{t}"
             @__type = t
 
         when "And","Xor"

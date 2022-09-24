@@ -9,8 +9,8 @@ fail unless "$a,$b,$c" == "C,B,A"
 strings := ["A","B"]
 
 eval_log := [:String]
-def log(msg:String)
-    eval_log += msg
+def log(msg:String):[String]
+    eval_log.insert(msg)
     return strings
 
 (log("lhs1"))[1], (log("lhs2"))[2] = (log("rhs1"))[2], (log("rhs2"))[1]
@@ -24,8 +24,8 @@ eval_log := [:String]
 queue := ["a","b","c","d"]
 i := 1
 def fresh(msg:String):String
-    eval_log += msg
-    ret := queue[i] or fail
+    eval_log.insert(msg)
+    ret := queue[i]
     i += 1
     return ret
 
