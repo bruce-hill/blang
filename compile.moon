@@ -1039,25 +1039,25 @@ expr_compilers =
 
             if parent.__tag == "Equal" or parent.__tag == "NotEqual"
                 other = (child == parent.lhs) and parent.rhs or parent.lhs
-                t = get_type(other)
+                t = get_type(other, true)
                 if t\is_a(Types.OptionalType) and t != Types.NilType
                     t = t.nonnil
                 return "#{t.nil_value}",""
 
             t = if parent.__tag == "Declaration"
-                get_type parent.value
+                get_type parent.value, true
             elseif parent.__tag == "Assignment"
                 t = nil
                 for i,rhs in ipairs parent.rhs
                     if rhs == child
-                        t = get_type parent.lhs[i]
+                        t = get_type parent.lhs[i], true
                         break
                 t
             elseif parent.__tag == "StructField"
                 field = parent
                 while parent.__tag != "Struct" and parent.__tag != "Union"
                     parent = parent.__parent
-                struct_type = get_type parent
+                struct_type = get_type parent, true
                 if field.name
                     struct_type.members[field.name].type
                 else
@@ -1068,18 +1068,21 @@ expr_compilers =
                             break
                     field_type
             elseif parent.__tag == "List"
-                get_type(parent).item_type
+                get_type(parent, true).item_type
             elseif parent.__tag == "TableEntry"
                 entry = parent
                 tab = parent.__parent
                 while tab.__tag != "Table"
                     tab = tab.__parent
-                table_type = get_type(tab)
+                table_type = get_type(tab, true)
                 child == entry.key and table_type.key_type or table_type.value_type
             elseif parent.__tag == "FnDecl" or parent.__tag == "Lambda"
                 break
+            elseif parent.__tag == "Clause"
+                parent,child = parent.__parent,parent
+                continue
             else
-                get_type(parent)
+                get_type(parent, true)
 
             if t != Types.NilType and t\is_a(Types.OptionalType)
                 return "#{t.nil_value}",""
