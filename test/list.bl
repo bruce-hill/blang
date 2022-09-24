@@ -10,13 +10,13 @@ L2 := [1.5, 2.5, 3.5, 4.5]
 say "L2: $L2"
 x2 := L2[3]
 say "L2[3]: $x2"
-L2 += 99.5
-say "After append: $L2"
+L2.insert(99.5)
+say "After insert: $L2"
 
 L3 := [[10],[20]]
 say "Nested: $L3"
-say "Inner [2][1]: $((L3[2] or fail)[1])"
-(L3[2] or fail)[1] = 999
+say "Inner [2][1]: $(L3[2][1])"
+L3[2][1] = 999
 say "After setting [2][1]: $L3"
 // (L3[99] or fail)[1] = 999
 // say "Unreachable: $L3"
@@ -25,8 +25,8 @@ L4 := [:Int]
 say "Empty: $L4"
 
 say "L: $L sliced[2..4]: $(L[2..4])"
-L += 9999
-say "After append: $L"
+L.insert(9999)
+say "After insert: $L"
 
 a := [1,2,3,4]
 b := [1,2,3,4]
