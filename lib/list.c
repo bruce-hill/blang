@@ -79,7 +79,7 @@ void list_remove(list_t *list, size_t item_size, int64_t first, int64_t last, co
 }
 
 bool list_equal(list_t *a, list_t *b, size_t item_size) {
-    return a == b || ((a->len | b->len) == 0) || (a->len == b->len && memcmp(a->items.i8, b->items.i8, a->len*item_size));
+    return a == b || ((a->len | b->len) == 0) || (a->len == b->len && memcmp(a->items.i8, b->items.i8, a->len*item_size) == 0);
 }
 
 list_t *list_copy(list_t *l, size_t item_size) {
