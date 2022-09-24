@@ -1111,7 +1111,7 @@ expr_compilers =
         elseif abt == "s" and cbt == "d"
             code ..= "#{c} =d exts #{reg}\n"
         elseif abt == "d" and cbt == "s"
-            code ..= "#{c} =d truncd #{reg}\n"
+            code ..= "#{c} =#{cast_type.base_type} truncd #{reg}\n"
         else
             code ..= "#{c} =#{cbt} cast #{reg}\n"
         return c,code
