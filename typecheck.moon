@@ -497,6 +497,15 @@ assign_types = =>
                     @__type = t.type
                 else
                     node_error @, "Only Enum types can be indexed, not #{t.type}"
+            elseif t\is_a(Types.Percent)
+                node_assert @index.__tag == "FieldName", @index, "Percents cannot be indexed"
+                PercentMethods = require 'percent_methods'
+                if t_fn = PercentMethods.types[@index[0]]
+                    @__type = t_fn(t)
+                    @__method = PercentMethods.methods[@index[0]]
+                    @__inline_method = PercentMethods.methods[@index[0]]
+                else
+                    node_error @index, "#{@index[0]} is not a valid Percent method"
             else
                 node_error @value, "Indexing is not valid on type #{t}"
 
@@ -679,7 +688,7 @@ assign_types = =>
                     @__type = rhs_t
                     return
 
-            node_error @, "Operands are not the same types: `#{lhs_t}` vs `#{rhs_t}`"
+            node_error @, "Operands are not compatible: `#{lhs_t}` vs `#{rhs_t}`"
 
         when "ButWith","ButWithUpdate"
             assign_types @base

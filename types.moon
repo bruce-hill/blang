@@ -272,6 +272,7 @@ Int8.bytes = 1
 Int8.nil_value = 0x7F
 
 Percent = DerivedType("Percent", Num)
+Percent.is_numeric = => true
 
 Abort = NamedType("Abort")
 

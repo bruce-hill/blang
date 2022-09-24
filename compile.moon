@@ -1304,7 +1304,6 @@ expr_compilers =
         if t\is_a(Types.ListType)
             item_type = t.item_type
             index_type = get_type(@index)
-            list_reg, code = env\to_regs @value
             ListMethods = require 'list_methods'
             if index_type\is_a(Types.Int)
                 return ListMethods.methods.get_or_fail(@, env)
