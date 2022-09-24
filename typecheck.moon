@@ -226,10 +226,8 @@ assign_types = =>
             assign_types @value if @value
             @__type = Types.Abort
         when "Float"
-            if @__parent.__tag == "Cast"
-                @__type = @__parent.__type
-            else
-                @__type = Types.Num
+            -- TODO: support 0.5:Num32 without casting
+            @__type = Types.Num
         when "Percent"
             @__type = Types.Percent
         when "Measure"
@@ -237,10 +235,8 @@ assign_types = =>
             return Types.MeasureType(m.str)\normalized!
 
         when "Int"
-            if @__parent.__tag == "Cast"
-                @__type = @__parent.__type
-            else
-                @__type = Types.Int
+            -- TODO: support 0.5:Int8 without casting
+            @__type = Types.Int
 
         when "Declaration"
             assign_types @value
