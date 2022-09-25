@@ -36,6 +36,7 @@ canonicalize = (str)->
 
 class Measure
     new: (amount, str)=>
+        str = str or ""
         @str, @units, scale = canonicalize(str)
         @amount = amount * scale
     __add: (other)=>

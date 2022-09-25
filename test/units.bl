@@ -12,7 +12,7 @@ x := 5<kg*m/s>
 y := 10<kg>
 say "$(x * y)"
 say "$(x / y)"
-say "$(x * 10%)"
+say "10% of $x = $((10%).of(x))"
 
 say "5ft + 1m = $(5<ft> + 1<m>)"
 

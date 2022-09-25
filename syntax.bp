@@ -25,7 +25,7 @@ Not:: \b"not"\b _ @value=(comparison / expr)
 Mod:: @lhs=(AddSub / MulDiv / Pow / maybe-index-term) _ \b"mod"\b _ @rhs=(AddSub / MulDiv / Pow / maybe-index-term)
 AddSub:: @lhs=(AddSub / MulDiv / Pow / maybe-index-term) _ @op=`+,- _ @rhs=(MulDiv / Pow / maybe-index-term)
 MulDiv:: @lhs=(MulDiv / Pow / maybe-index-term) _ @op=`*,/ _ @rhs=(Pow / maybe-index-term)
-Pow:: @base=maybe-index-term _ `^ _ @exponent=maybe-index-term
+Pow:: @base=maybe-index-term _ @op=`^ _ @exponent=maybe-index-term
 ButWith:: (@base=maybe-index-term _ `& _
   *@:ButWithAssign=((`. @field=FieldName / `[__@index=required-extended-expr__`])
      _`=_ @value=required-extended-expr) % (_`,,|_) [_`,])

@@ -233,6 +233,7 @@ assign_types = =>
         when "Measure"
             m = Measure(1, @units[0]\gsub("[<>]",""))
             @__type = Types.MeasureType(m.str)\normalized!
+            @__units = m
 
         when "Int"
             -- TODO: support 0.5:Int8 without casting
@@ -500,8 +501,9 @@ assign_types = =>
             elseif t\is_a(Types.Percent)
                 node_assert @index.__tag == "FieldName", @index, "Percents cannot be indexed"
                 PercentMethods = require 'percent_methods'
-                if t_fn = PercentMethods.types[@index[0]]
-                    @__type = t_fn(t)
+                if get_fn_t = PercentMethods.types[@index[0]]
+                    fn_t = get_fn_t(t)
+                    @__type = fn_t
                     @__method = PercentMethods.methods[@index[0]]
                     @__inline_method = PercentMethods.methods[@index[0]]
                 else
@@ -682,6 +684,29 @@ assign_types = =>
                 @__type = lhs_t
                 return
 
+            if (lhs_t\is_numeric! and rhs_t\works_like_a(Types.MeasureType)) or (rhs_t\is_numeric! and lhs_t\works_like_a(Types.MeasureType))
+                switch @op[0]
+                    when "+","-"
+                        node_assert lhs_t == rhs_t, @, "Operands have different units: #{lhs_t} vs. #{rhs_t}"
+                        @__type = lhs_t
+                    when "*"
+                        if lhs_t\is_numeric! and not lhs_t\works_like_a(Types.MeasureType)
+                            @__type = rhs_t
+                        elseif rhs_t\is_numeric! and not rhs_t\works_like_a(Types.MeasureType)
+                            @__type = lhs_t
+                        else
+                            @__type = Types.MeasureType(Measure(1,lhs_t.units)*Measure(1,rhs_t.units))\normalized!
+                    when "/"
+                        if lhs_t\is_numeric! and not lhs_t\works_like_a(Types.MeasureType)
+                            @__type = rhs_t
+                        elseif rhs_t\is_numeric! and not rhs_t\works_like_a(Types.MeasureType)
+                            @__type = lhs_t
+                        else
+                            @__type = Types.MeasureType(Measure(1,lhs_t.units)/Measure(1,rhs_t.units))\normalized!
+                    else
+                        node_error @, "Operation is not permitted for unit types"
+                return
+
             if @__tag == "AddSub" and @op[0] == "+"
                 if lhs_t\works_like_a(Types.String) and rhs_t == lhs_t
                     @__type = lhs_t
@@ -721,6 +746,11 @@ assign_all_types = (ast)->
                 recurse child
         recurse ast
         return vals
+
+    for decl in coroutine.wrap(-> each_tag(ast, "UnitDeclaration"))
+        amount = assert tonumber((decl.measure.amount[0]\gsub("_",""))), "#{viz decl.measure}"
+        units = decl.measure.units[0]\gsub("[<>]","")
+        register_unit_alias decl.name[0], Measure(amount, units)
 
     for extern in coroutine.wrap(-> each_tag(ast, "Extern"))
         bind_var extern.__parent, extern.name

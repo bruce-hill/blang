@@ -1,7 +1,6 @@
 -- Type checking/inference logic
 concat = table.concat
 import log, viz, print_err, node_assert, node_error, each_tag from require 'util'
-import Measure, register_unit_alias from require 'units'
 
 local Int,Int32,Int16,Int8,Num,Num32,OptionalType,NilType,TypeValue
 
@@ -79,6 +78,8 @@ class DerivedType extends Type
 
 class MeasureType extends Type
     new: (@units)=>
+        if type(@units) == "table"
+            @units = @units.str
     is_numeric: => true
     normalized: => @units == "" and assert(Num) or @
     base_type: 'd'
