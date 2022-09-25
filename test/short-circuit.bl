@@ -23,7 +23,7 @@ say "and= pass"
 fail "and= gave wrong result" if tmp
 
 def doop():String
-    maybe_str := yes ? nil; "ok"
+    maybe_str := if yes then nil else "ok"
     x := maybe_str or return "Successfully short circuited with return"
     fail "Failed to short circuit"
     return "x"
@@ -31,7 +31,7 @@ def doop():String
 say doop()
 
 for i in 1..5
-    maybe_str := yes ? nil; "ok"
+    maybe_str := if yes then nil else "ok"
     x := maybe_str or stop
     fail "Failed to short circuit"
 
