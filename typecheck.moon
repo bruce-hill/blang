@@ -508,6 +508,16 @@ assign_types = =>
                     @__inline_method = PercentMethods.methods[@index[0]]
                 else
                     node_error @index, "#{@index[0]} is not a valid Percent method"
+            elseif t\is_a(Types.MeasureType)
+                node_assert @index.__tag == "FieldName", @index, "Measures cannot be indexed"
+                MeasureMethods = require 'measure_methods'
+                if get_fn_t = MeasureMethods.types[@index[0]]
+                    fn_t = get_fn_t(t)
+                    @__type = fn_t
+                    @__method = MeasureMethods.methods[@index[0]]
+                    @__inline_method = MeasureMethods.methods[@index[0]]
+                else
+                    node_error @index, "#{@index[0]} is not a valid Measure method"
             elseif t\is_a(Types.Num)
                 node_assert @index.__tag == "FieldName", @index, "Nums cannot be indexed"
                 NumberMethods = require 'number_methods'
@@ -680,9 +690,6 @@ assign_types = =>
             assign_types @rhs or @exponent
             lhs_t, rhs_t = (@lhs or @base).__type, (@rhs or @exponent).__type
             return unless lhs_t and rhs_t
-            if lhs_t == rhs_t and lhs_t\is_numeric!
-                @__type = lhs_t
-                return
 
             if (lhs_t\is_numeric! and rhs_t\works_like_a(Types.MeasureType)) or (rhs_t\is_numeric! and lhs_t\works_like_a(Types.MeasureType))
                 switch @op[0]
@@ -707,6 +714,10 @@ assign_types = =>
                         node_error @, "Operation is not permitted for unit types"
                 return
 
+            if lhs_t == rhs_t and lhs_t\is_numeric!
+                @__type = lhs_t
+                return
+
             if @__tag == "AddSub" and @op[0] == "+"
                 if lhs_t\works_like_a(Types.String) and rhs_t == lhs_t
                     @__type = lhs_t
@@ -722,7 +733,7 @@ assign_types = =>
                     @__type = rhs_t
                     return
 
-            node_error @, "Operands are not compatible: `#{lhs_t}` vs `#{rhs_t}`"
+            node_error @, "Operands are not compatible: `#{lhs_t}` #{@op[0]} `#{rhs_t}`"
 
         when "ButWith","ButWithUpdate"
             assign_types @base
