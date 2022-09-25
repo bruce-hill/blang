@@ -577,7 +577,8 @@ assign_types = =>
             for i,item in ipairs items
                 assign_types item
                 if item.__type == Types.Abort
-                    t = Types.Abort
+                    if t != Types.Bool
+                        t = Types.Abort
                 elseif item.__type\is_a(Types.OptionalType)
                     node_assert item.__type.nonnil\is_a(t), item, "Type mismatch with #{t}"
                     t = Types.OptionalType(t)
