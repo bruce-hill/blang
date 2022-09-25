@@ -803,7 +803,7 @@ for_loop = (env, make_body)=>
     -- jmp @for.body
     -- @for.end
 
-    iter_type = get_type @iterable
+    iter_type = get_type @iterable, true
     next_label,body_label,between_label,end_label = env\fresh_labels "for.next","for.body","for.between","for.end"
 
     for skip in coroutine.wrap(-> each_tag(@, "Skip"))
