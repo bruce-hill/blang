@@ -232,7 +232,7 @@ assign_types = =>
             @__type = Types.Percent
         when "Measure"
             m = Measure(1, @units[0]\gsub("[<>]",""))
-            return Types.MeasureType(m.str)\normalized!
+            @__type = Types.MeasureType(m.str)\normalized!
 
         when "Int"
             -- TODO: support 0.5:Int8 without casting
@@ -506,6 +506,15 @@ assign_types = =>
                     @__inline_method = PercentMethods.methods[@index[0]]
                 else
                     node_error @index, "#{@index[0]} is not a valid Percent method"
+            elseif t\is_a(Types.Num)
+                node_assert @index.__tag == "FieldName", @index, "Nums cannot be indexed"
+                NumberMethods = require 'number_methods'
+                if t_fn = NumberMethods.types[@index[0]]
+                    @__type = t_fn(t)
+                    @__method = NumberMethods.methods[@index[0]]
+                    @__inline_method = NumberMethods.methods[@index[0]]
+                else
+                    node_error @index, "#{@index[0]} is not a valid Number method"
             else
                 node_error @value, "Indexing is not valid on type #{t}"
 
