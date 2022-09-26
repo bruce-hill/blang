@@ -244,13 +244,13 @@ Pointer.nil_value = 0
 Num = NamedType("Num")
 Num.base_type = 'd'
 Num.abi_type = 'd'
-Num.nil_value = tonumber("0"..("1")\rep(11).."1"..("0")\rep(51)) -- Signaling NaN
+Num.nil_value = tonumber("0"..("1")\rep(11).."1"..("0")\rep(51), 2) -- Signaling NaN
 
 Num32 = NamedType("Num32")
 Num32.base_type = 's'
 Num32.abi_type = 's'
 Num32.bytes = 4
-Num32.nil_value = tonumber("0"..("1")\rep(8).."1"..("0")\rep(23)) -- Signaling NaN
+Num32.nil_value = tonumber("0"..("1")\rep(8).."1"..("0")\rep(23), 2) -- Signaling NaN
 
 Int = NamedType("Int")
 Int.base_type = 'l'

@@ -1007,11 +1007,11 @@ expr_compilers =
                 t = get_type(other, true)
                 if t\is_a(Types.OptionalType) and t != Types.NilType
                     t = t.nonnil
-                if t.base_type == "s" or t.base_type == "d"
-                    nil_reg = env\fresh_local "nil"
-                    return nil_reg, "#{nil_reg} =#{t.base_type} cast #{t.nil_value}\n"
-                else
-                    return "#{t.nil_value}",""
+                -- if t.base_type == "s" or t.base_type == "d"
+                --     nil_reg = env\fresh_local "nil"
+                --     return nil_reg, "#{nil_reg} =#{t.base_type} cast #{t.nil_value}\n"
+                -- else
+                return "#{t.nil_value}",""
 
             t = if parent.__tag == "Declaration"
                 get_type parent.value, true
@@ -1054,11 +1054,11 @@ expr_compilers =
                 get_type(parent, true)
 
             if t != Types.NilType and t\is_a(Types.OptionalType)
-                if t.base_type == "s" or t.base_type == "d"
-                    nil_reg = env\fresh_local "nil"
-                    return nil_reg, "#{nil_reg} =#{t.base_type} cast #{t.nil_value}\n"
-                else
-                    return "#{t.nil_value}",""
+                -- if t.base_type == "s" or t.base_type == "d"
+                --     nil_reg = env\fresh_local "nil"
+                --     return nil_reg, "#{nil_reg} =#{t.base_type} cast #{t.nil_value}\n"
+                -- else
+                return "#{t.nil_value}",""
             elseif parent.__tag == "Declaration"
                 return "0",""
 

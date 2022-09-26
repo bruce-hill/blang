@@ -25,12 +25,13 @@ types = {
 
 get = (env, use_failure)=>
     assert @__type, "No type"
-    assert @value.__type\is_a(ListType), "WTF: #{@__type}"
     local list,index
     if @__tag == "IndexedTerm"
         list,index = @value,@index
     elseif @__tag == "FnCall"
-        list,index = @[1],@[2]
+        list,index = @fn.value,@[1]
+    assert list and list.__type\is_a(ListType), "WTF: #{@__type}"
+    assert index, "WTF: #{viz @}"
 
     list_reg,index_reg,code = env\to_regs list, index
     len = env\fresh_locals "len"
@@ -49,7 +50,7 @@ get = (env, use_failure)=>
         code ..= "call $_exit(l 1)\n"
         code ..= "jmp #{index_error}\n"
     else
-        code ..= env\set_nil @__type.value_type, item
+        code ..= env\set_nil list.__type.item_type, item
         code ..= "jmp #{done}\n"
     code ..= "#{index_ok}\n"
 
@@ -58,7 +59,7 @@ get = (env, use_failure)=>
     code ..= "#{items} =l loadl #{items}\n"
     offset,item_loc = env\fresh_locals "offset","item_location"
     code ..= "#{offset} =l sub #{index_reg}, 1\n"
-    item_type = @value.__type.item_type
+    item_type = list.__type.item_type
     code ..= "#{offset} =l mul #{offset}, #{item_type.bytes}\n"
     code ..= "#{item_loc} =l add #{items}, #{offset}\n"
     if item_type.base_type == "d" or item_type.base_type == "s"
@@ -72,7 +73,7 @@ get = (env, use_failure)=>
         code ..= "#{item} =l loadl #{item_loc}\n"
 
     if not use_failure
-        code ..= "#{done}"
+        code ..= "#{done}\n"
         
     return item, code
 
