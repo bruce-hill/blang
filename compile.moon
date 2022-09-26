@@ -1792,8 +1792,14 @@ expr_compilers =
 
     FnCall: (env, skip_ret=false)=>
         if @fn.__inline_method
-            args = {@fn.value.__type, table.unpack([arg.__type for arg in *@])}
-            node_assert @fn.__type\matches(args), @, "Invalid argument types. Expected #{concat ["#{t}" for t in *@fn.__type.arg_types], ","} but got: #{concat ["#{t}" for t in *args], ","}"
+            arg_types = {@fn.value.__type}
+            for arg in *@
+                if arg.__tag == "KeywordArg"
+                    arg_types[arg.name[0]] = arg.value.__type
+                else
+                    table.insert arg_types, arg.__type
+            matches, err = @fn.__type\matches(arg_types)
+            node_assert matches, @, err
             return @fn.__inline_method(@, env, skip_ret)
 
         fn_type = get_type @fn

@@ -59,23 +59,23 @@ const char *bl_tostring_time(const char *fmt, int64_t seconds)
     return intern_str(buf);
 }
 
-const char *bl_string_join(int64_t count, char **strings, char *sep) {
-    if (!strings) return NULL;
-    CORD buf = CORD_EMPTY;
-    size_t seplen = sep ? strlen(sep) : 0;
-    for (int64_t i = 0; i < count; i++) {
-        char *str = strings[i];
-        if (!str) str = "(nil)";
-        buf = CORD_cat(buf, str);
-        if (sep && i < count - 1)
-            buf = CORD_cat_char_star(buf, sep, seplen);
-    }
-    return bl_string(CORD_to_const_char_star(buf));
-}
+// const char *bl_string_join(int64_t count, char **strings, char *sep) {
+//     if (!strings) return NULL;
+//     CORD buf = CORD_EMPTY;
+//     size_t seplen = sep ? strlen(sep) : 0;
+//     for (int64_t i = 0; i < count; i++) {
+//         char *str = strings[i];
+//         if (!str) str = "(nil)";
+//         buf = CORD_cat(buf, str);
+//         if (sep && i < count - 1)
+//             buf = CORD_cat_char_star(buf, sep, seplen);
+//     }
+//     return bl_string(CORD_to_const_char_star(buf));
+// }
 
-const char *bl_string_list_join(list_t *list, char *sep) {
-    return bl_string_join(list->len, (char**)list->items, sep);
-}
+// const char *bl_string_list_join(list_t *list, char *sep) {
+//     return bl_string_join(list->len, (char**)list->items, sep);
+// }
 
 const char *bl_string_append_int(char *s, int64_t i) { RETURN_FMT("%s%ld", s, i); }
 const char *bl_string_append_float(char *s, double f) { RETURN_FMT("%s%g", s, f); }
@@ -115,19 +115,64 @@ const char *bl_string_slice(const char *s, range_t *r) {
     return ret;
 }
 
-const char *bl_string_upper(char *s) {
+bool bl_string_starts_with(const char *s, const char *prefix) {
+    while (*prefix) {
+        if (*prefix++ != *s++)
+            return false;
+    }
+    return true;
+}
+
+bool bl_string_ends_with(const char *s, const char *suffix) {
+    size_t s_len = strlen(s);
+    size_t suffix_len = strlen(suffix);
+    if (suffix_len > s_len) return false;
+    return memcmp(s+(s_len-suffix_len), suffix, suffix_len) == 0;
+}
+
+const char *bl_string_upper(const char *s) {
     char *s2 = strdup(s);
-    for (int i = 0; s2[i]; i++)
-        s2[i] = toupper(s2[i]);
+    for (char *p = s2; *p; p++)
+        *p = toupper(*p);
     const char *ret = intern_str(s2);
     free(s2);
     return ret;
 }
 
-const char *bl_string_lower(char *s) {
+const char *bl_string_lower(const char *s) {
     char *s2 = strdup(s);
-    for (int i = 0; s2[i]; i++)
-        s2[i] = tolower(s2[i]);
+    for (char *p = s2; *p; p++)
+        *p = tolower(*p);
+    const char *ret = intern_str(s2);
+    free(s2);
+    return ret;
+}
+
+const char *bl_string_capitalized(const char *s) {
+    if (!isalpha(s[0]) || isupper(s[0]))
+        return s;
+    char *s2 = strdup(s);
+    s2[0] = toupper(s2[0]);
+    const char *ret = intern_str(s2);
+    free(s2);
+    return ret;
+}
+
+const char *bl_string_titlecased(const char *s) {
+    char *s2 = strdup(s);
+    bool should_capitalize = true;
+    for (char *p = s2; *p; p++) {
+        if (isalpha(*p)) {
+            if (should_capitalize) {
+                *p = toupper(*p);
+                should_capitalize = false;
+            } else {
+                *p = tolower(*p);
+            }
+        } else {
+            should_capitalize = true;
+        }
+    }
     const char *ret = intern_str(s2);
     free(s2);
     return ret;

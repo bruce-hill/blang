@@ -109,6 +109,8 @@ class TableType extends Type
 
 class FnType extends Type
     new: (@arg_types, @return_type, @arg_names=nil)=>
+        if @arg_names
+            @arg_types_by_name = {name,@arg_types[i] for i,name in ipairs @arg_names}
     __tostring: => "#{@arg_signature!}=>#{@return_type}"
     __eq: Type.__eq
     nil_value: 0
@@ -121,29 +123,52 @@ class FnType extends Type
             unmatched = {name,@arg_types[i] for i,name in ipairs @arg_names}
             for name,t in pairs arg_types
                 continue unless type(name) == 'string'
-                return false unless unmatched[name] and t\is_a(unmatched[name])
+                return false, "Not a valid argument name: #{name}" unless unmatched[name]
+                return false, "Expected #{name} to be #{unmatched[name]}, not #{t}" unless t\is_a(unmatched[name])
                 unmatched[name] = nil
 
             i,j = 1,1
             while i <= #arg_types and j <= #@arg_names
                 t = unmatched[@arg_names[j]]
                 if t
-                    return false unless arg_types[i]\is_a(t)
+                    return false, "Expected #{@arg_names[j]} to be #{arg_types[i]}, not #{t}" unless arg_types[i]\is_a(t)
                     unmatched[@arg_names[j]] = nil
                     i += 1
                 j += 1
                 
             unless @varargs
-                for _,t in pairs unmatched
-                    return false unless t\is_a(OptionalType)
+                for name,t in pairs unmatched
+                    return false, "Missing argument: #{name}" unless t\is_a(OptionalType)
         else
-            return false unless #arg_types == #@arg_types or @varargs
+            return false, "Wrong number of arguments, expected #{#@arg_types} but got #{#arg_types}" unless #arg_types == #@arg_types or @varargs
             for i=1,#arg_types
-                return false unless arg_types[i]\is_a(@arg_types[i])
+                return false, "Positional argument #{i} should be #{@arg_types[i]} not #{arg_types[i]}" unless arg_types[i]\is_a(@arg_types[i])
 
         if return_type
-            return false unless return_type == "*" or @return_type\is_a(return_type)
+            return false, "Expected return type to be #{@return_type}, not #{return_type}" unless return_type == "*" or @return_type\is_a(return_type)
         return true
+
+    parse_args: (args)=>
+        assert @arg_names
+
+        values = {}
+        for arg in *args
+            if arg.__tag == "KeywordArg"
+                return nil, "Not a valid argument name: #{arg.name[0]}" unless @arg_types_by_name[arg.name[0]]
+                values[arg.name[0]] = arg.value
+
+        unmatched = [name for name in *@arg_names when not values[name]]
+        for arg in *args
+            if arg.__tag != "KeywordArg"
+                return nil, "Too many arguments" unless #unmatched > 0
+                name = table.remove(unmatched, 1)
+                values[name] = arg
+
+        for u in *unmatched
+            unless @arg_types[u]\is_a(OptionalType)
+                return nil, "Missing argument: #{name}"
+
+        return values, nil
 
 class StructType extends Type
     new: (@name, members)=> -- Members: {{type=t, name="Foo"}, {type=t2, name="Baz", inline=true}, ...}
