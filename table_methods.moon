@@ -48,25 +48,38 @@ get = (env, fail_on_missing)=>
     t = table.__type
     table_reg, key_reg, code = env\to_regs table, key
     code = "\n# Table Get\n"..code
-    key_getter = env\fresh_local "key.getter"
-    code ..= to_table_format env, t.key_type, key_reg, key_getter
-    raw_value = env\fresh_local "value.raw"
-    code ..= "#{raw_value} =l call $hashmap_get(l #{table_reg}, l #{key_getter})\n"
-    if fail_on_missing
-        missing,found = env\fresh_labels "missing","found"
-        code ..= "jnz #{raw_value}, #{found}, #{missing}\n"
-        code ..= "#{missing}\n"
-        tostring_fn = env\get_tostring_fn t.key_type, @
-        str = env\fresh_locals "str"
-        code ..= "#{str} =l call #{tostring_fn}(#{t.base_type} #{key_reg}, l 0)\n"
-        code ..= "call $dprintf(l 2, l #{env\get_string_reg(context_err(key, "Key is not present in this table: %s", 2).."\n", "index_error")}, l #{str})\n"
-        code ..= "call $_exit(l 1)\n"
-        code ..= "jmp #{missing}\n"
-        code ..= "#{found}\n"
 
-    value_reg = env\fresh_local "value"
-    code ..= from_table_format env, t.value_type, raw_value, value_reg
-    return value_reg,code
+    value_bits, key_bits, value = env\fresh_locals "value.bits", "key.bits", "value"
+    if t.key_type.base_type == "s" or t.key_type.base_type == "d"
+        code ..= "#{key_bits} =l cast #{key_reg}\n"
+    else
+        code ..= "#{key_bits} =l copy #{key_reg}\n"
+    code ..= "#{value_bits} =l call $bl_table_get(l #{table_reg}, l #{key_bits}, l #{t.key_type.nil_value}, l #{t.value_type.nil_value})\n"
+
+    if t.value_type.base_type == "s" or t.value_type.base_type == "d"
+        code ..= "#{value} =#{t.value_type.base_type} cast #{value_bits}\n"
+    else
+        code ..= "#{value} =#{t.value_type.base_type} copy #{value_bits}\n"
+
+    if fail_on_missing
+        is_nil = env\fresh_locals "is_nil"
+        if t.value_type.base_type == "d"
+            code ..= "#{is_nil} =w cuod #{value}, d_0.0 # Test for NaN\n"
+        elseif t.value_type.base_type == "s"
+            code ..= "#{is_nil} =w cuos #{value}, s_0.0 # Test for NaN\n"
+        else
+            code ..= "#{is_nil} =w ceq#{t.value_type.base_type} #{value}, #{t.value_type.nil_value}\n"
+        nil_label,done_label = env\fresh_labels "is_nil", "nonnil"
+        code ..= "jnz #{is_nil}, #{nil_label}, #{done_label}\n"
+        code ..= "#{nil_label}\n"
+        key_str = env\fresh_locals "key_str"
+        code ..= "#{key_str} =l call #{env\get_tostring_fn(t.key_type)}(#{t.key_type.base_type} #{key_reg}, l 0)\n"
+        code ..= "call $dprintf(l 2, l #{env\get_string_reg(context_err(key, "Key is not present in this table: %s", 2).."\n", "index_error")}, l #{key_str})\n"
+        code ..= "call $_exit(l 1)\n"
+        code ..= "jmp #{nil_label}\n"
+        code ..= "#{done_label}\n"
+
+    return value,code
 
 maybe_reg_to_reg = (env, val)->
     if type(val) == 'string'
@@ -90,17 +103,19 @@ methods = {
         code ..= key_code
         value_reg,value_code = maybe_reg_to_reg(env, value)
         code ..= value_code
-        key_setter,value_setter = env\fresh_locals "key.setter", "value.setter"
-        code ..= to_table_format env, key_t, key_reg, key_setter
-        code ..= to_table_format env, value_t, value_reg, value_setter
-        if skip_ret
-            code ..= "call $hashmap_set(l #{table_reg}, l #{key_setter}, l #{value_setter})\n"
-            return nil, code
+
+        value_bits, key_bits = env\fresh_locals "value.bits", "key.bits"
+        if key_t.base_type == "s" or key_t.base_type == "d"
+            code ..= "#{key_bits} =l cast #{key_reg}\n"
         else
-            prev_raw,prev = env\fresh_locals "prev_value.raw","prev_value"
-            code ..= "#{prev_raw} =l call $hashmap_set(l #{table_reg}, l #{key_setter}, l #{value_setter})\n"
-            code ..= from_table_format env, value_t, prev_raw, prev
-            return prev, code
+            code ..= "#{key_bits} =l copy #{key_reg}\n"
+
+        if value_t.base_type == "s" or value_t.base_type == "d"
+            code ..= "#{value_bits} =l cast #{value_reg}\n"
+        else
+            code ..= "#{value_bits} =l copy #{value_reg}\n"
+        code ..= "#{value_bits} =l call $bl_table_set(l #{table_reg}, l #{key_bits}, l #{value_bits}, l #{key_t.nil_value}, l #{value_t.nil_value})\n"
+        return nil,code
 
     copy: (env)=>
         copy = env\fresh_locals "copy"

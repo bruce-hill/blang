@@ -60,3 +60,16 @@ bl_fileinfo_t *bl_fstat(FILE* f)
 
     return ret;
 }
+
+
+#include <bhash.h>
+#define toggle(val, nil) ((void*)((int64_t)(val) ^ (int64_t)(nil)))
+void bl_table_set(hashmap_t *h, const void *key, const void *value, const void *key_nil, const void *value_nil) {
+    hashmap_set(h, toggle(key,key_nil), toggle(value,value_nil));
+}
+void *bl_table_get(hashmap_t *h, const void *key, const void *key_nil, const void *value_nil) {
+    return toggle(hashmap_get(h, toggle(key,key_nil)), value_nil);
+}
+const void *bl_table_next(hashmap_t *h, const void *key, const void *key_nil) {
+    return toggle(hashmap_next(h, toggle(key,key_nil)), key_nil);
+}

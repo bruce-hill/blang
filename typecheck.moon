@@ -683,6 +683,8 @@ assign_types = =>
 
         when "Not"
             assign_types @value
+            return unless @value.__type
+            node_assert @value.__type == Types.Bool or @value.__type == Types.OptionalType(Types.Bool), @value, "Invalid type for `not`: #{@value.__type}"
             @__type = Types.Bool
 
         when "Len"
