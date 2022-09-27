@@ -445,8 +445,17 @@ assign_types = =>
                     node_error @index, "Index has type #{index_type}, but expected Int or Range"
             elseif t\works_like_a(Types.TableType)
                 return unless index_type
-                node_assert index_type == t.key_type, @index, "This table has type #{t}, but is being indexed with #{index_type}"
-                @__type = t.value_type
+                if @index.__tag == "FieldName"
+                    TableMethods = require 'table_methods'
+                    if t_fn = TableMethods.types[@index[0]]
+                        @__type = t_fn(t)
+                        @__method = TableMethods.methods[@index[0]]
+                        @__inline_method = TableMethods.methods[@index[0]]
+                    else
+                        node_error @index, "#{@index[0]} is not a valid Table method"
+                else
+                    node_assert index_type == t.key_type, @index, "This table has type #{t}, but is being indexed with #{index_type}"
+                    @__type = t.value_type
             elseif t\works_like_a(Types.StructType)
                 if @index.__tag == "FieldName"
                     member_name = @index[0]

@@ -7,7 +7,7 @@ types = {
     equal_entries: => FnType({@,@}, Bool, {"table","other"})
     set: => FnType({@,@key_type,@value_type}, NilType, {"table","key","value"})
     set_all: => FnType({@, @}, NilType, {"table","other"})
-    get: => FnType({@,@key_type}, OptionalType(@key_type), {"table","key"})
+    get: => FnType({@,@key_type}, OptionalType(@value_type), {"table","key"})
     get_or_fail: => FnType({@,@key_type}, @key_type, {"table","key"})
     update: => FnType({@,@key_type,FnType({OptionalType(@value_type)},@value_type,nil)}, NilType, {"table","key","fn"})
     remove: => FnType({@,@key_type}, NilType, {"table","key"})
@@ -44,7 +44,7 @@ get = (env, fail_on_missing)=>
     table,key = if @__tag == "IndexedTerm"
         @value, @index
     else
-        @[1], @[2]
+        @fn.value, @[1]
     t = table.__type
     table_reg, key_reg, code = env\to_regs table, key
     code = "\n# Table Get\n"..code

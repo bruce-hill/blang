@@ -1,16 +1,16 @@
 t := {k=123, v=456}
 say "t = $t"
 say "t['k'] = $(t["k"])"
-say "t['missing'] = $(t["missing"])"
+say "t['missing'] = $(t.get("missing"))"
 
 fail unless #t == 2
 
-if t["k"]
+if "k" in t
     say "Yep 'k' is there"
 else
     say "Nope 'k' isn't there"
 
-if t["gone"]
+if "gone" in t
     say "Yep 'gone' is there"
 else
     say "Nope 'gone' isn't there"
@@ -30,7 +30,7 @@ say "t_int = $t_int"
 say "t_int[0] = $(t_int[0])"
 say "t_int[123] = $(t_int[123])"
 say "t_int[567] = $(t_int[567])"
-say "t_int[4] = $(t_int[4])"
+say "t_int.get(4) = $(t_int.get(4))"
 
 for k,v in t_int
     say "Entry: t_int[$k] = $v"
