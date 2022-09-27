@@ -242,8 +242,13 @@ class Environment
         elseif t\works_like_a(Types.Range)
             return "$bl_tostring_range"
 
-        if @tostring_funcs["#{t}"]
-            return @tostring_funcs["#{t}"],false
+        key = if t\is_a(Types.StructType) and t.name == ""
+            t\verbose_type!
+        else
+            tostring(t)
+
+        if @tostring_funcs[key]
+            return @tostring_funcs[key],false
 
         typename = t\id_str!
         fn_name = @fresh_global "tostring.#{typename}"
