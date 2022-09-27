@@ -1102,7 +1102,7 @@ expr_compilers =
         return converted,code
 
     TypeOf: (env)=>
-        return env\get_string_reg(get_type(@expression), "typename"), ""
+        return env\get_string_reg("#{get_type(@expression)\verbose_type!}", "typename"), ""
     SizeOf: (env)=>
         t = get_type(@expression)
         return "#{t.bytes}", ""

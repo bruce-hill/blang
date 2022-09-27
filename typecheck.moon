@@ -24,11 +24,16 @@ parse_type = =>
         when "TupleType"
             t = Types.StructType("")
             @__parsed_type = t
+            i = 1
             for memgroup in *@members
                 member_type = parse_type memgroup.type
                 return unless member_type
-                for name in *memgroup.names
-                    t\add_member name[0], member_type, (name.inline and true or false)
+                if memgroup.names
+                    for name in *memgroup.names
+                        t\add_member name[0], member_type, (name.inline and true or false)
+                else
+                    t\add_member i, member_type, false
+                    i += 1
         when "TableType"
             key = node_assert parse_type(@keyType), @keyType, "Couldn't parse this type"
             val = node_assert parse_type(@valueType), @valueType, "Couldn't parse this type"
