@@ -316,6 +316,7 @@ assign_types = =>
                         t\add_member name[0], member_type, (name.inline and true or false)
             @__methods = {}
             @__staticmethods = {}
+            @__staticvars = {}
             for member in *@
                 if member.__tag == "FnDecl"
                     if member.selfVar
@@ -326,6 +327,7 @@ assign_types = =>
                     assign_types member
                 elseif member.__tag == "Declaration"
                     assign_types member
+                    @__staticvars[member.var[0]] = member.var
 
         when "EnumDeclaration"
             t = Types.EnumType(@name[0])
@@ -565,6 +567,9 @@ assign_types = =>
                         @__staticmethod = method.name
                         @__declaration = method.name
                         @__type = method_type
+                    elseif staticvar = dec.__staticvars[member_name]
+                        @__declaration = staticvar
+                        @__type = staticvar.__type
                     else
                         node_error @index, "No such method on #{t.type}"
                 else

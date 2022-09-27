@@ -792,6 +792,15 @@ class Environment
             error("Unexpectedly reached a node not parented to top-level AST")
 
         file_scope_vars = {}
+
+        -- Struct/union static variables
+        for decl in coroutine.wrap(-> each_tag(ast, "UnionDeclaration", "StructDeclaration"))
+            t = get_type(decl, true).type
+            for staticvar in *decl
+                continue unless staticvar.__tag == "Declaration"
+                staticvar.var.__location = @fresh_global "#{t\id_str!}.#{staticvar.var[0]}"
+                table.insert file_scope_vars, staticvar.var
+
         -- Set up variable registers:
         for v in coroutine.wrap(-> each_tag(ast, "Var"))
             node_assert v.__declaration, v, "No declaration found"
@@ -1257,8 +1266,13 @@ expr_compilers =
             value = node_assert t.type.field_values[@index[0]], @, "Couldn't find enum field: .#{@index[0]} on type #{t.type}"
             return "#{value}",""
         elseif t\is_a(Types.TypeValue) and t.type\is_a(Types.StructType) and @index.__tag == "FieldName"
-            node_assert @__staticmethod.__register, @__staticmethod, "No register found"
-            return @__staticmethod.__register,""
+            if method = @__staticmethod
+                node_assert method.__register, method, "No register found"
+                return method.__register,""
+            else
+                loc = @__declaration.__location
+                tmp = env\fresh_local "#{@[0]}.value"
+                return tmp, "#{tmp} =#{t.base_type} #{t.load} #{loc}\n"
 
         is_optional = t\is_a(Types.OptionalType) and t != Types.NilType
         t = t.nonnil if is_optional
@@ -2426,9 +2440,19 @@ stmt_compilers =
             code ..= "call $_exit(l 1)\n"
             return code
     TypeDeclaration: (env)=> ""
-    StructDeclaration: (env)=> ""
+    StructDeclaration: (env)=>
+        code = ""
+        for staticvar in *@
+            continue unless staticvar.__tag == "Declaration"
+            code ..= env\compile_stmt staticvar
+        return code
+    UnionDeclaration: (env)=>
+        code = ""
+        for staticvar in *@
+            continue unless staticvar.__tag == "Declaration"
+            code ..= env\compile_stmt staticvar
+        return code
     EnumDeclaration: (env)=> ""
-    UnionDeclaration: (env)=> ""
     UnitDeclaration: (env)=> ""
     Export: (env)=> ""
     FnCall: (env)=>
