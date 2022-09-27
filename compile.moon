@@ -1256,6 +1256,9 @@ expr_compilers =
         if t\is_a(Types.TypeValue) and t.type\is_a(Types.EnumType) and @index.__tag == "FieldName"
             value = node_assert t.type.field_values[@index[0]], @, "Couldn't find enum field: .#{@index[0]} on type #{t.type}"
             return "#{value}",""
+        elseif t\is_a(Types.TypeValue) and t.type\is_a(Types.StructType) and @index.__tag == "FieldName"
+            node_assert @__staticmethod.__register, @__staticmethod, "No register found"
+            return @__staticmethod.__register,""
 
         is_optional = t\is_a(Types.OptionalType) and t != Types.NilType
         t = t.nonnil if is_optional

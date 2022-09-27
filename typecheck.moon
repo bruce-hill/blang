@@ -315,11 +315,14 @@ assign_types = =>
                         name.__type = member_type
                         t\add_member name[0], member_type, (name.inline and true or false)
             @__methods = {}
+            @__staticmethods = {}
             for member in *@
                 if member.__tag == "FnDecl"
                     if member.selfVar
                         member.selfVar.__type = t
                         @__methods[member.name[0]] = member
+                    else
+                        @__staticmethods[member.name[0]] = member
                     assign_types member
                 elseif member.__tag == "Declaration"
                     assign_types member
@@ -553,6 +556,17 @@ assign_types = =>
                         code ..= "#{val_loc} =l add #{union}, 8\n"
                         code ..= "#{member.type.store} #{val_reg}, #{val_loc}\n"
                         return union, code
+                elseif t.type\is_a(Types.StructType)
+                    member_name = @index[0]
+                    dec = @value.__declaration.__parent
+                    assign_types dec
+                    if method = dec.__staticmethods[member_name]
+                        method_type = assert method.name.__type
+                        @__staticmethod = method.name
+                        @__declaration = method.name
+                        @__type = method_type
+                    else
+                        node_error @index, "No such method on #{t.type}"
                 else
                     node_error @, "Only Enum and Union types can be indexed, not #{t.type\verbose_type!}"
             elseif t\is_a(Types.Percent)
@@ -864,7 +878,8 @@ assign_all_types = (ast)->
 
 get_type = (ast, force)->
     if force
-        node_assert ast.__type, ast, "Couldn't get type"
+        assert ast.__type, "Couldn't get type"
+        -- node_assert ast.__type, ast, "Couldn't get type"
     else
         ast.__type
 
