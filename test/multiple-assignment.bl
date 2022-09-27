@@ -35,4 +35,4 @@ table[fresh("lhs1")], table[fresh("lhs2")] = fresh("rhs1"),fresh("rhs2")
 say "$table"
 
 fail "Eval log is wrong: $eval_log" unless "$eval_log" == "[lhs1, lhs2, rhs1, rhs2]"
-fail "Table is wrong: $(table.a) $(table.b)" unless table.a == "c" and table.b == "d"
+fail "Table is wrong: $(table["a"]) $(table["b"])" unless table["a"] == "c" and table["b"] == "d"
