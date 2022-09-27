@@ -10,7 +10,8 @@ class Type
     is_numeric: => @is_a(Int) or @is_a(Num) or @is_a(Int32) or @is_a(Int16) or @is_a(Int8) or @is_a(Num32)
     contains: (other)=> @ == other
     base_type: 'l'
-    abi_type: 'l'
+    load: 'loadl'
+    store: 'storel'
     bytes: 8
     nil_value: 0x7FFFFFFFFFFFFFFF
     id_str: => tostring(@)\gsub('[^%w%d.]','')
@@ -44,7 +45,8 @@ Value32 = NamedType("Value32")
 Value32.contains = (other)=> other.bytes == @bytes
 Value32.is_a = (other)=> other == @ or other == @__class
 Value32.base_type = 'w'
-Value32.abi_type = 'w'
+Value32.load = 'loadsw'
+Value32.store = 'storew'
 Value32.bytes = 4
 Value32.nil_value = 0x7FFFFFFF
 
@@ -52,7 +54,8 @@ Value16 = NamedType("Value16")
 Value16.contains = (other)=> other.bytes == @bytes
 Value16.is_a = (other)=> other == @ or other == @__class
 Value16.base_type = 'w'
-Value16.abi_type = 'h'
+Value16.load = 'loadsh'
+Value16.store = 'storeh'
 Value16.bytes = 2
 Value16.nil_value = 0x7FFF
 
@@ -60,14 +63,16 @@ Value8 = NamedType("Value8")
 Value8.contains = (other)=> other.bytes == @bytes
 Value8.is_a = (other)=> other == @ or other == @__class
 Value8.base_type = 'w'
-Value8.abi_type = 'b'
+Value8.load = 'loadsb'
+Value8.store = 'storeb'
 Value8.bytes = 1
 Value8.nil_value = 0x7F
 
 class DerivedType extends Type
     new: (@name, @derived_from)=>
         @base_type = @derived_from.base_type
-        @abi_type = @derived_from.abi_type
+        @load = @derived_from.load
+        @store = @derived_from.store
         @bytes = @derived_from.bytes
         @nil_value = @derived_from.nil_value
     __tostring: => @name
@@ -83,7 +88,8 @@ class MeasureType extends Type
     is_numeric: => true
     normalized: => @units == "" and assert(Num) or @
     base_type: 'd'
-    abi_type: 'd'
+    load: 'loadd'
+    store: 'loadd'
     __tostring: => "<#{@units}>"
     __eq: Type.__eq
     is_a: (cls)=> @ == cls or @.__class == cls or cls\contains @
@@ -202,7 +208,8 @@ class StructType extends Type
 local EnumType
 class UnionType extends Type
     new: (@name, @members)=> -- Members: {{type=t, name="Foo"}, {type=t2, name="Baz"}, ...}
-        @abi_type = "l"
+        @load = "loadl"
+        @store = "storel"
         @base_type = "l"
         @memory_size = 8
         @members = {}
@@ -234,7 +241,8 @@ class OptionalType extends Type
         if @nonnil.__class == OptionalType
             @nonnil = assert(@nonnil.nonnil)
         @base_type = @nonnil.base_type
-        @abi_type = @nonnil.abi_type
+        @load = @nonnil.load
+        @store = @nonnil.store
         @nil_value = @nonnil.nil_value
         @bytes = @nonnil.bytes
     contains: (other)=> other == @ or other == NilType or (@nonnil and other\is_a(@nonnil))
@@ -268,34 +276,40 @@ Pointer.nil_value = 0
 
 Num = NamedType("Num")
 Num.base_type = 'd'
-Num.abi_type = 'd'
+Num.load = 'loadd'
+Num.store = 'stored'
 Num.nil_value = tonumber("0"..("1")\rep(11).."1"..("0")\rep(51), 2) -- Signaling NaN
 
 Num32 = NamedType("Num32")
 Num32.base_type = 's'
-Num32.abi_type = 's'
+Num32.load = 'loads'
+Num32.store = 'stores'
 Num32.bytes = 4
 Num32.nil_value = tonumber("0"..("1")\rep(8).."1"..("0")\rep(23), 2) -- Signaling NaN
 
 Int = NamedType("Int")
 Int.base_type = 'l'
-Int.abi_type = 'l'
+Int.load = 'loadl'
+Int.store = 'storel'
 
 Int32 = NamedType("Int32")
 Int32.base_type = 'w'
-Int32.abi_type = 'w'
+Int32.load = 'loadsw'
+Int32.store = 'storew'
 Int32.bytes = 4
 Int32.nil_value = 0x7FFFFFFF
 
 Int16 = NamedType("Int16")
 Int16.base_type = 'w'
-Int16.abi_type = 'h'
+Int16.load = 'loadsh'
+Int16.store = 'storeh'
 Int16.bytes = 2
 Int16.nil_value = 0x7FFF
 
 Int8 = NamedType("Int8")
 Int8.base_type = 'w'
-Int8.abi_type = 'b'
+Int8.load = 'loadsb'
+Int8.store = 'storeb'
 Int8.bytes = 1
 Int8.nil_value = 0x7F
 
@@ -306,7 +320,8 @@ Abort = NamedType("Abort")
 
 Bool = NamedType("Bool")
 Bool.base_type = 'w'
-Bool.abi_type = 'b'
+Bool.load = 'loadsb'
+Bool.store = 'storeb'
 Bool.bytes = 1
 Bool.nil_value = 0x7F
 

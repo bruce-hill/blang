@@ -67,10 +67,8 @@ get = (env, use_failure)=>
         int_type = item_type.base_type == "d" and "l" or "w"
         code ..= "#{tmp} =#{int_type} load#{int_type} #{item_loc}\n"
         code ..= "#{item} =d cast #{tmp}\n"
-    elseif item_type.bytes < 8
-        code ..= "#{item} =#{item_type.base_type} loadu#{item_type.abi_type} #{item_loc}\n"
     else
-        code ..= "#{item} =l loadl #{item_loc}\n"
+        code ..= "#{item} =#{item_type.base_type} #{item_type.load} #{item_loc}\n"
 
     if not use_failure
         code ..= "#{done}\n"

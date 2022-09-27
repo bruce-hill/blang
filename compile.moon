@@ -394,7 +394,7 @@ class Environment
                     if mem.inline
                         code ..= "#{member_reg} =#{mem.type.base_type} copy #{member_loc}\n"
                     else
-                        code ..= "#{member_reg} =#{mem.type.base_type} load#{mem.type.base_type} #{member_loc}\n"
+                        code ..= "#{member_reg} =#{mem.type.base_type} #{mem.type.load} #{member_loc}\n"
 
                     if mem.name
                         code ..= "#{dest} =l call $CORD_cat(l #{dest}, l #{@get_string_reg("#{mem.name}=")})\n"
@@ -451,7 +451,7 @@ class Environment
                     return code
                 code ..= @block found_member, ->
                     val = @fresh_local "val"
-                    code = "#{val} =#{info.type.base_type} load#{info.type.abi_type} #{val_loc}\n"
+                    code = "#{val} =#{info.type.base_type} #{info.type.load} #{val_loc}\n"
                     code ..= "#{tmp} =l call #{@get_tostring_fn info.type, scope}(#{info.type.base_type} #{val}, l #{callstack})\n"
                     code ..= "#{dest} =l call $CORD_cat(l #{dest}, l #{tmp})\n"
                     code ..= "jmp #{done_label}\n"
@@ -640,7 +640,7 @@ class Environment
                     -- TODO: optimize to not use function call and just do var=start ... var += step
                     code ..= "#{value_reg} =l call $range_nth(l #{iter_reg}, l #{i})\n"
                 else
-                    code ..= "#{value_reg} =#{iter_type.item_type.base_type} load#{iter_type.item_type.base_type} #{list_item}\n"
+                    code ..= "#{value_reg} =#{iter_type.item_type.base_type} #{iter_type.item_type.load} #{list_item}\n"
                     code ..= "#{list_item} =l add #{list_item}, #{iter_type.item_type.bytes}\n"
 
             if filter
@@ -948,7 +948,7 @@ expr_compilers =
         t = get_type(@)
         if @__location
             tmp = env\fresh_local "#{@[0]}.value"
-            return tmp, "#{tmp} =#{t.base_type} load#{t.base_type} #{@__location}\n"
+            return tmp, "#{tmp} =#{t.base_type} #{t.load} #{@__location}\n"
         elseif t\is_a(Types.TypeValue)
             return env\get_string_reg(t.type\verbose_type!, @[0]), ""
         node_error @, "This variable is not defined"
@@ -1313,7 +1313,7 @@ expr_compilers =
                     return "#{ret} =l add #{struct_reg}, #{member.offset}\n"
                 else
                     code = "#{loc} =l add #{struct_reg}, #{member.offset}\n"
-                    return code.."#{ret} =#{member.type.base_type} load#{member.type.base_type} #{loc}\n"
+                    return code.."#{ret} =#{member.type.base_type} #{member.type.load} #{loc}\n"
             return ret,code
         elseif t\is_a(Types.UnionType)
             node_assert @index.__tag == "FieldName", @, "Not a valid union field name"
@@ -1328,7 +1328,7 @@ expr_compilers =
             code ..= env\block if_tag, ->
                 value_loc = env\fresh_local "value.loc"
                 code = "#{value_loc} =l add #{union_reg}, 8\n"
-                code ..= "#{ret} =#{member.type.base_type} load#{member.type.abi_type} #{value_loc}\n"
+                code ..= "#{ret} =#{member.type.base_type} #{member.type.load} #{value_loc}\n"
                 code ..= "jmp #{done}\n"
                 return code
             code ..= env\block use_nil, ->
@@ -1376,7 +1376,7 @@ expr_compilers =
             code ..= "#{list_items} =l call $gc_realloc(l #{list_items}, l #{size})\n"
             code ..= "#{p} =l add #{list_items}, #{size}\n"
             code ..= "#{p} =l sub #{p}, #{item_type.bytes}\n"
-            code ..= "store#{item_type.abi_type} #{item_reg}, #{p}\n"
+            code ..= "#{item_type.store} #{item_reg}, #{p}\n"
             return code
 
         next_label = nil
@@ -1568,7 +1568,7 @@ expr_compilers =
                     code ..= "#{new_size} =l mul #{new_len}, #{item_type.bytes}\n"
                     code ..= "#{new_items} =l call $gc_alloc(l #{new_size})\n"
                     code ..= "#{tmp} =l call $mempcpy(l #{new_items}, l #{items}, l #{size})\n"
-                    code ..= "store#{item_type.abi_type} #{item_reg}, #{tmp}\n"
+                    code ..= "#{item_type.store} #{item_reg}, #{tmp}\n"
                     code ..= "#{ret} =l call $gc_alloc(l 16)\n"
                     code ..= "storel #{new_len}, #{ret}\n"
                     code ..= "#{tmp} =l add #{ret}, 8\n"
@@ -1587,7 +1587,7 @@ expr_compilers =
                     code ..= "#{items} =l loadl #{tmp}\n"
                     code ..= "#{new_size} =l mul #{new_len}, #{item_type.bytes}\n"
                     code ..= "#{new_items} =l call $gc_alloc(l #{new_size})\n"
-                    code ..= "store#{item_type.abi_type} #{item_reg}, #{new_items}\n"
+                    code ..= "#{item_type.store} #{item_reg}, #{new_items}\n"
                     code ..= "#{tmp} =l add #{new_items}, #{item_type.bytes}\n"
                     code ..= "call $memcpy(l #{tmp}, l #{items}, l #{size})\n"
                     code ..= "#{ret} =l call $gc_alloc(l 16)\n"
@@ -1699,7 +1699,7 @@ expr_compilers =
                 val_reg,val_code = env\to_reg override.value
                 code ..= val_code
                 code ..= "#{p} =l add #{ret}, #{member.offset}\n"
-                code ..= "store#{member.type.base_type} #{val_reg}, #{p}\n"
+                code ..= "#{member.type.store} #{val_reg}, #{p}\n"
 
             -- code ..= "#{ret} =l call $intern_bytes(l #{ret}, l #{struct_size})\n"
             return ret, code
@@ -1903,7 +1903,7 @@ expr_compilers =
             if memb.inline
                 code ..= "call $memcpy(l #{loc}, l #{val_reg}, l #{memb.type.memory_size})\n"
             else
-                code ..= "store#{m_t.base_type} #{val_reg}, #{loc}\n"
+                code ..= "#{m_t.store} #{val_reg}, #{loc}\n"
             unpopulated[memb.name] = nil
 
         for name,memb in pairs unpopulated
@@ -1912,7 +1912,7 @@ expr_compilers =
             continue if memb.type.nil_value == 0
             loc = env\fresh_local "#{t\id_str!\lower!}.#{memb.name}.loc"
             code ..= "#{loc} =l add #{ret}, #{memb.offset}\n"
-            code ..= "store#{memb.type.base_type} #{memb.type.nil_value}, #{loc}\n"
+            code ..= "#{memb.type.store} #{memb.type.nil_value}, #{loc}\n"
 
         for name,memb in pairs unpopulated
             node_error @, "#{name} is a required field for #{t.name}, but was not specified"
@@ -2116,7 +2116,7 @@ stmt_compilers =
             loc = env\fresh_local "#{name}.#{mem[0]}.loc"
             code ..= "#{loc} =l add #{mod}, #{8*(i-1)}\n"
             tmp = env\fresh_local "#{name}.#{mem[0]}"
-            code ..= "#{tmp} =#{mem.__type.base_type} load#{mem.__type.base_type} #{loc}\n"
+            code ..= "#{tmp} =#{mem.__type.base_type} #{mem.__type.load} #{loc}\n"
             code ..= "storel #{tmp}, #{mem.__location}\n"
 
         if @orElse
@@ -2129,7 +2129,7 @@ stmt_compilers =
         if @var.__register
             code ..= "#{@var.__register} =#{value_type.base_type} copy #{val_reg}\n"
         elseif @var.__location
-            code ..= "store#{value_type.base_type} #{val_reg}, #{@var.__location}\n"
+            code ..= "#{value_type.store} #{val_reg}, #{@var.__location}\n"
         else
             node_error @var, "Undefined variable"
         return code
@@ -2150,7 +2150,7 @@ stmt_compilers =
                         "#{lhs.__register} =#{lhs_type.base_type} copy #{rhs_reg}\n"
                 elseif lhs.__location
                     table.insert lhs_stores, (rhs_reg)->
-                        "store#{lhs_type.base_type} #{rhs_reg}, #{lhs.__location}\n"
+                        "#{lhs_type.store} #{rhs_reg}, #{lhs.__location}\n"
                 continue
             
             node_assert lhs.__tag == "IndexedTerm", lhs, "Expected a Var or an indexed value"
@@ -2193,7 +2193,7 @@ stmt_compilers =
                                     rhs_casted = env\fresh_local "list.item.float"
                                     code ..= "#{rhs_casted} =d cast #{rhs_reg}\n"
                                     rhs_reg = rhs_casted
-                                code ..= "store#{t.item_type.abi_type} #{rhs_reg}, #{p}\n"
+                                code ..= "#{t.item_type.store} #{rhs_reg}, #{p}\n"
                                 return code.."jmp #{end_label}\n"
 
                             return code
@@ -2236,7 +2236,7 @@ stmt_compilers =
                         if memb.inline
                             code ..= "call $memcpy(l #{loc}, l #{rhs_reg}, l #{assert memb.type.memory_size})\n"
                         else
-                            code ..= "store#{rhs_type.base_type} #{rhs_reg}, #{loc}\n"
+                            code ..= "#{rhs_type.store} #{rhs_reg}, #{loc}\n"
                         code ..= "jmp #{end_label}\n"
                         return code
                     code ..= "#{end_label}\n"
@@ -2260,7 +2260,7 @@ stmt_compilers =
     AddUpdate: (env)=>
         lhs_type,rhs_type = get_type(@lhs),get_type(@rhs)
         lhs_reg,rhs_reg,code = env\to_regs @lhs, @rhs
-        store_code = @lhs.__location and "store#{lhs_type.base_type} #{lhs_reg}, #{@lhs.__location}\n" or ""
+        store_code = @lhs.__location and "#{lhs_type.store} #{lhs_reg}, #{@lhs.__location}\n" or ""
         if nonnil_eq(lhs_type, rhs_type) and lhs_type\is_numeric!
             return code.."#{lhs_reg} =#{lhs_type.base_type} add #{lhs_reg}, #{rhs_reg}\n"..store_code
         elseif lhs_type == rhs_type and lhs_type\works_like_a(Types.String)
@@ -2274,7 +2274,7 @@ stmt_compilers =
     SubUpdate: (env)=>
         lhs_type,rhs_type = get_type(@lhs),get_type(@rhs)
         lhs_reg,rhs_reg,code = env\to_regs @lhs, @rhs
-        store_code = @lhs.__location and "store#{lhs_type.base_type} #{lhs_reg}, #{@lhs.__location}\n" or ""
+        store_code = @lhs.__location and "#{lhs_type.store} #{lhs_reg}, #{@lhs.__location}\n" or ""
         if nonnil_eq(lhs_type, rhs_type) and lhs_type\is_numeric!
             return code.."#{lhs_reg} =#{lhs_type.base_type} sub #{lhs_reg}, #{rhs_reg}\n"..store_code
         else
@@ -2282,7 +2282,7 @@ stmt_compilers =
     MulUpdate: (env)=>
         lhs_type,rhs_type = get_type(@lhs),get_type(@rhs)
         lhs_reg,rhs_reg,code = env\to_regs @lhs, @rhs
-        store_code = @lhs.__location and "store#{lhs_type.base_type} #{lhs_reg}, #{@lhs.__location}\n" or ""
+        store_code = @lhs.__location and "#{lhs_type.store} #{lhs_reg}, #{@lhs.__location}\n" or ""
         if nonnil_eq(lhs_type, rhs_type) and lhs_type\is_numeric!
             return code.."#{lhs_reg} =#{lhs_type.base_type} mul #{lhs_reg}, #{rhs_reg}\n"..store_code
         else
@@ -2290,7 +2290,7 @@ stmt_compilers =
     DivUpdate: (env)=>
         lhs_type,rhs_type = get_type(@lhs),get_type(@rhs)
         lhs_reg,rhs_reg,code = env\to_regs @lhs, @rhs
-        store_code = @lhs.__location and "store#{lhs_type.base_type} #{lhs_reg}, #{@lhs.__location}\n" or ""
+        store_code = @lhs.__location and "#{lhs_type.store} #{lhs_reg}, #{@lhs.__location}\n" or ""
         if nonnil_eq(lhs_type, rhs_type) and lhs_type\is_numeric!
             return code.."#{lhs_reg} =#{lhs_type.base_type} div #{lhs_reg}, #{rhs_reg}\n"..store_code
         else
@@ -2303,7 +2303,7 @@ stmt_compilers =
         code ..= env\block false_label, ->
             rhs_reg,code = env\to_reg @rhs
             code ..= "#{lhs_reg} =#{t_lhs.base_type} copy #{rhs_reg}\n"
-            code ..= "store#{t_lhs.base_type} #{lhs_reg}, #{@lhs.__location}\n" if @lhs.__location
+            code ..= "#{t_lhs.store} #{lhs_reg}, #{@lhs.__location}\n" if @lhs.__location
             code ..= "jmp #{true_label}\n"
             return code
         code ..= "#{true_label}\n"
@@ -2316,7 +2316,7 @@ stmt_compilers =
         code ..= env\block true_label, ->
             rhs_reg,code = env\to_reg @rhs
             code ..= "#{lhs_reg} =#{t_lhs.base_type} copy #{rhs_reg}\n"
-            code ..= "store#{t_lhs.base_type} #{lhs_reg}, #{@lhs.__location}\n" if @lhs.__location
+            code ..= "#{t_lhs.store} #{lhs_reg}, #{@lhs.__location}\n" if @lhs.__location
             code ..= "jmp #{false_label}\n"
             return code
         code ..= "#{false_label}\n"
@@ -2324,7 +2324,7 @@ stmt_compilers =
     XorUpdate: (env)=>
         t_lhs, t_rhs = get_type(@lhs), get_type(@rhs)
         lhs_reg,rhs_reg,code = env\to_regs @lhs, @rhs
-        store_code = @lhs.__location and "store#{t_lhs.base_type} #{lhs_reg}, #{@lhs.__location}\n" or ""
+        store_code = @lhs.__location and "#{t_lhs.store} #{lhs_reg}, #{@lhs.__location}\n" or ""
         lhs_true,lhs_false,use_rhs,use_false,xor_done = env\fresh_labels "xor.lhs.true","xor.lhs.false","xor.use.rhs","xor.false","xor.done"
 
         code ..= env\check_truthiness t_lhs, lhs_reg, lhs_true, lhs_false
@@ -2364,9 +2364,9 @@ stmt_compilers =
                 val_reg,val_code = env\to_reg override.value
                 code ..= val_code
                 code ..= "#{p} =l add #{ret}, #{memb.offset}\n"
-                code ..= "store#{memb.type.base_type} #{val_reg}, #{p}\n"
+                code ..= "#{memb.type.store} #{val_reg}, #{p}\n"
 
-            code ..= "store#{t.base_type} #{base_reg}, #{@base.__location}\n" if @base.__location
+            code ..= "#{t.store} #{base_reg}, #{@base.__location}\n" if @base.__location
             return code
         else
             node_error @, "| operator is only supported for Struct types"
@@ -2395,7 +2395,7 @@ stmt_compilers =
         elseif dest.__location
             ret = env\fresh_local "return"
             code ..= "#{ret} =#{ret_type.base_type} call #{fn_reg}(#{concat args, ", "})\n"
-            code ..= "store#{ret_type.base_type} #{ret}, #{dest.__location}\n"
+            code ..= "#{ret_type.store} #{ret}, #{dest.__location}\n"
         return code
 
     FnDecl: (env)=> ""

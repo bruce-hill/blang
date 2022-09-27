@@ -1,4 +1,13 @@
 
 def main()
+    ints := [10, 20, 30]
+    say "$(typeof ints) $ints"
+
     ints := [10:Int32, 20:Int32, 30:Int32]
     say "$(typeof ints) $ints"
+
+    ints := [10:Int16, 20:Int16, 30:Int16]
+    say "$(typeof ints) $ints"
+
+    bools := [yes, no, yes, no]
+    say "$(typeof bools) $bools"
