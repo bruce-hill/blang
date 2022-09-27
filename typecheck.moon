@@ -270,7 +270,7 @@ assign_types = =>
 
         when "FnDecl"
             if @selfVar
-                node_assert @__parent.__tag == "StructDeclaration", @, "Method definition is not inside a struct"
+                node_assert @__parent.__tag == "StructDeclaration" or @__parent.__tag == "UnionDeclaration", @, "Method definition is not inside a struct or union"
                 return unless @__parent.__type
                 @selfVar.__type = @__parent.__type.type
             for arg in *@args
@@ -301,7 +301,7 @@ assign_types = =>
             for arg in *@
                 assign_types arg
             if not @__type and @fn.__type
-                node_assert @fn.__type\is_a(Types.FnType), @fn, "Not a function"
+                node_assert @fn.__type\is_a(Types.FnType), @fn, "Not a function: #{@fn.__type}"
                 @__type = @fn.__type.return_type
 
         when "StructDeclaration"
@@ -361,12 +361,28 @@ assign_types = =>
         when "UnionDeclaration"
             t = Types.UnionType(@name[0])
             @__type = Types.TypeValue(t)
-            for member in *@
-                member_type = parse_type member.type
-                for name in *member.names
-                    name.__type = member_type
-                    t\add_member name[0], member_type, (name.inline and true or false)
             @name.__type = @__type if @name
+            for member in *@
+                if member.__tag == "UnionField"
+                    member_type = parse_type member.type
+                    for name in *member.names
+                        name.__type = member_type
+                        t\add_member name[0], member_type, (name.inline and true or false)
+
+            @__methods = {}
+            @__staticmethods = {}
+            @__staticvars = {}
+            for member in *@
+                if member.__tag == "FnDecl"
+                    if member.selfVar
+                        member.selfVar.__type = t
+                        @__methods[member.name[0]] = member
+                    else
+                        @__staticmethods[member.name[0]] = member
+                    assign_types member
+                elseif member.__tag == "Declaration"
+                    assign_types member
+                    @__staticvars[member.var[0]] = member.var
 
         when "TypeDeclaration"
             derived = parse_type(@derivesFrom)
@@ -483,6 +499,7 @@ assign_types = =>
                                 method = dec.__methods[member_name]
                                 if method
                                     method_type = method.name.__type
+                                    @__type = method_type
                                     @__method = method.name
                                     @__declaration = method.name
                                     break
@@ -501,7 +518,7 @@ assign_types = =>
                 if @index.__tag == "FieldName"
                     member_name = @index[0]
                     member_type = if t.members[member_name]
-                        t.members[member_name].type
+                        Types.OptionalType(t.members[member_name].type)
                     else
                         root = @
                         while root.__parent
@@ -515,13 +532,14 @@ assign_types = =>
                                 method = dec.__methods[member_name]
                                 if method
                                     method_type = method.name.__type
+                                    @__type = method_type
                                     @__method = method.name
                                     @__declaration = method.name
                                     break
                         method_type
 
                     if member_type
-                        @__type = Types.OptionalType(member_type)
+                        @__type = member_type
                 else
                     node_error @index, "Unions can only be indexed by a field name"
             elseif t\works_like_a(Types.String)
@@ -548,16 +566,27 @@ assign_types = =>
                     @__type = t.type
                 elseif t.type\is_a(Types.UnionType)
                     node_assert @index.__tag == "FieldName", @index, "The Union class #{t} can only be indexed by a valid field name"
-                    member = node_assert t.type.members[@index[0]], "#{t.type}.#{@index[0]} is not a valid member in the Union #{t.type}"
-                    @__type = Types.FnType({t, member.type}, t.type)
-                    @__inline_method = (env)=>
-                        val_reg,code = env\to_regs @[1]
-                        union,val_loc = env\fresh_locals "#{t.type.name}", "val_loc"
-                        code ..= "#{union} =l call $gc_alloc(l #{t.type.memory_size})\n"
-                        code ..= "storel #{member.index}, #{union}\n"
-                        code ..= "#{val_loc} =l add #{union}, 8\n"
-                        code ..= "#{member.type.store} #{val_reg}, #{val_loc}\n"
-                        return union, code
+                    dec = @value.__declaration.__parent
+                    if member = t.type.members[@index[0]]
+                        @__type = Types.FnType({t, member.type}, t.type)
+                        @__inline_method = (env)=>
+                            val_reg,code = env\to_regs @[1]
+                            union,val_loc = env\fresh_locals "#{t.type.name}", "val_loc"
+                            code ..= "#{union} =l call $gc_alloc(l #{t.type.memory_size})\n"
+                            code ..= "storel #{member.index}, #{union}\n"
+                            code ..= "#{val_loc} =l add #{union}, 8\n"
+                            code ..= "#{member.type.store} #{val_reg}, #{val_loc}\n"
+                            return union, code
+                    elseif staticmethod = dec.__staticmethods[@index[0]]
+                        method_type = assert staticmethod.name.__type
+                        @__staticmethod = staticmethod.name
+                        @__declaration = staticmethod.name
+                        @__type = method_type
+                    elseif staticvar = dec.__staticvars[@index[0]]
+                        @__declaration = staticvar
+                        @__type = staticvar.__type
+                    else
+                        node_error @index, "#{t.type}.#{@index[0]} is not a valid member in the Union #{t.type}"
                 elseif t.type\is_a(Types.StructType)
                     member_name = @index[0]
                     dec = @value.__declaration.__parent

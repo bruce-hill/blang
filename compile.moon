@@ -1142,7 +1142,8 @@ expr_compilers =
             if type(chunk) == 'string'
                 code ..= "#{chunk_reg} =l copy #{env\get_string_reg chunk, "str.literal"}\n"
             else
-                t = get_type(chunk, true)
+                t = get_type(chunk)
+                node_assert t, chunk, "Couldn't get this type"
                 val_reg,val_code = env\to_reg chunk
                 code ..= val_code
                 if t == Types.String
@@ -1265,7 +1266,7 @@ expr_compilers =
         if t\is_a(Types.TypeValue) and t.type\is_a(Types.EnumType) and @index.__tag == "FieldName"
             value = node_assert t.type.field_values[@index[0]], @, "Couldn't find enum field: .#{@index[0]} on type #{t.type}"
             return "#{value}",""
-        elseif t\is_a(Types.TypeValue) and t.type\is_a(Types.StructType) and @index.__tag == "FieldName"
+        elseif t\is_a(Types.TypeValue) and (t.type\is_a(Types.StructType) or t.type\is_a(Types.UnionType)) and @index.__tag == "FieldName"
             if method = @__staticmethod
                 node_assert method.__register, method, "No register found"
                 return method.__register,""
@@ -1305,13 +1306,7 @@ expr_compilers =
             return TableMethods.methods.get_or_fail(@, env)
         elseif t\is_a(Types.StructType)
             if @__method
-                chain = {}
-                node = @__method
-                while node.__parent
-                    table.insert chain, table.find(node.__parent, node)
-                    node = node.__parent
-                node_assert @__method.__register, @__method, "No register found: #{table.concat chain, "."}\n\n#{viz node}"
-                return @__method.__register,""
+                return assert(@__method.__register),""
 
             member = if @index.__tag == "FieldName"
                 member_name = @index[0]
@@ -1334,6 +1329,9 @@ expr_compilers =
                     return code.."#{ret} =#{member.type.base_type} #{member.type.load} #{loc}\n"
             return ret,code
         elseif t\is_a(Types.UnionType)
+            if @__method
+                return assert(@__method.__register),""
+
             node_assert @index.__tag == "FieldName", @, "Not a valid union field name"
             member_name = @index[0]
             member = node_assert t.members[member_name], @index, "Not a valid union member of #{t\verbose_type!}"
@@ -1820,62 +1818,61 @@ expr_compilers =
             node_assert matches, @, err
             return @fn.__inline_method(@, env, skip_ret)
 
-        fn_type = get_type @fn
+        fn_type = get_type @fn, true
         fn_reg,code = env\to_reg @fn
 
-        local arg_list
-        if fn_type
-            node_assert fn_type\is_a(Types.FnType), @fn, "This is not a function, it's a #{fn_type or "???"}"
-            arg_types,arg_text = {},{}
-            for arg in *@
-                if arg.__tag == "KeywordArg"
-                    arg_types[arg.name[0]] = get_type(arg.value)
-                    table.insert arg_text, "#{arg.name[0]}=#{get_type(arg.value)\verbose_type!}"
-                else
-                    table.insert arg_types, get_type(arg)
-                    table.insert arg_text, "#{get_type(arg)\verbose_type!}"
-            if @fn.__method
-                table.insert arg_types, 1, get_type(@fn.value)
-                table.insert arg_text, 1, "#{get_type(@fn.value)}"
-
-            node_assert fn_type\matches(arg_types), @,
-                "This function is being called with #{@fn[0]}(#{concat arg_text, ", "}) but is defined as #{fn_type}"
-
-            kw_args = {}
-            pos_args = {}
-            if @fn.__method
-                arg_reg,arg_code = env\to_reg @fn.value
-                code ..= arg_code
-                table.insert pos_args, {reg: arg_reg, type: get_type(@fn.value), node: @fn.value}
-            for arg in *@
-                if arg.__tag == "KeywordArg"
-                    arg_reg, arg_code = env\to_reg arg.value
-                    code ..= arg_code
-                    kw_args[arg.name[0]] = arg_reg
-                else
-                    arg_reg, arg_code = env\to_reg arg
-                    code ..= arg_code
-                    table.insert pos_args, {reg: arg_reg, type: get_type(arg), node:arg}
-
-            if fn_type.arg_names
-                arg_list = {}
-                assert fn_type.arg_names, "No arg names: #{fn_type}"
-                for i,name in ipairs fn_type.arg_names
-                    arg_reg = kw_args[name] or (table.remove(pos_args, 1) or {}).reg
-                    if not arg_reg
-                        arg_reg = env\fresh_local name
-                        code ..= env\set_nil fn_type.arg_types[i], arg_reg
-                    table.insert arg_list, "#{fn_type.arg_types[i].base_type} #{arg_reg}"
+        node_assert fn_type\is_a(Types.FnType), @fn, "This is not a function, it's a #{fn_type or "???"}"
+        arg_types,arg_text = {},{}
+        for arg in *@
+            if arg.__tag == "KeywordArg"
+                arg_types[arg.name[0]] = get_type(arg.value)
+                table.insert arg_text, "#{arg.name[0]}=#{get_type(arg.value)\verbose_type!}"
             else
-                node_assert not next(kw_args), @, "Keyword arguments supplied to a function that doesn't have names for its arguments"
-                for _ in *fn_type.arg_types
-                    table.remove(pos_args, 1)
+                table.insert arg_types, get_type(arg)
+                table.insert arg_text, "#{get_type(arg)\verbose_type!}"
+        if @fn.__method
+            table.insert arg_types, 1, (get_type(@fn.value, true))
+            table.insert arg_text, 1, "#{get_type(@fn.value, true)}"
 
-            if #pos_args > 0
-                node_assert fn_type.varargs, pos_args[1].node, "The arguments from here onwards are not defined in the function signature: #{fn_type}"
-                table.insert(arg_list, #fn_type.arg_types+1, "...")
-                for arg in *pos_args
-                    table.insert arg_list, "#{arg.type.base_type} #{arg.reg}"
+        node_assert fn_type\matches(arg_types), @,
+            "This function is being called with #{@fn[0]}(#{concat arg_text, ", "}) but is defined as #{fn_type}"
+
+        kw_args = {}
+        pos_args = {}
+        if @fn.__method
+            arg_reg,arg_code = env\to_reg @fn.value
+            code ..= arg_code
+            table.insert pos_args, {reg: arg_reg, type: get_type(@fn.value), node: @fn.value}
+        for arg in *@
+            if arg.__tag == "KeywordArg"
+                arg_reg, arg_code = env\to_reg arg.value
+                code ..= arg_code
+                kw_args[arg.name[0]] = arg_reg
+            else
+                arg_reg, arg_code = env\to_reg arg
+                code ..= arg_code
+                table.insert pos_args, {reg: arg_reg, type: get_type(arg), node:arg}
+
+        local arg_list
+        if fn_type.arg_names
+            arg_list = {}
+            assert fn_type.arg_names, "No arg names: #{fn_type}"
+            for i,name in ipairs fn_type.arg_names
+                arg_reg = kw_args[name] or (table.remove(pos_args, 1) or {}).reg
+                if not arg_reg
+                    arg_reg = env\fresh_local name
+                    code ..= env\set_nil fn_type.arg_types[i], arg_reg
+                table.insert arg_list, "#{fn_type.arg_types[i].base_type} #{arg_reg}"
+        else
+            node_assert not next(kw_args), @, "Keyword arguments supplied to a function that doesn't have names for its arguments"
+            for _ in *fn_type.arg_types
+                table.remove(pos_args, 1)
+
+        if #pos_args > 0
+            node_assert fn_type.varargs, pos_args[1].node, "The arguments from here onwards are not defined in the function signature: #{fn_type}"
+            table.insert(arg_list, #fn_type.arg_types+1, "...")
+            for arg in *pos_args
+                table.insert arg_list, "#{arg.type.base_type} #{arg.reg}"
 
         if not arg_list
             arg_list = {}

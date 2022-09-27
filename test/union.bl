@@ -1,22 +1,35 @@
 union Foo {
     x,y:Int
-    z:String
+    str:String
+
+    Hello := Foo.str("Hello")
+
+    def self.Derp()
+        say "Derp $self"
+
+    def Blorp()
+        say "Blorp"
 }
 
 def show(foo:Foo)
-    say "$foo: .x=$(foo.x) .y=$(foo.y) .z=$(foo.z)"
+    say "$foo: .x=$(foo.x) .y=$(foo.y) .str=$(foo.str)"
     if x := foo.x
         say "It was an x: $x"
     elseif y := foo.y
         say "It was a y: $y"
-    elseif z := foo.z
-        say "It was a z: $z"
+    elseif str := foo.str
+        say "It was a str: $str"
 
 def doop()
-    tmp := Foo.z("hi")
+    tmp := Foo.str("hi")
     show(Foo.x(5))
     show(Foo.y(6))
-    show(Foo.z("Hello"))
+    show(Foo.str("Hello"))
+
+    f := Foo.Hello
+    say "$f"
+    f.Derp()
+    Foo.Blorp()
 
 doop()
 
