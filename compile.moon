@@ -242,11 +242,7 @@ class Environment
         elseif t\works_like_a(Types.Range)
             return "$bl_tostring_range"
 
-        key = if t\is_a(Types.StructType) and t.name == ""
-            t\verbose_type!
-        else
-            tostring(t)
-
+        key = tostring(t)
         if @tostring_funcs[key]
             return @tostring_funcs[key],false
 

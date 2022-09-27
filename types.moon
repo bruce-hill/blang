@@ -195,7 +195,7 @@ class StructType extends Type
             @memory_size = offset + (memtype.memory_size or memtype.bytes)
         else
             @memory_size = offset + memtype.bytes
-    __tostring: => "#{@name}"
+    __tostring: => if @name == "" then @verbose_type! else "#{@name}"
     nil_value: 0
     verbose_type: =>
         mem_strs = {}
