@@ -266,8 +266,8 @@ assign_types = =>
         when "FnDecl"
             if @selfVar
                 node_assert @__parent.__tag == "StructDeclaration", @, "Method definition is not inside a struct"
-                @selfVar.__type = @__parent.__type
-                return unless @selfVar.__type
+                return unless @__parent.__type
+                @selfVar.__type = @__parent.__type.type
             for arg in *@args
                 arg.__type = parse_type(arg.type)
                 arg.name.__type = arg.__type
@@ -282,15 +282,12 @@ assign_types = =>
             assign_types @body
 
         when "ConvertDecl"
-            for arg in *@args
-                arg.__type = parse_type(arg.type)
-                arg.name.__type = arg.__type
+            assert #@args == 1
+            @args[1].__type = parse_type(@args[1].type)
+            @args[1].name.__type = @args[1].__type
             ret = @returnType and parse_type(@returnType) or Types.NilType
             arg_types = [a.__type for a in *@args]
             arg_names = [a.name[0] for a in *@args]
-            if @selfVar
-                table.insert arg_types, 1, @selfVar.__type
-                table.insert arg_names, 1, @selfVar[0]
             @__type = Types.FnType(arg_types, ret, arg_names)
             assign_types @body
 
@@ -464,7 +461,7 @@ assign_types = =>
                         for dec in coroutine.wrap(-> each_tag(root, "StructDeclaration"))
                             assign_types dec
                             -- node_assert dec.__type, dec, "WTF no type: #{viz dec}"
-                            if dec.__type == t
+                            if dec.__type.type == t
                                 method = dec.__methods[member_name]
                                 if method
                                     method_type = method.name.__type
