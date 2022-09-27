@@ -221,7 +221,7 @@ class UnionType extends Type
     add_member: (name, member_type)=>
         @num_members += 1
         @members[name] = {type: member_type, index: @num_members}
-        @memory_size = math.max(@memory_size, 8+member_type.memory_size)
+        @memory_size = math.max(@memory_size, 8+member_type.bytes)
     __tostring: => "#{@name}"
     nil_value: 0
     verbose_type: =>

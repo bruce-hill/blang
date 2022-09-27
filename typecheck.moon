@@ -354,7 +354,7 @@ assign_types = =>
                 @__type = t
 
         when "UnionDeclaration"
-            t = Types.StructType(@name[0])
+            t = Types.UnionType(@name[0])
             @__type = Types.TypeValue(t)
             for member in *@
                 member_type = parse_type member.type
@@ -516,8 +516,20 @@ assign_types = =>
                     node_assert @index.__tag == "FieldName", @index, "The Enum class #{t} can only be indexed by a valid field name"
                     node_assert t.type.field_values[@index[0]], "#{t.type}.#{@index[0]} is not a valid field in the Enum #{t.type}"
                     @__type = t.type
+                elseif t.type\is_a(Types.UnionType)
+                    node_assert @index.__tag == "FieldName", @index, "The Union class #{t} can only be indexed by a valid field name"
+                    member = node_assert t.type.members[@index[0]], "#{t.type}.#{@index[0]} is not a valid member in the Union #{t.type}"
+                    @__type = Types.FnType({t, member.type}, t.type)
+                    @__inline_method = (env)=>
+                        val_reg,code = env\to_regs @[1]
+                        union,val_loc = env\fresh_locals "#{t.type.name}", "val_loc"
+                        code ..= "#{union} =l call $gc_alloc(l #{t.type.memory_size})\n"
+                        code ..= "storel #{member.index}, #{union}\n"
+                        code ..= "#{val_loc} =l add #{union}, 8\n"
+                        code ..= "#{member.type.store} #{val_reg}, #{val_loc}\n"
+                        return union, code
                 else
-                    node_error @, "Only Enum types can be indexed, not #{t.type}"
+                    node_error @, "Only Enum and Union types can be indexed, not #{t.type\verbose_type!}"
             elseif t\is_a(Types.Percent)
                 node_assert @index.__tag == "FieldName", @index, "Percents cannot be indexed"
                 PercentMethods = require 'percent_methods'

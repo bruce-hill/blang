@@ -438,8 +438,7 @@ class Environment
             code ..= "#{offset} =l mul #{offset}, 8\n"
             code ..= "#{name} =l add $#{t\id_str!}.member_names, #{offset}\n"
             code ..= "#{dest} =l loadl #{name}\n"
-            code ..= "#{dest} =l call $CORD_cat(l #{@get_string_reg "@", "at"}, l #{dest})\n"
-            code ..= "#{dest} =l call $CORD_cat(l #{dest}, l #{@get_string_reg ':', "colon"})\n"
+            code ..= "#{dest} =l call $CORD_cat(l #{dest}, l #{@get_string_reg '(', "lparen"})\n"
             code ..= "#{val_loc} =l add #{reg}, 8\n"
             next_check,done_label = @fresh_labels "check.member","done"
             for name,info in pairs t.members
@@ -457,6 +456,7 @@ class Environment
                     code ..= "jmp #{done_label}\n"
                     return code
             code ..= "#{done_label}\n"
+            code ..= "#{dest} =l call $CORD_cat(l #{dest}, l #{@get_string_reg ')', "rparen"})\n"
             code ..= "#{dest} =l call $CORD_to_const_char_star(l #{dest})\n"
             code ..= "#{dest} =l call $bl_string(l #{dest})\n"
 
@@ -776,7 +776,7 @@ class Environment
 
         -- Union field names
         for u in coroutine.wrap(-> each_tag(ast, "UnionDeclaration", "UnionType"))
-            t = parse_type(u)
+            t = get_type(u, true).type
             assert t\is_a(Types.UnionType), "#{t}"
             fieldnames = "$#{t\id_str!}.member_names"
             @type_code ..= "data #{fieldnames} = {#{concat ["l 0" for _ in pairs t.members], ", "}}\n"
