@@ -497,7 +497,7 @@ assign_types = =>
                         @__method = StringMethods.methods[@index[0]]
                         @__inline_method = StringMethods.methods[@index[0]]
                     else
-                        node_error @index, "#{@index[0]} is not a valid Percent method"
+                        node_error @index, "`#{@index[0]}` is not a valid String method"
                 else
                     node_error @index, "Strings can only be indexed by Ints or Ranges"
             elseif t\is_a(Types.TypeValue)

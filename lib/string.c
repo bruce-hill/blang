@@ -178,7 +178,7 @@ const char *bl_string_titlecased(const char *s) {
     return ret;
 }
 
-int64_t bl_string_nth_char(char *s, int64_t n) {
+int64_t bl_string_nth_char(const char *s, int64_t n) {
     --n;
     if (n < 0) return INT_NIL;
     int64_t len = (int64_t)strlen(s);
@@ -186,7 +186,7 @@ int64_t bl_string_nth_char(char *s, int64_t n) {
     return (int64_t)s[n];
 }
 
-const char *bl_string_repeat(char *s, int64_t count) {
+const char *bl_string_repeat(const char *s, int64_t count) {
     if (count <= 0) return intern_str("");
     size_t len = strlen(s);
     char *buf = calloc(len*count + 1, 1);
@@ -201,8 +201,22 @@ const char *bl_string_repeat(char *s, int64_t count) {
     return ret;
 }
 
-const char *bl_string_replace(char *text, char *pat_text, char *rep_text) {
-    maybe_pat_t maybe_pat = bp_pattern(pat_text, pat_text + strlen(pat_text));
+const char *bl_string_strip(const char *s, const char *strip_chars, int8_t strip_left, int8_t strip_right) {
+    if (strip_chars == NULL) strip_chars = " \n\r\t";
+    const char *start = s;
+    if (strip_left)
+        start += strspn(s, strip_chars);
+    size_t len = strlen(start);
+    if (strip_right) {
+        while (strspn(start + len - 1, strip_chars))
+            --len;
+    }
+    const char *buf = strndupa(start, len);
+    return intern_str(buf);
+}
+
+const char *bl_string_replace(char *text, char *pat_text, char *rep_text, int64_t limit) {
+    maybe_pat_t maybe_pat = bp_stringpattern(pat_text, pat_text + strlen(pat_text));
     if (!maybe_pat.success) {
         return text;
     }
@@ -219,10 +233,17 @@ const char *bl_string_replace(char *text, char *pat_text, char *rep_text) {
     const char *prev = text;
     pat_t *rep_pat = maybe_replacement.value.pat;
     size_t textlen = strlen(text);
-    for (match_t *m = NULL; next_match(&m, text, &text[textlen], rep_pat, NULL, NULL, false); ) {
-        fwrite(prev, sizeof(char), (size_t)(m->start - prev), out);
-        fprint_match(out, text, m, NULL);
-        prev = m->end;
+    if (limit == INT_NIL) limit = textlen + 1;
+    if (limit > 0) {
+        for (match_t *m = NULL; next_match(&m, text, &text[textlen], rep_pat, NULL, NULL, false); ) {
+            fwrite(prev, sizeof(char), (size_t)(m->start - prev), out);
+            fprint_match(out, text, m, NULL);
+            prev = m->end;
+            if (--limit == 0) {
+                stop_matching(&m);
+                break;
+            }
+        }
     }
     fwrite(prev, sizeof(char), (size_t)(&text[textlen] - prev) + 1, out);
     fflush(out);
@@ -231,27 +252,45 @@ const char *bl_string_replace(char *text, char *pat_text, char *rep_text) {
     return replaced;
 }
 
-const char *bl_string_match(char *text, char *pat_text) {
-    maybe_pat_t maybe_pat = bp_pattern(pat_text, pat_text + strlen(pat_text));
+// const char *bl_string_match(char *text, char *pat_text) {
+//     maybe_pat_t maybe_pat = bp_pattern(pat_text, pat_text + strlen(pat_text));
+//     if (!maybe_pat.success) {
+//         return intern_str("");
+//     }
+
+//     char *buf = NULL;
+//     size_t size = 0;
+//     FILE *out = open_memstream(&buf, &size);
+//     size_t textlen = strlen(text);
+//     pat_t *pat = maybe_pat.value.pat;
+//     for (match_t *m = NULL; next_match(&m, text, &text[textlen], pat, NULL, NULL, false); ) {
+//         fprint_match(out, text, m, NULL);
+//         stop_matching(&m);
+//         break;
+//     }
+//     fflush(out);
+//     const char *match = buf ? intern_str(buf) : intern_str("");
+//     fclose(out);
+//     return match;
+// }
+
+bool bl_string_matches(char *text, char *pat_text) {
+    maybe_pat_t maybe_pat = bp_stringpattern(pat_text, pat_text + strlen(pat_text));
     if (!maybe_pat.success) {
         return intern_str("");
     }
 
-    char *buf = NULL;
-    size_t size = 0;
-    FILE *out = open_memstream(&buf, &size);
     size_t textlen = strlen(text);
     pat_t *pat = maybe_pat.value.pat;
-    for (match_t *m = NULL; next_match(&m, text, &text[textlen], pat, NULL, NULL, false); ) {
-        fprint_match(out, text, m, NULL);
+    match_t *m = NULL;
+    if (next_match(&m, text, &text[textlen], pat, NULL, NULL, false)) {
         stop_matching(&m);
-        break;
+        return true;
+    } else {
+        return false;
     }
-    fflush(out);
-    const char *match = buf ? intern_str(buf) : intern_str("");
-    fclose(out);
-    return match;
 }
+
 
 const char *bl_ask(char *prompt) {
     printf("%s", prompt);

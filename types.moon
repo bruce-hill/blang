@@ -165,8 +165,8 @@ class FnType extends Type
                 values[name] = arg
 
         for u in *unmatched
-            unless @arg_types[u]\is_a(OptionalType)
-                return nil, "Missing argument: #{name}"
+            unless @arg_types_by_name[u]\is_a(OptionalType)
+                return nil, "Missing argument: #{u}"
 
         return values, nil
 
