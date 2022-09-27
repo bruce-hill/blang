@@ -1,0 +1,19 @@
+def make99(x:{Int})
+    x[1] = 99
+
+x := 5
+y := {x}
+make99(y)
+x = y[1]
+say "$x $y"
+fail unless x == 99
+say "$(typeof y)"
+fail "Type is: '$(typeof y)'" unless "$(typeof y)" == "{Int}"
+
+def foo(x:{str:String,int:Int}):String
+    return x.str
+
+say "Anonymous struct: $({.foo="hi"})"
+s := foo({.str="Ret",.int=5})
+fail "ret = $s" unless s == "Ret"
+

@@ -1,0 +1,22 @@
+extern random():Int
+
+def sort(vals:[Value], are_sorted:(Value,Value)=>Bool)
+    i := 2
+    repeat
+        cur := vals.get(i) or stop
+        prev := vals.get(i-1) or cur
+        if are_sorted(prev, cur)
+            i += 1
+        else
+            vals[i-1] = cur
+            vals[i] = prev
+            i -= 1
+
+strs := ["one","two","three","four","five","six","seven","eight"]
+say "$strs"
+sort(strs, (a:Value,b:Value)=> (a:String <= b:String))
+say "$strs"
+
+nums := [random() mod 10 for i in 1..10]
+sort(nums, (a:Value,b:Value)=> (a:Int <= b:Int))
+say "$nums"
