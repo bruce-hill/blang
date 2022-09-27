@@ -474,7 +474,6 @@ assign_types = =>
                         method_type = nil
                         for dec in coroutine.wrap(-> each_tag(root, "StructDeclaration"))
                             assign_types dec
-                            -- node_assert dec.__type, dec, "WTF no type: #{viz dec}"
                             if dec.__type.type == t
                                 method = dec.__methods[member_name]
                                 if method
@@ -484,7 +483,6 @@ assign_types = =>
                                     break
                         method_type
 
-                    -- node_assert member_type, @index, "Not a valid struct member of #{t}{#{concat ["#{memb.name}=#{memb.type}" for memb in *t.sorted_members], ", "}}"
                     if member_type
                         @__type = member_type
                 elseif @index.__tag == "Int"
@@ -494,6 +492,33 @@ assign_types = =>
                     @__type = member_type
                 else
                     node_error @index, "Structs can only be indexed by a field name or Int literal"
+            elseif t\works_like_a(Types.UnionType)
+                if @index.__tag == "FieldName"
+                    member_name = @index[0]
+                    member_type = if t.members[member_name]
+                        t.members[member_name].type
+                    else
+                        root = @
+                        while root.__parent
+                            root = root.__parent
+
+                        method_type = nil
+                        for dec in coroutine.wrap(-> each_tag(root, "UnionDeclaration"))
+                            assign_types dec
+                            continue unless dec.__methods
+                            if dec.__type.type == t
+                                method = dec.__methods[member_name]
+                                if method
+                                    method_type = method.name.__type
+                                    @__method = method.name
+                                    @__declaration = method.name
+                                    break
+                        method_type
+
+                    if member_type
+                        @__type = Types.OptionalType(member_type)
+                else
+                    node_error @index, "Unions can only be indexed by a field name"
             elseif t\works_like_a(Types.String)
                 return unless index_type
                 if index_type == Types.Int
