@@ -1,0 +1,4 @@
+
+def main()
+    ints := [10:Int32, 20:Int32, 30:Int32]
+    say "$(typeof ints) $ints"

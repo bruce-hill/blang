@@ -641,7 +641,7 @@ class Environment
                     code ..= "#{value_reg} =l call $range_nth(l #{iter_reg}, l #{i})\n"
                 else
                     code ..= "#{value_reg} =#{iter_type.item_type.base_type} load#{iter_type.item_type.base_type} #{list_item}\n"
-                    code ..= "#{list_item} =l add #{list_item}, 8\n"
+                    code ..= "#{list_item} =l add #{list_item}, #{iter_type.item_type.bytes}\n"
 
             if filter
                 code ..= @compile_stmt filter
