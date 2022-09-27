@@ -291,7 +291,6 @@ bool bl_string_matches(char *text, char *pat_text) {
     }
 }
 
-
 const char *bl_ask(char *prompt) {
     printf("%s", prompt);
     char *line = NULL;
