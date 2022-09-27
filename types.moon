@@ -89,7 +89,7 @@ class MeasureType extends Type
     normalized: => @units == "" and assert(Num) or @
     base_type: 'd'
     load: 'loadd'
-    store: 'loadd'
+    store: 'stored'
     __tostring: => "<#{@units}>"
     __eq: Type.__eq
     is_a: (cls)=> @ == cls or @.__class == cls or cls\contains @
