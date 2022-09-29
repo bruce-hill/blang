@@ -12,122 +12,6 @@ local stmt_compilers, expr_compilers
 
 nonnil_eq = (t1, t2)-> (t1.nonnil or t1) == (t2.nonnil or t2)
 
-infixop = (env, op)=>
-    assert @lhs and @rhs, "Infix node doesn't have lhs/rhs: #{viz @}"
-    t = get_type @lhs
-    lhs_reg, lhs_code = env\to_reg @lhs
-    code = lhs_code
-    ret_reg = env\fresh_local "result"
-    rhs = @rhs
-    rhs_type = get_type rhs
-    -- node_assert nonnil_eq(rhs_type, t), rhs, "Expected type: #{t} but got type #{rhs_type}"
-    rhs_reg, rhs_code = env\to_reg rhs
-    code ..= rhs_code
-    if type(op) == 'string'
-        code ..= "#{ret_reg} =#{t.base_type} #{op} #{lhs_reg}, #{rhs_reg}\n"
-    else
-        code ..= op(ret_reg, lhs_reg, rhs_reg)
-    return ret_reg, code
-
-comparison = (env, cmp)=>
-    t1 = get_type @lhs
-    t2 = get_type @rhs
-    node_assert t1 == t2, @, "This comparison is between two different types: `#{t1}` and `#{t2}` which is not allowed"
-
-    prev_val = nil
-    lhs_reg,code = env\to_reg @lhs
-    rhs_reg,rhs_code = env\to_reg @rhs
-    code ..= rhs_code
-
-    result = env\fresh_local "comparison"
-    if t1\is_a(Types.String)
-        tmp = env\fresh_local "comparison.i32"
-        code ..= "#{tmp} =w call $strcmp(l #{lhs_reg}, l #{rhs_reg})\n"
-        code ..= "#{result} =l extsw #{tmp}\n"
-        code ..= "#{result} =l #{cmp} #{result}, 0\n"
-    else
-        code ..= "#{result} =l #{cmp} #{lhs_reg}, #{rhs_reg}\n"
-
-    return result, code
-
-repeat_loop = (env, make_body)=>
-    -- Rough breakdown:
-    -- jmp @repeat
-    -- @repeat
-    -- // body code
-    -- jmp @repeat.between
-    -- // between code
-    -- jmp @repeat
-    -- @repeat.end
-    repeat_label,between_label,end_label = env\fresh_labels "repeat", "repeat.between", "repeat.end"
-
-    for skip in coroutine.wrap(-> each_tag(@, "Skip"))
-        if not skip.target or skip.target[0] == "repeat"
-            skip.jump_label = repeat_label
-
-    for stop in coroutine.wrap(-> each_tag(@, "Stop"))
-        if not stop.target or stop.target[0] == "repeat"
-            stop.jump_label = end_label
-
-    code = "jmp #{repeat_label}\n"
-    code ..= env\block repeat_label, ->
-        code = ""
-        code ..= env\compile_stmt @filter if @filter
-        code ..= (make_body and make_body! or env\compile_stmt(@body))
-        if @between
-            unless has_jump\match(code)
-                code ..= "jmp #{between_label}\n"
-            code ..= env\block between_label, -> env\compile_stmt(@between)
-        unless has_jump\match(code)
-            code ..= "jmp #{repeat_label}\n"
-        return code
-    code ..= "#{end_label}\n"
-    return code
-
-while_loop = (env, make_body)=>
-    -- Rough breakdown:
-    -- jmp @while.condition
-    -- jnz (condition), @while.body, @while.end
-    -- @while.body
-    -- // body code
-    -- jmp @while.between
-    -- // between code
-    -- jnz (condition), @while.body, @while.end
-    -- @while.end
-    cond_label,body_label,between_label,end_label = env\fresh_labels "while.condition", "while.body", "while.between", "while.end"
-
-    for skip in coroutine.wrap(-> each_tag(@, "Skip"))
-        if not skip.target or skip.target[0] == "while"
-            skip.jump_label = cond_label
-
-    for stop in coroutine.wrap(-> each_tag(@, "Stop"))
-        if not stop.target or stop.target[0] == "while"
-            stop.jump_label = end_label
-
-    cond_reg,cond_code = env\to_reg @condition
-    code = "jmp #{cond_label}\n"
-    code ..= env\block cond_label, ->
-        cond_code.."jnz #{cond_reg}, #{body_label}, #{end_label}\n"
-
-    code ..= env\block body_label, ->
-        code = ""
-        code ..= env\compile_stmt @filter if @filter
-        code ..= (make_body and make_body! or env\compile_stmt(@body))
-        if @between
-            code ..= cond_code
-            unless has_jump\match(code)
-                code ..= "jnz #{cond_reg}, #{between_label}, #{end_label}\n"
-            code ..= env\block between_label, -> env\compile_stmt(@between)
-            unless has_jump\match(code)
-                code ..= "jmp #{body_label}\n"
-        else
-            unless has_jump\match(code)
-                code ..= "jmp #{cond_label}\n"
-        return code
-
-    code ..= "#{end_label}\n"
-    return code
-
 class Environment
     new: (@filename)=>
         @strings = {}
@@ -675,6 +559,121 @@ class Environment
         code ..= "#{end_label}\n"
         return code
 
+    infixop: (ast, op)=>
+        assert ast.lhs and ast.rhs, "Infix node doesn't have lhs/rhs: #{viz ast}"
+        t = get_type ast.lhs
+        lhs_reg, lhs_code = @to_reg ast.lhs
+        code = lhs_code
+        ret_reg = @fresh_local "result"
+        rhs = ast.rhs
+        rhs_type = get_type rhs
+        -- node_assert nonnil_eq(rhs_type, t), rhs, "Expected type: #{t} but got type #{rhs_type}"
+        rhs_reg, rhs_code = @to_reg rhs
+        code ..= rhs_code
+        if type(op) == 'string'
+            code ..= "#{ret_reg} =#{t.base_type} #{op} #{lhs_reg}, #{rhs_reg}\n"
+        else
+            code ..= op(ret_reg, lhs_reg, rhs_reg)
+        return ret_reg, code
+
+    comparison: (ast, cmp)=>
+        t1 = get_type ast.lhs
+        t2 = get_type ast.rhs
+        node_assert t1 == t2, ast, "This comparison is between two different types: `#{t1}` and `#{t2}` which is not allowed"
+
+        prev_val = nil
+        lhs_reg,code = @to_reg ast.lhs
+        rhs_reg,rhs_code = @to_reg ast.rhs
+        code ..= rhs_code
+
+        result = @fresh_local "comparison"
+        if t1\is_a(Types.String)
+            tmp = @fresh_local "comparison.i32"
+            code ..= "#{tmp} =w call $strcmp(l #{lhs_reg}, l #{rhs_reg})\n"
+            code ..= "#{result} =l extsw #{tmp}\n"
+            code ..= "#{result} =l #{cmp} #{result}, 0\n"
+        else
+            code ..= "#{result} =l #{cmp} #{lhs_reg}, #{rhs_reg}\n"
+
+        return result, code
+
+    repeat_loop: (ast, make_body)=>
+        -- Rough breakdown:
+        -- jmp @repeat
+        -- @repeat
+        -- // body code
+        -- jmp @repeat.between
+        -- // between code
+        -- jmp @repeat
+        -- @repeat.end
+        repeat_label,between_label,end_label = @fresh_labels "repeat", "repeat.between", "repeat.end"
+
+        for skip in coroutine.wrap(-> each_tag(ast, "Skip"))
+            if not skip.target or skip.target[0] == "repeat"
+                skip.jump_label = repeat_label
+
+        for stop in coroutine.wrap(-> each_tag(ast, "Stop"))
+            if not stop.target or stop.target[0] == "repeat"
+                stop.jump_label = end_label
+
+        code = "jmp #{repeat_label}\n"
+        code ..= @block repeat_label, ->
+            code = ""
+            code ..= @compile_stmt ast.filter if ast.filter
+            code ..= (make_body and make_body! or @compile_stmt(ast.body))
+            if ast.between
+                unless has_jump\match(code)
+                    code ..= "jmp #{between_label}\n"
+                code ..= @block between_label, -> @compile_stmt(ast.between)
+            unless has_jump\match(code)
+                code ..= "jmp #{repeat_label}\n"
+            return code
+        code ..= "#{end_label}\n"
+        return code
+
+    while_loop: (ast, make_body)=>
+        -- Rough breakdown:
+        -- jmp @while.condition
+        -- jnz (condition), @while.body, @while.end
+        -- @while.body
+        -- // body code
+        -- jmp @while.between
+        -- // between code
+        -- jnz (condition), @while.body, @while.end
+        -- @while.end
+        cond_label,body_label,between_label,end_label = @fresh_labels "while.condition", "while.body", "while.between", "while.end"
+
+        for skip in coroutine.wrap(-> each_tag(ast, "Skip"))
+            if not skip.target or skip.target[0] == "while"
+                skip.jump_label = cond_label
+
+        for stop in coroutine.wrap(-> each_tag(ast, "Stop"))
+            if not stop.target or stop.target[0] == "while"
+                stop.jump_label = end_label
+
+        cond_reg,cond_code = @to_reg ast.condition
+        code = "jmp #{cond_label}\n"
+        code ..= @block cond_label, ->
+            cond_code.."jnz #{cond_reg}, #{body_label}, #{end_label}\n"
+
+        code ..= @block body_label, ->
+            code = ""
+            code ..= @compile_stmt ast.filter if ast.filter
+            code ..= (make_body and make_body! or @compile_stmt(ast.body))
+            if ast.between
+                code ..= cond_code
+                unless has_jump\match(code)
+                    code ..= "jnz #{cond_reg}, #{between_label}, #{end_label}\n"
+                code ..= @block between_label, -> @compile_stmt(ast.between)
+                unless has_jump\match(code)
+                    code ..= "jmp #{body_label}\n"
+            else
+                unless has_jump\match(code)
+                    code ..= "jmp #{cond_label}\n"
+            return code
+
+        code ..= "#{end_label}\n"
+        return code
 
     set_nil: (t, reg)=>
         if t.base_type == "s" or t.base_type == "d"
@@ -1428,9 +1427,9 @@ expr_compilers =
                         make_body: (-> add_item(val.body[1])), filter: val.filter,
                     }
                 when "While"
-                    code ..= while_loop val, env, (-> add_item(val.body[1]))
+                    code ..= env\while_loop val, (-> add_item(val.body[1]))
                 when "Repeat"
-                    code ..= repeat_loop val, env, (-> add_item(val.body[1]))
+                    code ..= env\repeat_loop val, (-> add_item(val.body[1]))
                 else
                     code ..= add_item(val)
 
@@ -1495,9 +1494,9 @@ expr_compilers =
                     }
 
                 when "While"
-                    code ..= while_loop val, env, (-> add_entry(val.body[1]))
+                    code ..= env\while_loop val, (-> add_entry(val.body[1]))
                 when "Repeat"
-                    code ..= repeat_loop val, env, (-> add_entry(val.body[1]))
+                    code ..= env\repeat_loop val, (-> add_entry(val.body[1]))
                 else
                     code ..= add_entry(val)
 
@@ -1561,18 +1560,18 @@ expr_compilers =
     Xor: (env)=>
         for val in *@
             node_assert get_type(val)\is_a(Types.Bool), val, "Expected Bool here, but got #{get_type val}"
-        return infixop @, env, "xor"
+        return env\infixop @, "xor"
     AddSub: (env)=>
         t_lhs,t_rhs = get_type(@lhs),get_type(@rhs)
         tl_nn, tr_nn = (t_lhs.nonnil or t_lhs), (t_rhs.nonnil or t_rhs)
         if @op[0] == "+"
             if tl_nn == tr_nn and (tl_nn\is_numeric! or tl_nn\is_a(Types.MeasureType))
-                return infixop @, env, "add"
+                return env\infixop @, "add"
             elseif t_lhs == t_rhs and t_lhs\works_like_a(Types.String)
-                return infixop @, env, (ret,lhs,rhs)->
+                return env\infixop @, (ret,lhs,rhs)->
                     "#{ret} =l call $bl_string_append_string(l #{lhs}, l #{rhs})\n"
             elseif t_lhs\works_like_a(Types.ListType) and t_rhs\is_a(t_lhs.item_type)
-                return infixop @, env, (ret,lhs,rhs)->
+                return env\infixop @, (ret,lhs,rhs)->
                     list_reg,item_reg,item_type = lhs,rhs,t_rhs
                     new_len,len,new_items,items,new_size,size,tmp = env\fresh_locals "new.len","len","new.items","items","new.size","size","tmp"
                     code = "\n# Append\n"
@@ -1592,7 +1591,7 @@ expr_compilers =
                     code ..= "\n"
                     return code
             elseif t_rhs\works_like_a(Types.ListType) and t_lhs\is_a(t_rhs.item_type)
-                return infixop @, env, (ret,lhs,rhs)->
+                return env\infixop @, (ret,lhs,rhs)->
                     list_reg,item_reg,item_type = rhs,lhs,t_lhs
                     new_len,len,new_items,items,new_size,size,tmp = env\fresh_locals "new.len","len","new.items","items","new.size","size","tmp"
                     code = "\n# Prepend\n"
@@ -1613,7 +1612,7 @@ expr_compilers =
                     code ..= "\n"
                     return code
             elseif t_lhs == t_rhs and t_lhs\works_like_a(Types.ListType)
-                return infixop @, env, (ret,lhs,rhs)->
+                return env\infixop @, (ret,lhs,rhs)->
                     len1,len2,len3,items1,items2,items3,size,tmp = env\fresh_locals "len1","len2","len3","items1","items2","items3","size","tmp"
                     code = "#{len1} =l loadl #{lhs}\n"
                     code ..= "#{len2} =l loadl #{rhs}\n"
@@ -1637,7 +1636,7 @@ expr_compilers =
                 node_error @, "Addition is not supported for #{t_lhs} and #{t_rhs}"
         else -- "-"
             if tl_nn == tr_nn and (tl_nn\is_numeric! or tl_nn\is_a(Types.MeasureType))
-                return infixop @, env, "sub"
+                return env\infixop @, "sub"
             else
                 node_error @, "Subtraction is not supported for #{t_lhs} and #{t_rhs}"
     MulDiv: (env)=>
@@ -1645,16 +1644,16 @@ expr_compilers =
         tl_nn, tr_nn = (t_lhs.nonnil or t_lhs), (t_rhs.nonnil or t_rhs)
         if @op[0] == "*"
             if tl_nn == tr_nn and tl_nn\is_numeric!
-                return infixop @, env, "mul"
+                return env\infixop @, "mul"
             elseif (tl_nn\is_a(Types.MeasureType) and tr_nn\is_a(Types.Num)) or (tl_nn\is_a(Types.Num) and tr_nn\is_a(Types.MeasureType)) or (tl_nn\is_a(Types.MeasureType) and tr_nn\is_a(Types.MeasureType))
-                return infixop @, env, "mul"
+                return env\infixop @, "mul"
             else
                 node_error @, "Multiplication is not supported for #{t_lhs} and #{t_rhs}"
         else -- "/"
             if tl_nn == tr_nn and tl_nn\is_numeric!
-                return infixop @, env, "div"
+                return env\infixop @, "div"
             elseif (tl_nn\is_a(Types.MeasureType) and tr_nn\is_a(Types.Num)) or (tl_nn\is_a(Types.Num) and tr_nn\is_a(Types.MeasureType)) or (tl_nn\is_a(Types.MeasureType) and tr_nn\is_a(Types.MeasureType))
-                return infixop @, env, "div"
+                return env\infixop @, "div"
             else
                 node_error @, "Division is not supported for #{t_lhs} and #{t_rhs}"
 
@@ -1766,19 +1765,19 @@ expr_compilers =
     Less: (env)=>
         t = get_type(@lhs)
         sign = (t.base_type == 's' or t.base_type == 'd') and "" or "s"
-        return comparison @, env, "c#{sign}lt#{t.base_type}"
+        return env\comparison @, "c#{sign}lt#{t.base_type}"
     LessEq: (env)=>
         t = get_type(@lhs)
         sign = (t.base_type == 's' or t.base_type == 'd') and "" or "s"
-        return comparison @, env, "c#{sign}le#{t.base_type}"
+        return env\comparison @, "c#{sign}le#{t.base_type}"
     Greater: (env)=>
         t = get_type(@lhs)
         sign = (t.base_type == 's' or t.base_type == 'd') and "" or "s"
-        return comparison @, env, "c#{sign}gt#{t.base_type}"
+        return env\comparison @, "c#{sign}gt#{t.base_type}"
     GreaterEq: (env)=>
         t = get_type(@lhs)
         sign = (t.base_type == 's' or t.base_type == 'd') and "" or "s"
-        return comparison @, env, "c#{sign}ge#{t.base_type}"
+        return env\comparison @, "c#{sign}ge#{t.base_type}"
     Equal: (env)=>
         lhs_type, rhs_type = get_type(@lhs), get_type(@rhs)
         if lhs_type\is_a(rhs_type) or rhs_type\is_a(lhs_type)
@@ -1791,7 +1790,7 @@ expr_compilers =
             else
                 code ..= "#{result} =w ceq#{lhs_type.base_type} #{lhs_reg}, #{rhs_reg}\n"
             return result,code
-        return comparison @, env, "ceq#{lhs_type.base_type}"
+        return env\comparison @, "ceq#{lhs_type.base_type}"
     NotEqual: (env)=>
         lhs_type, rhs_type = get_type(@lhs), get_type(@rhs)
         if lhs_type\is_a(rhs_type) or rhs_type\is_a(lhs_type)
@@ -1804,7 +1803,7 @@ expr_compilers =
             else
                 code ..= "#{result} =w cne#{lhs_type.base_type} #{lhs_reg}, #{rhs_reg}\n"
             return result,code
-        return comparison @, env, "cnel"
+        return env\comparison @, "cnel"
 
     FnCall: (env, skip_ret=false)=>
         if @fn.__inline_method
@@ -2482,8 +2481,8 @@ stmt_compilers =
     When: (env)=>
         _,code = env\to_reg @
         return code
-    Repeat: (env)=> repeat_loop(@, env)
-    While: (env)=> while_loop(@, env)
+    Repeat: (env)=> env\repeat_loop(@)
+    While: (env)=> env\while_loop(@)
     For: (env)=>
         iter_reg,code = env\to_regs @iterable
         key_reg, value_reg = if @index and @val
