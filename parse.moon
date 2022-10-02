@@ -12,14 +12,6 @@ assert blang, "Failed to compile"
 
 log "Loaded syntax"
 
-get_line_num = (source, pos)->
-    if source\sub(pos,pos) == '\n'
-        pos -= 1
-    n = 0
-    for line in source\sub(1,pos-1)\gmatch("[^\n]*")
-        n += 1
-    return n
-
 each_tag = (tag)=>
     return unless type(@) == 'table'
     coroutine.yield @ if @__tag == tag
