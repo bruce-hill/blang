@@ -13,10 +13,10 @@ methods = {}
 
 for method in *simple_methods
     types[method] = (t)-> FnType({t},t,{"n"})
-    methods[method] = (env)=>
-        num_reg, code = env\to_regs(@fn.value)
-        result = env\fresh_locals "result"
-        code ..= "#{result} =d call $#{method}(d #{num_reg})\n"
-        return result, code
+    methods[method] = (code)=>
+        num_reg = code\add_value(@fn.value)
+        result = @fresh_locals "result"
+        code\add "#{result} =d call $#{method}(d #{num_reg})\n"
+        return result
 
 return {:methods, :types}

@@ -133,7 +133,7 @@ class Environment
             code\add_label init_fields
             for field in *t.fields
                 -- str = @fresh_local "str"
-                -- code ..= "#{str} =l call $bl_string(l #{@get_string_reg "#{t.name}.#{field}", "#{t.name}.#{field}"})\n"
+                -- code\add "#{str} =l call $bl_string(l #{@get_string_reg "#{t.name}.#{field}", "#{t.name}.#{field}"})\n"
                 code\add "#{tmp} =l add $#{t\id_str!}.fields, #{8*t.field_values[field]}\n"
                 code\add "storel #{@get_string_reg "#{t.name}.#{field}", "#{t.name}.#{field}"}, #{tmp}\n"
             code\add "jmp #{fields_exist}\n"
@@ -895,8 +895,12 @@ class CodeBuilder
 
         @add "jmp #{repeat_label}\n"
         @add_label repeat_label
-        code ..= @compile_stmt ast.filter if ast.filter
-        code ..= (make_body and make_body! or @compile_stmt(ast.body))
+        @add_stmt ast.filter if ast.filter
+        if make_body
+            @add make_body!
+        else
+            @add_stmt(ast.body)
+
         if ast.between
             unless @ends_with_jump!
                 @add "jmp #{between_label}\n"
@@ -1248,7 +1252,7 @@ expr_compilers =
         if t\is_a(Types.Int) or t\is_a(Types.Num) or t\is_a(Types.MeasureType)
             reg = @add_value ast.value
             ret = @fresh_local "neg"
-            @add "#{code}#{ret} =#{t.base_type} neg #{reg}\n"
+            @add "#{ret} =#{t.base_type} neg #{reg}\n"
             return ret
         elseif t\is_a(Types.Range)
             orig = @add_value ast.value
@@ -2017,7 +2021,7 @@ expr_compilers =
                 table.insert arg_list, "#{get_type(arg).base_type} #{arg_reg}"
 
         if skip_ret
-            @add "#{code}call #{fn_reg}(#{concat arg_list, ", "})\n"
+            @add "call #{fn_reg}(#{concat arg_list, ", "})\n"
             return
 
         ret_reg = @fresh_local "return"
@@ -2339,7 +2343,7 @@ stmt_compilers =
 
                 TableMethods = require 'table_methods'
                 table.insert lhs_stores, (rhs_reg)->
-                    _,code2 = TableMethods.methods.set {tab_reg, key_reg, rhs_reg}, ast, true, t
+                    _,code2 = TableMethods.methods.set {tab_reg, key_reg, rhs_reg}, @, true, t
                     return code2
             elseif t\is_a(Types.StructType)
                 memb = if lhs.index.__tag == "FieldName"

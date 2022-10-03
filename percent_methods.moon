@@ -8,17 +8,17 @@ types = {
 }
 
 methods = {
-    of: (env)=>
-        pct_reg, num_reg, code = env\to_regs(@fn.value, @[1])
-        ret = env\fresh_locals "result"
-        code ..= "#{ret} =d mul #{pct_reg}, #{num_reg}\n"
-        return ret, code
+    of: (code)=>
+        pct_reg, num_reg = code\add_values(@fn.value, @[1])
+        ret = code\fresh_locals "result"
+        code\add "#{ret} =d mul #{pct_reg}, #{num_reg}\n"
+        return ret
 
-    clamped: (env)=>
-        pct_reg, low_reg, high_reg, code = env\to_regs(@fn.value, @[1], @[2])
-        result = env\fresh_locals "result"
-        code ..= "#{result} =d call $d_mid(d #{pct_reg}, d #{low_reg}, d #{high_reg})\n"
-        return result,code
+    clamped: (code)=>
+        pct_reg, low_reg, high_reg = code\add_values(@fn.value, @[1], @[2])
+        result = @fresh_locals "result"
+        code\add "#{result} =d call $d_mid(d #{pct_reg}, d #{low_reg}, d #{high_reg})\n"
+        return result
 }
 
 return {:methods, :types}
