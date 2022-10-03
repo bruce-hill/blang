@@ -97,7 +97,8 @@ class Environment
         -- as a stack-allocated linked list and check before recursing
         callstack = "%callstack"
         code = @new_code!
-        code\add "function l #{fn_name}(#{t.base_type} #{reg}, l #{callstack}) {\n@start\n"
+        code\add "function l #{fn_name}(#{t.base_type} #{reg}, l #{callstack}) {\n"
+        code\add "@start\n"
 
         -- TODO: Check for recursive lists/tables? It probably doesn't matter,
         -- since the type system currently only allows recursive types for
@@ -306,7 +307,6 @@ class Environment
         code\add "ret #{dest}\n"
         code\add "}\n"
         indented_code = tostring(code)\gsub("[^\n]+", =>((@\match("^[@}]") or @\match("^function")) and @ or "  "..@))
-        indented_code = "### TOSTRING #{t}\n"..indented_code.."\n### END TOSTRING #{t}\n"
         @fn_code\add indented_code
         return fn_name
 
@@ -646,24 +646,28 @@ class CodeBuilder
         check_returns fndec.body
 
         fn_name = fndec.__register or node_assert fndec.name.__register, fndec, "Function has no name"
-        @add "\nfunction #{ret_type\is_a(Types.Abort) and "" or ret_type.base_type.." "}"
-        @add "#{fn_name}(#{concat args, ", "}) {\n@start\n"
+        fn_code = @new_code!
+        fn_code\add "\nfunction #{ret_type\is_a(Types.Abort) and "" or ret_type.base_type.." "}"
+        fn_code\add "#{fn_name}(#{concat args, ", "}) {\n"
+        fn_code\add "@start\n"
 
         body_code = @new_code!
-        if fndec.body.__tag == "Block"
-            body_code\add_stmt fndec.body
-        else
+
+        if fndec.__tag == "Lambda" or fndec.body.__tag != "Block"
             ret_reg = body_code\add_values fndec.body
             body_code\add "ret #{ret_reg}\n"
+        else
+            body_code\add_stmt fndec.body
         body_code = tostring(body_code)\gsub("[^\n]+", =>(@\match("^%@") and @ or "  "..@))
-        @add body_code
-        unless @ends_with_jump!
+        fn_code\add body_code
+        unless fn_code\ends_with_jump!
             if ret_type\is_a(Types.Abort)
-                @add "  ret\n"
+                fn_code\add "  ret\n"
             else
-                @add "  ret 0\n"
+                fn_code\add "  ret 0\n"
 
-        @add "}\n"
+        fn_code\add "}\n"
+        @add fn_code
 
     add_stmt: (node)=>
         assert node.__tag, "Not a node: #{viz node}"
@@ -814,9 +818,7 @@ class CodeBuilder
             @add_stmt filter
 
         if make_body
-            @add "####################### BODY ################################\n"
             @add make_body(key_reg, value_reg)
-            @add "####################### END BODY ################################\n"
         else
             error "No body"
 
@@ -1299,16 +1301,16 @@ expr_compilers =
             index_type = get_type(ast.index)
             ListMethods = require 'list_methods'
             if index_type\is_a(Types.Int)
-                return ListMethods.methods.get_or_fail(ast, @env)
+                return ListMethods.methods.get_or_fail(ast, @)
             elseif index_type\is_a(Types.Range)
-                return ListMethods.methods.range(ast, @env)
+                return ListMethods.methods.range(ast, @)
             elseif ast.index.__tag == "FieldName"
                 node_error ast, "Field access on lists is not currently supported"
             else
                 node_error ast.index, "Index is #{index_type} instead of Int or Range"
         elseif t\is_a(Types.TableType)
             TableMethods = require "table_methods"
-            return TableMethods.methods.get_or_fail(ast, @env)
+            return TableMethods.methods.get_or_fail(ast, @)
         elseif t\is_a(Types.StructType)
             if ast.__method
                 return assert(ast.__method.__register)
@@ -1396,7 +1398,6 @@ expr_compilers =
         get_add_item_code = (item)->
             code = @new_code!
             item_reg = code\add_value item
-            code\add "#########################################################################################\n"
             code\add "#{size} =l add #{size}, #{item_type.bytes}\n"
             code\add "#{list_items} =l call $gc_realloc(l #{list_items}, l #{size})\n"
             code\add "#{p} =l add #{list_items}, #{size}\n"
@@ -2127,6 +2128,7 @@ expr_compilers =
         @add "\n# Do block : #{t}\n"
         @set_nil(t, ret) if t != Types.Abort and t\is_a(Types.OptionalType)
         for i,block in ipairs ast
+            @add "# Do block: #{block[0]\gsub("^[ \n]*","")\gsub("\n[ ]*", "; ")}\n"
             for jmp in coroutine.wrap(-> each_tag(block, "Stop"))
                 if not jmp.target or jmp.target[0] == "do"
                     jmp.jump_label = end_label
@@ -2145,6 +2147,7 @@ expr_compilers =
                 @add "#{ret} =#{block_type.base_type} copy #{block_reg}\n"
 
             @add "jmp #{end_label}\n" unless @ends_with_jump!
+            @add "# End do-block\n"
 
             if i < #ast
                 @add_label next_label
@@ -2216,19 +2219,19 @@ expr_compilers =
         return last_reg
 
     Fail: (ast)=>
-        @add_stmt ast, "#{@fresh_label "unreachable"}\n"
+        @add_stmt ast
         return 0
 
     Return: (ast)=>
-        @add_stmt ast, "#{@fresh_label "unreachable"}\n"
+        @add_stmt ast
         return 0
 
     Skip: (ast)=>
-        @add_stmt ast, "#{@fresh_label "unreachable"}\n"
+        @add_stmt ast
         return 0
 
     Stop: (ast)=>
-        @add_stmt ast, "#{@fresh_label "unreachable"}\n"
+        @add_stmt ast
         return 0
 
     Use: (ast)=>
@@ -2446,14 +2449,17 @@ stmt_compilers =
                 @add "ret #{reg}\n"
         else
             @add "ret\n"
+        @add_label @fresh_label("unreachable")
 
     Stop: (ast)=>
         node_assert ast.jump_label, ast, "'stop' statement should only be used inside a loop"
         @add "jmp #{ast.jump_label}\n"
+        @add_label @fresh_label("unreachable")
 
     Skip: (ast)=>
         node_assert ast.jump_label, ast, "'skip' statement should only be used inside a loop"
-        return "jmp #{ast.jump_label}\n"
+        @add "jmp #{ast.jump_label}\n"
+        @add_label @fresh_label("unreachable")
 
     Do: (ast)=> @add_value ast
 
