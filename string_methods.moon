@@ -19,96 +19,88 @@ types = {
     -- - matches() -> Bool
 }
 
-call_c_func = (env, cfunc)=>
+call_c_func = (code, cfunc)=>
     str = @fn and @fn.value or @[1]
-    str_reg, str = env\to_regs str
-    result = env\fresh_locals "result"
-    code ..= "#{result} =l call $#{cfunc}(l #{str_reg})\n"
-    return result, str
+    str_reg = code\add_value str
+    result = code\fresh_locals "result"
+    code\add "#{result} =l call $#{cfunc}(l #{str_reg})\n"
+    return result
 
 methods = {
-    lowercase: (env)=> call_c_func(@, env, "bl_string_lower")
-    uppercase: (env)=> call_c_func(@, env, "bl_string_upper")
-    capitalized: (env)=> call_c_func(@, env, "bl_string_capitalized")
-    titlecased: (env)=> call_c_func(@, env, "bl_string_titlecased")
+    lowercase: (code)=> call_c_func(@, code, "bl_string_lower")
+    uppercase: (code)=> call_c_func(@, code, "bl_string_upper")
+    capitalized: (code)=> call_c_func(@, code, "bl_string_capitalized")
+    titlecased: (code)=> call_c_func(@, code, "bl_string_titlecased")
 
-    repeated: (env)=>
+    repeated: (code)=>
         args, err = types.repeated(@__type)\parse_args({@fn.value, table.unpack(@)})
         node_assert args, @, err
-        str_reg, times_reg, code = env\to_regs args.str, args.times
-        result = env\fresh_locals "result"
-        code ..= "#{result} =l call $bl_string_repeat(l #{str_reg}, l #{times_reg})\n"
-        return result, code
+        str_reg, times_reg = code\add_values args.str, args.times
+        result = code\fresh_locals "result"
+        code\add "#{result} =l call $bl_string_repeat(l #{str_reg}, l #{times_reg})\n"
+        return result
 
-    starts_with: (env)=>
+    starts_with: (code)=>
         args, err = types.starts_with(@__type)\parse_args({@fn.value, table.unpack(@)})
         node_assert args, @, err
-        str_reg, prefix_reg, code = env\to_regs args.str, args.prefix
-        result = env\fresh_locals "result"
-        code ..= "#{result} =w call $bl_string_starts_with(l #{str_reg}, l #{prefix_reg})\n"
-        return result, code
+        str_reg, prefix_reg = code\add_values args.str, args.prefix
+        result = code\fresh_locals "result"
+        code\add "#{result} =w call $bl_string_starts_with(l #{str_reg}, l #{prefix_reg})\n"
+        return result
         
-    ends_with: (env)=>
+    ends_with: (code)=>
         args, err = types.ends_with(@__type)\parse_args({@fn.value, table.unpack(@)})
         node_assert args, @, err
-        str_reg, prefix_reg, code = env\to_regs args.str, args.suffix
-        result = env\fresh_locals "result"
-        code ..= "#{result} =w call $bl_string_ends_with(l #{str_reg}, l #{prefix_reg})\n"
-        return result, code
+        str_reg, prefix_reg = code\add_values args.str, args.suffix
+        result = code\fresh_locals "result"
+        code\add "#{result} =w call $bl_string_ends_with(l #{str_reg}, l #{prefix_reg})\n"
+        return result
 
-    strip: (env)=>
+    strip: (code)=>
         args, err = types.strip(@__type)\parse_args({@fn.value, table.unpack(@)})
         node_assert args, @, err
-        str_reg, code = env\to_regs args.str
+        str_reg = code\add_value args.str
         chars_reg = if args.chars
-            chars_reg,chars_code = env\to_regs args.chars
-            code ..= chars_code
-            chars_reg
+            code\add_value args.chars
         else
             "#{String.nil_value}"
 
         left_reg = if args.left
-            left_reg,left_code = env\to_regs args.left
-            code ..= left_code
-            left_reg
+            code\add_value args.left
         else
             "#{Bool.nil_value}"
 
         right_reg = if args.right
-            right_reg,right_code = env\to_regs args.right
-            code ..= right_code
-            right_reg
+            code\add_value args.right
         else
             "#{Bool.nil_value}"
 
-        result = env\fresh_locals "result"
-        code ..= "#{result} =l call $bl_string_strip(l #{str_reg}, l #{chars_reg}, w #{left_reg}, w #{right_reg})\n"
-        return result, code
+        result = code\fresh_locals "result"
+        code\add "#{result} =l call $bl_string_strip(l #{str_reg}, l #{chars_reg}, w #{left_reg}, w #{right_reg})\n"
+        return result
 
-    replacing: (env)=>
+    replacing: (code)=>
         args, err = types.replacing(@__type)\parse_args({@fn.value, table.unpack(@)})
         node_assert args, @, err
 
-        str_reg, pat_reg, replacement_reg, code = env\to_regs args.str, args.pattern, args.replacement
+        str_reg, pat_reg, replacement_reg = code\add_values args.str, args.pattern, args.replacement
         limit_reg = if args.limit
-            limit_reg,limit_code = env\to_regs args.limit
-            code ..= limit_code
-            limit_reg
+            code\add_value args.limit
         else
             "#{Int.nil_value}"
 
-        result = env\fresh_locals "result"
-        code ..= "#{result} =l call $bl_string_replace(l #{str_reg}, l #{pat_reg}, l #{replacement_reg}, l #{limit_reg})\n"
-        return result, code
+        result = code\fresh_locals "result"
+        code\add "#{result} =l call $bl_string_replace(l #{str_reg}, l #{pat_reg}, l #{replacement_reg}, l #{limit_reg})\n"
+        return result
 
-    matches: (env)=>
+    matches: (code)=>
         args, err = types.matches(@__type)\parse_args({@fn.value, table.unpack(@)})
         node_assert args, @, err
 
-        str_reg, pat_reg, code = env\to_regs args.str, args.pattern
-        result = env\fresh_locals "result"
-        code ..= "#{result} =w call $bl_string_matches(l #{str_reg}, l #{pat_reg})\n"
-        return result, code
+        str_reg, pat_reg = code\add_values args.str, args.pattern
+        result = code\fresh_locals "result"
+        code\add "#{result} =w call $bl_string_matches(l #{str_reg}, l #{pat_reg})\n"
+        return result
 }
 
 return {:methods, :types}
