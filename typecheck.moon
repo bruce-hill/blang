@@ -569,14 +569,14 @@ assign_types = =>
                     dec = @value.__declaration.__parent
                     if member = t.type.members[@index[0]]
                         @__type = Types.FnType({t, member.type}, t.type)
-                        @__inline_method = (env)=>
-                            val_reg,code = env\to_regs @[1]
-                            union,val_loc = env\fresh_locals "#{t.type.name}", "val_loc"
-                            code ..= "#{union} =l call $gc_alloc(l #{t.type.memory_size})\n"
-                            code ..= "storel #{member.index}, #{union}\n"
-                            code ..= "#{val_loc} =l add #{union}, 8\n"
-                            code ..= "#{member.type.store} #{val_reg}, #{val_loc}\n"
-                            return union, code
+                        @__inline_method = (code)=>
+                            val_reg = code\add_value @[1]
+                            union,val_loc = code\fresh_locals "#{t.type.name}", "val_loc"
+                            code\add "#{union} =l call $gc_alloc(l #{t.type.memory_size})\n"
+                            code\add "storel #{member.index}, #{union}\n"
+                            code\add "#{val_loc} =l add #{union}, 8\n"
+                            code\add "#{member.type.store} #{val_reg}, #{val_loc}\n"
+                            return union
                     elseif staticmethod = dec.__staticmethods[@index[0]]
                         method_type = assert staticmethod.name.__type
                         @__staticmethod = staticmethod.name
