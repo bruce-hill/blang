@@ -23,7 +23,7 @@ class Environment
         @main_code = @new_code!
         @tostring_funcs = {}
 
-    new_code: => CodeBuilder(@)
+    new_code: (...)=> CodeBuilder(@, ...)
 
     fresh_name: (base_name)=>
         base_name = base_name\gsub("[^a-zA-Z0-9_.]", "_")
@@ -92,17 +92,18 @@ class Environment
         fn_name = @fresh_global "tostring.#{typename}"
         @tostring_funcs["#{t}"] = fn_name
 
-        reg = @env\fresh_local typename\lower()
+        reg = @fresh_local typename\lower()
         -- To avoid stack overflow on self-referencing structs, pass a callstack
         -- as a stack-allocated linked list and check before recursing
         callstack = "%callstack"
-        code = @new_code!\add "function l #{fn_name}(#{t.base_type} #{reg}, l #{callstack}) {\n@start\n"
+        code = @new_code!
+        code\add "function l #{fn_name}(#{t.base_type} #{reg}, l #{callstack}) {\n@start\n"
 
         -- TODO: Check for recursive lists/tables? It probably doesn't matter,
         -- since the type system currently only allows recursive types for
         -- structs, not lists/tables, so cycles can only be achieved with structs.
 
-        dest = @env\fresh_local "string"
+        dest = @fresh_local "string"
         if t\works_like_a(Types.NilType)
             code\add "#{dest} =l call $bl_string(l #{@get_string_reg("nil", "nil")})\n"
         elseif t\works_like_a(Types.Abort)
@@ -110,13 +111,16 @@ class Environment
         elseif t\works_like_a(Types.OptionalType)
             nil_label,nonnil_label,end_label = @fresh_labels "optional.nil", "optional.nonnil", "optional.end"
             code\check_nil t, reg, nonnil_label, nil_label
-            code\add_block nil_label, ->
-                @new_code "#{dest} =l call $bl_string(l #{@get_string_reg("nil", "nil")})\n",
-                    "jmp #{end_label}\n"
-            code\add_block nonnil_label, ->
-                fn = @get_tostring_fn t.nonnil, scope
-                return @new_code "#{dest} =l call #{fn}(#{t.nonnil.base_type} #{reg}, l #{callstack})\n",
-                    "jmp #{end_label}\n"
+
+            code\add_label nil_label
+            code\add "#{dest} =l call $bl_string(l #{@get_string_reg("nil", "nil")})\n"
+            code\add "jmp #{end_label}\n"
+
+            code\add_label nonnil_label
+            fn = @get_tostring_fn t.nonnil, scope
+            code\add "#{dest} =l call #{fn}(#{t.nonnil.base_type} #{reg}, l #{callstack})\n"
+            code\add "jmp #{end_label}\n"
+
             code\add "#{end_label}\n"
         elseif t == Types.Value or t == Types.Value32 or t == Types.Value16 or t == Types.Value8
             code\add "#{dest} =l call $bl_string(l #{@get_string_reg("<#{t.name}>", t.name)})\n"
@@ -125,15 +129,13 @@ class Environment
             tmp = @fresh_local "fieldname"
             code\add "#{tmp} =l loadl $#{t\id_str!}.fields\n"
             code\add "jnz #{tmp}, #{fields_exist}, #{init_fields}\n"
-            code\add_block init_fields, ->
-                code = @new_code!
-                for field in *t.fields
-                    -- str = @fresh_local "str"
-                    -- code ..= "#{str} =l call $bl_string(l #{@get_string_reg "#{t.name}.#{field}", "#{t.name}.#{field}"})\n"
-                    code\add "#{tmp} =l add $#{t\id_str!}.fields, #{8*t.field_values[field]}\n"
-                    code\add "storel #{@get_string_reg "#{t.name}.#{field}", "#{t.name}.#{field}"}, #{tmp}\n"
-                code\add "jmp #{fields_exist}\n"
-                return code
+            code\add_label init_fields
+            for field in *t.fields
+                -- str = @fresh_local "str"
+                -- code ..= "#{str} =l call $bl_string(l #{@get_string_reg "#{t.name}.#{field}", "#{t.name}.#{field}"})\n"
+                code\add "#{tmp} =l add $#{t\id_str!}.fields, #{8*t.field_values[field]}\n"
+                code\add "storel #{@get_string_reg "#{t.name}.#{field}", "#{t.name}.#{field}"}, #{tmp}\n"
+            code\add "jmp #{fields_exist}\n"
 
             code\add "#{fields_exist}\n"
             code\add "#{reg} =l mul #{reg}, 8\n"
@@ -168,6 +170,7 @@ class Environment
                 make_body: ->
                     key_str = @fresh_local "key.string"
                     fn = @get_tostring_fn t.key_type, scope
+                    local code
                     code = @new_code "#{key_str} =l call #{fn}(#{t.key_type.base_type} #{key_reg}, l #{callstack})\n"
                     code\add "#{buf} =l call $CORD_cat(l #{buf}, l #{key_str})\n"
                     code\add "#{buf} =l call $CORD_cat(l #{buf}, l #{@get_string_reg "=", "equals"})\n"
@@ -197,71 +200,67 @@ class Environment
             walker = @fresh_local "cycle.walker"
             code\add "#{walker} =l copy #{callstack}\n"
             code\add "jmp #{cycle_next}\n"
-            code\add_block cycle_next, ->
-                return @new_code "jnz #{walker}, #{cycle_check}, #{cycle_notfound}\n"
-            code\add_block cycle_check, ->
-                cycle_parent = @fresh_local "cycle.parent"
-                local code
-                code = @new_code "#{cycle_parent} =l add #{walker}, 8\n"
-                code\add "#{cycle_parent} =l loadl #{cycle_parent}\n"
-                code\add "#{walker} =l loadl #{walker}\n"
-                wasfound = @fresh_local "cycle.wasfound"
-                code\add "#{wasfound} =l ceql #{cycle_parent}, #{reg}\n"
-                code\add "jnz #{wasfound}, #{cycle_found}, #{cycle_next}\n"
-                return code
 
-            code\add_block cycle_found, ->
-                return @new_code "#{dest} =l call $CORD_cat(l #{dest}, l #{@get_string_reg "...", "ellipsis"})\n",
-                    "jmp #{conclusion}\n"
+            code\add_label cycle_next
+            code\add "jnz #{walker}, #{cycle_check}, #{cycle_notfound}\n"
 
-            code\add_block cycle_notfound, ->
-                new_callstack = @fresh_local "new.callstack"
-                local code
-                code = @new_code "#{new_callstack} =l alloc8 #{2*8}\n"
-                code\add "storel #{callstack}, #{new_callstack}\n"
-                p = @fresh_local "p"
-                code\add "#{p} =l add #{new_callstack}, 8\n"
-                code\add "storel #{reg}, #{p}\n"
-                for i,mem in ipairs t.sorted_members
-                    if i > 1
-                        code\add "#{dest} =l call $CORD_cat(l #{dest}, l #{@get_string_reg ", ", "comma.space"})\n"
+            code\add_label cycle_check
+            cycle_parent = @fresh_local "cycle.parent"
+            code\add "#{cycle_parent} =l add #{walker}, 8\n"
+            code\add "#{cycle_parent} =l loadl #{cycle_parent}\n"
+            code\add "#{walker} =l loadl #{walker}\n"
+            wasfound = @fresh_local "cycle.wasfound"
+            code\add "#{wasfound} =l ceql #{cycle_parent}, #{reg}\n"
+            code\add "jnz #{wasfound}, #{cycle_found}, #{cycle_next}\n"
 
-                    member_loc = @fresh_local "#{t\id_str!\lower!}.#{mem.name}.loc"
-                    code\add "#{member_loc} =l add #{reg}, #{mem.offset}\n"
-                    member_reg = @fresh_local "#{t\id_str!\lower!}.#{mem.name}"
-                    if mem.inline
-                        code\add "#{member_reg} =#{mem.type.base_type} copy #{member_loc}\n"
-                    else
-                        code\add "#{member_reg} =#{mem.type.base_type} #{mem.type.load} #{member_loc}\n"
+            code\add_label cycle_found
+            code\add "#{dest} =l call $CORD_cat(l #{dest}, l #{@get_string_reg "...", "ellipsis"})\n"
+            code\add "jmp #{conclusion}\n"
 
-                    if mem.name
-                        code\add "#{dest} =l call $CORD_cat(l #{dest}, l #{@get_string_reg("#{mem.name}=")})\n"
+            code\add_label cycle_notfound
+            new_callstack = @fresh_local "new.callstack"
+            code\add "#{new_callstack} =l alloc8 #{2*8}\n"
+            code\add "storel #{callstack}, #{new_callstack}\n"
+            p = @fresh_local "p"
+            code\add "#{p} =l add #{new_callstack}, 8\n"
+            code\add "storel #{reg}, #{p}\n"
+            for i,mem in ipairs t.sorted_members
+                if i > 1
+                    code\add "#{dest} =l call $CORD_cat(l #{dest}, l #{@get_string_reg ", ", "comma.space"})\n"
 
-                    member_str = @fresh_local "#{t\id_str!\lower!}.#{mem.name}.string"
-                    fn = @get_tostring_fn mem.type, scope
-                    code\add "#{member_str} =l call #{fn}(#{mem.type.base_type} #{member_reg}, l #{new_callstack})\n"
+                member_loc = @fresh_local "#{t\id_str!\lower!}.#{mem.name}.loc"
+                code\add "#{member_loc} =l add #{reg}, #{mem.offset}\n"
+                member_reg = @fresh_local "#{t\id_str!\lower!}.#{mem.name}"
+                if mem.inline
+                    code\add "#{member_reg} =#{mem.type.base_type} copy #{member_loc}\n"
+                else
+                    code\add "#{member_reg} =#{mem.type.base_type} #{mem.type.load} #{member_loc}\n"
 
-                    code\add "#{dest} =l call $CORD_cat(l #{dest}, l #{member_str})\n"
-                code\add "jmp #{conclusion}\n"
-                return code
+                if mem.name
+                    code\add "#{dest} =l call $CORD_cat(l #{dest}, l #{@get_string_reg("#{mem.name}=")})\n"
 
-            code\add_block conclusion, ->
-                return @new_code "#{dest} =l call $CORD_cat(l #{dest}, l #{@get_string_reg "}", "close.curly"})\n",
-                    "#{dest} =l call $CORD_to_const_char_star(l #{dest})\n",
-                    "#{dest} =l call $bl_string(l #{dest})\n"
+                member_str = @fresh_local "#{t\id_str!\lower!}.#{mem.name}.string"
+                fn = @get_tostring_fn mem.type, scope
+                code\add "#{member_str} =l call #{fn}(#{mem.type.base_type} #{member_reg}, l #{new_callstack})\n"
+
+                code\add "#{dest} =l call $CORD_cat(l #{dest}, l #{member_str})\n"
+            code\add "jmp #{conclusion}\n"
+
+            code\add_label conclusion
+            code\add "#{dest} =l call $CORD_cat(l #{dest}, l #{@get_string_reg "}", "close.curly"})\n"
+            code\add "#{dest} =l call $CORD_to_const_char_star(l #{dest})\n"
+            code\add "#{dest} =l call $bl_string(l #{dest})\n"
 
         elseif t\works_like_a(Types.UnionType)
             init_fields,fields_exist = @fresh_labels "make_fields", "fields_exist"
             tmp = @fresh_local "fieldname"
             code\add "#{tmp} =l loadl $#{t\id_str!}.member_names\n"
             code\add "jnz #{tmp}, #{fields_exist}, #{init_fields}\n"
-            code\add_block init_fields, ->
-                init_code = @new_code!
-                for name,info in pairs t.members
-                    init_code\add "#{tmp} =l add $#{t\id_str!}.member_names, #{(info.index-1)*8}\n"
-                    init_code\add "storel #{@get_string_reg "#{t.name}.#{name}", "#{t.name}.#{name}"}, #{tmp}\n"
-                init_code\add "jmp #{fields_exist}\n"
-                return init_code
+            code\add_label init_fields
+            for name,info in pairs t.members
+                code\add "#{tmp} =l add $#{t\id_str!}.member_names, #{(info.index-1)*8}\n"
+                code\add "storel #{@get_string_reg "#{t.name}.#{name}", "#{t.name}.#{name}"}, #{tmp}\n"
+            code\add "jmp #{fields_exist}\n"
 
             code\add "#{fields_exist}\n"
 
@@ -278,15 +277,16 @@ class Environment
             for name,info in pairs t.members
                 check,next_check = next_check, @fresh_label "check.member"
                 found_member = @fresh_label "found.member"
-                code\add_block check, ->
-                    return @new_code "#{is_tag} =w ceql #{tag}, #{info.index}\n",
-                        "jnz #{is_tag}, #{found_member}, #{next(t.members, name) and next_check or done_label}\n"
-                code\add_block found_member, ->
-                    val = @fresh_local "val"
-                    return @new_code "#{val} =#{info.type.base_type} #{info.type.load} #{val_loc}\n",
-                        "#{tmp} =l call #{@get_tostring_fn info.type, scope}(#{info.type.base_type} #{val}, l #{callstack})\n",
-                        "#{dest} =l call $CORD_cat(l #{dest}, l #{tmp})\n",
-                        "jmp #{done_label}\n"
+                code\add_label check
+                code\add "#{is_tag} =w ceql #{tag}, #{info.index}\n"
+                code\add "jnz #{is_tag}, #{found_member}, #{next(t.members, name) and next_check or done_label}\n"
+
+                code\add_label found_member
+                val = @fresh_local "val"
+                code\add "#{val} =#{info.type.base_type} #{info.type.load} #{val_loc}\n"
+                code\add "#{tmp} =l call #{@get_tostring_fn info.type, scope}(#{info.type.base_type} #{val}, l #{callstack})\n"
+                code\add "#{dest} =l call $CORD_cat(l #{dest}, l #{tmp})\n"
+                code\add "jmp #{done_label}\n"
 
             code\add "#{done_label}\n"
             code\add "#{dest} =l call $CORD_cat(l #{dest}, l #{@get_string_reg ')', "rparen"})\n"
@@ -306,6 +306,7 @@ class Environment
         code\add "ret #{dest}\n"
         code\add "}\n"
         indented_code = tostring(code)\gsub("[^\n]+", =>((@\match("^[@}]") or @\match("^function")) and @ or "  "..@))
+        indented_code = "### TOSTRING #{t}\n"..indented_code.."\n### END TOSTRING #{t}\n"
         @fn_code\add indented_code
         return fn_name
 
@@ -544,7 +545,6 @@ class Environment
 
         code\add "export function l $load() {\n"
         code\add "@start\n"
-        code\add body_code
 
         -- TODO: check for top-level returns and error if they exist
         indented_code = tostring(body_code)\gsub("[^\n]+", =>((@\match("^[@}]") or @\match("^function")) and @ or "  "..@))
@@ -593,7 +593,7 @@ class CodeBuilder
             table.insert(@chunks, (select(i, ...)))
         return @
 
-    new_code: (...)=> @env\new_code!\add(...)
+    new_code: (...)=> @env\new_code(...)
 
     __tostring: => table.concat([tostring(chunk) for chunk in *@chunks])
 
@@ -623,8 +623,6 @@ class CodeBuilder
         return table.unpack(regs)
 
     add_value: (...)=> @add_values(...)
-
-    add_block: (label, get_body)=> @add(label.."\n", get_body(label))
 
     add_label: (label)=> @add label, "\n"
 
@@ -774,72 +772,71 @@ class CodeBuilder
         else
             error "Expected an iterable type, not #{iter_type}"
         @add "jmp #{next_label}\n"
-        do
-            @add_label next_label
+        @add_label next_label
+        if iter_type\is_a(Types.TableType)
+            @add "#{i} =l call $bl_table_next(l #{iter_reg}, l #{i}, l #{iter_type.key_type.nil_value})\n"
+            @add "#{is_done} =w ceql #{i}, #{iter_type.key_type.nil_value}\n"
+            @add "jnz #{is_done}, #{end_label}, #{body_label}\n"
+        else
+            @add "#{i} =l add #{i}, 1\n"
+            @add "#{is_done} =w csgtl #{i}, #{len}\n"
+            @add "jnz #{is_done}, #{end_label}, #{body_label}\n"
+
+        @add_label body_label
+        TableMethods = require 'table_methods'
+        if iter_type\is_a(Types.TableType)
+            if key_reg
+                if iter_type.key_type.base_type == "s" or iter_type.key_type.base_type == "d"
+                    @add "#{key_reg} =#{iter_type.key_type.base_type} cast #{i}\n"
+                else
+                    @add "#{key_reg} =#{iter_type.key_type.base_type} copy #{i}\n"
+
+            if value_reg
+                value_bits = @fresh_local "value.bits"
+                @add "#{value_bits} =l call $bl_table_get(l #{iter_reg}, l #{i}, l #{iter_type.key_type.nil_value}, l #{iter_type.value_type.nil_value})\n"
+                if iter_type.value_type.base_type == "s" or iter_type.value_type.base_type == "d"
+                    @add "#{value_reg} =#{iter_type.value_type.base_type} cast #{value_bits}\n"
+                else
+                    @add "#{value_reg} =#{iter_type.value_type.base_type} copy #{value_bits}\n"
+        else
+            if key_reg
+                @add "#{key_reg} =l copy #{i}\n"
+
+            assert value_reg
+            if iter_type\is_a(Types.Range)
+                -- TODO: optimize to not use function call and just do var=start ... var += step
+                @add "#{value_reg} =l call $range_nth(l #{iter_reg}, l #{i})\n"
+            else
+                @add "#{value_reg} =#{iter_type.item_type.base_type} #{iter_type.item_type.load} #{list_item}\n"
+                @add "#{list_item} =l add #{list_item}, #{iter_type.item_type.bytes}\n"
+
+        if filter
+            @add_stmt filter
+
+        if make_body
+            @add "####################### BODY ################################\n"
+            @add make_body(key_reg, value_reg)
+            @add "####################### END BODY ################################\n"
+        else
+            error "No body"
+
+        -- If we reached this point, no skips
+        unless @ends_with_jump!
             if iter_type\is_a(Types.TableType)
                 @add "#{i} =l call $bl_table_next(l #{iter_reg}, l #{i}, l #{iter_type.key_type.nil_value})\n"
                 @add "#{is_done} =w ceql #{i}, #{iter_type.key_type.nil_value}\n"
-                @add "jnz #{is_done}, #{end_label}, #{body_label}\n"
+                @add "jnz #{is_done}, #{end_label}, #{between_label}\n"
             else
                 @add "#{i} =l add #{i}, 1\n"
                 @add "#{is_done} =w csgtl #{i}, #{len}\n"
-                @add "jnz #{is_done}, #{end_label}, #{body_label}\n"
+                @add "jnz #{is_done}, #{end_label}, #{between_label}\n"
 
-        do
-            @add_label body_label
-            TableMethods = require 'table_methods'
-            if iter_type\is_a(Types.TableType)
-                if key_reg
-                    if iter_type.key_type.base_type == "s" or iter_type.key_type.base_type == "d"
-                        @add "#{key_reg} =#{iter_type.key_type.base_type} cast #{i}\n"
-                    else
-                        @add "#{key_reg} =#{iter_type.key_type.base_type} copy #{i}\n"
+        @add_label between_label
+        if make_between
+            @add make_between(key_reg, value_reg)
 
-                if value_reg
-                    value_bits = @fresh_local "value.bits"
-                    @add "#{value_bits} =l call $bl_table_get(l #{iter_reg}, l #{i}, l #{iter_type.key_type.nil_value}, l #{iter_type.value_type.nil_value})\n"
-                    if iter_type.value_type.base_type == "s" or iter_type.value_type.base_type == "d"
-                        @add "#{value_reg} =#{iter_type.value_type.base_type} cast #{value_bits}\n"
-                    else
-                        @add "#{value_reg} =#{iter_type.value_type.base_type} copy #{value_bits}\n"
-            else
-                if key_reg
-                    @add "#{key_reg} =l copy #{i}\n"
-
-                assert value_reg
-                if iter_type\is_a(Types.Range)
-                    -- TODO: optimize to not use function call and just do var=start ... var += step
-                    @add "#{value_reg} =l call $range_nth(l #{iter_reg}, l #{i})\n"
-                else
-                    @add "#{value_reg} =#{iter_type.item_type.base_type} #{iter_type.item_type.load} #{list_item}\n"
-                    @add "#{list_item} =l add #{list_item}, #{iter_type.item_type.bytes}\n"
-
-            if filter
-                @add_stmt filter
-
-            if make_body
-                @add make_body(key_reg, value_reg)
-            else
-                error "No body"
-
-            -- If we reached this point, no skips
-            unless @ends_with_jump!
-                if iter_type\is_a(Types.TableType)
-                    @add "#{i} =l call $bl_table_next(l #{iter_reg}, l #{i}, l #{iter_type.key_type.nil_value})\n"
-                    @add "#{is_done} =w ceql #{i}, #{iter_type.key_type.nil_value}\n"
-                    @add "jnz #{is_done}, #{end_label}, #{between_label}\n"
-                else
-                    @add "#{i} =l add #{i}, 1\n"
-                    @add "#{is_done} =w csgtl #{i}, #{len}\n"
-                    @add "jnz #{is_done}, #{end_label}, #{between_label}\n"
-
-        do
-            @add_label between_label
-            if make_between
-                @add make_between(key_reg, value_reg)
-
-            unless @ends_with_jump!
-                @add "jmp #{body_label}\n"
+        unless @ends_with_jump!
+            @add "jmp #{body_label}\n"
 
         @add_label end_label
 
@@ -869,8 +866,7 @@ class CodeBuilder
         if t1\is_a(Types.String)
             tmp = @fresh_local "comparison.i32"
             @add "#{tmp} =w call $strcmp(l #{lhs_reg}, l #{rhs_reg})\n"
-            @add "#{result} =l extsw #{tmp}\n"
-            @add "#{result} =w #{cmp} #{result}, 0\n"
+            @add "#{result} =w csltw #{tmp}, 0\n"
         else
             @add "#{result} =w #{cmp} #{lhs_reg}, #{rhs_reg}\n"
 
@@ -1398,8 +1394,9 @@ expr_compilers =
         item_type = get_type(ast).item_type
 
         get_add_item_code = (item)->
-            code = @env\code!
+            code = @new_code!
             item_reg = code\add_value item
+            code\add "#########################################################################################\n"
             code\add "#{size} =l add #{size}, #{item_type.bytes}\n"
             code\add "#{list_items} =l call $gc_realloc(l #{list_items}, l #{size})\n"
             code\add "#{p} =l add #{list_items}, #{size}\n"
@@ -1486,7 +1483,7 @@ expr_compilers =
                     cond_reg = @add_value cond
                     next_label = @fresh_label "list.next"
                     @check_truthiness get_type(cond), cond_reg, true_label, next_label
-                    @add "#{true_label}\n"
+                    @add_label true_label
                     @add add_entry expr
                 when "For"
                     iter_reg = @add_value val.iterable
@@ -1881,7 +1878,7 @@ expr_compilers =
             needle_reg,haystack_reg = @add_values ast.needle, ast.haystack
             key_getter = @fresh_local "key.getter"
             TableMethods = require 'table_methods'
-            @add TableMethods.to_table_format env, haystack_type.key_type, needle_reg, key_getter
+            @add TableMethods.to_table_format @, haystack_type.key_type, needle_reg, key_getter
             found = @fresh_local "found"
             @add "#{found} =l call $hashmap_get(l #{haystack_reg}, l #{key_getter})\n"
             @add "#{found} =l cnel #{found}, 0\n"
@@ -2101,7 +2098,7 @@ expr_compilers =
                 block_reg = @add_value cond.body
                 @add "#{ret} =#{block_type.base_type} copy #{block_reg}\n" unless @ends_with_jump!
 
-            @add "jmp #{end_label}" unless @ends_with_jump!
+            @add "jmp #{end_label}\n" unless @ends_with_jump!
             @add_label false_label
             false_label = @fresh_label "if.else"
 
@@ -2219,19 +2216,19 @@ expr_compilers =
         return last_reg
 
     Fail: (ast)=>
-        @add_stmt ast, "#{env\fresh_label "unreachable"}\n"
+        @add_stmt ast, "#{@fresh_label "unreachable"}\n"
         return 0
 
     Return: (ast)=>
-        @add_stmt ast, "#{env\fresh_label "unreachable"}\n"
+        @add_stmt ast, "#{@fresh_label "unreachable"}\n"
         return 0
 
     Skip: (ast)=>
-        @add_stmt ast, "#{env\fresh_label "unreachable"}\n"
+        @add_stmt ast, "#{@fresh_label "unreachable"}\n"
         return 0
 
     Stop: (ast)=>
-        @add_stmt ast, "#{env\fresh_label "unreachable"}\n"
+        @add_stmt ast, "#{@fresh_label "unreachable"}\n"
         return 0
 
     Use: (ast)=>
