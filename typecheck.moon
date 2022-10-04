@@ -881,31 +881,26 @@ assign_all_types = (ast)->
     while true
         progress = false
 
-        pre_decls = get_all("__declaration")
-        bind_all_types ast
-        post_decls = get_all("__declaration")
-        for k,v in pairs post_decls
-            if pre_decls[k] != post_decls[k]
-                progress = true
-                break
-
-        pre_decls = get_all("__declaration")
-        bind_variables ast
-        post_decls = get_all("__declaration")
-        for k,v in pairs post_decls
-            if pre_decls[k] != post_decls[k]
-                progress = true
-                break
-
         pre_types = get_all("__type")
+        pre_decls = get_all("__declaration")
+
+        bind_all_types ast
+        bind_variables ast
         assign_types ast
+
+        post_decls = get_all("__declaration")
+        for k,v in pairs post_decls
+            if pre_decls[k] != post_decls[k]
+                progress = true
+                break
+
         post_types = get_all("__type")
         for k,v in pairs post_types
             if pre_types[k] != post_types[k]
                 progress = true
                 break
 
-        break if not progress
+        break unless progress
 
     -- for var in coroutine.wrap(-> each_tag(ast, "Var","TypeVar"))
     --     node_assert var.__declaration, var, "Couldn't determine what this variable refers to"
