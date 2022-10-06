@@ -21,6 +21,7 @@ types = {
     join: => FnType({@,OptionalType(String)}, String, {"list","glue"})
     sort: => FnType({@,OptionalType(FnType(@item_type,@item_type,Bool)),Bool}, NilType, {"list","by","reversed"})
     sorted: => FnType({@,OptionalType(FnType(@item_type,@item_type,Bool)),Bool}, @, {"list","by","reversed"})
+    get_random: => FnType({@}, @item_type, {"list"})
 }
 
 get = (code, use_failure)=>
@@ -239,6 +240,44 @@ methods = {
             code\get_string_reg("", "empty")
         code\add "call $list_remove(l #{list_reg}, l #{item_t.bytes}, l #{first_reg}, l #{last_reg}, l #{err_fmt})\n"
         return "0"
+
+    get_random: (code)=>
+        list = if @__tag == "IndexedTerm"
+            @value
+        elseif @__tag == "FnCall"
+            @fn.value
+        list_reg = code\add_value list
+        len,items = code\fresh_locals "len","items"
+        code\add "#{len} =l loadl #{list_reg}\n"
+        empty_label,ok_label,done = code\fresh_labels "is_empty","has_items","done"
+        code\add "jnz #{len}, #{ok_label}, #{empty_label}\n"
+
+        code\add_label empty_label
+        code\add "call $dprintf(l 2, l #{code\get_string_reg(context_err(list, "List is unexpectedly empty", 2).."\n", "index_error")})\n"
+        code\add "call $_exit(l 1)\n"
+        code\add "jmp #{done}\n"
+
+        code\add_label ok_label
+
+        offset,item_loc,item = code\fresh_locals "offset","item_location","item"
+        code\add "#{offset} =l call $random_range(l 0, l #{len})\n"
+        code\add "#{items} =l add #{list_reg}, 8\n"
+        code\add "#{items} =l loadl #{items}\n"
+        item_type = list.__type.item_type
+        code\add "#{offset} =l mul #{offset}, #{item_type.bytes}\n"
+        code\add "#{item_loc} =l add #{items}, #{offset}\n"
+        if item_type.base_type == "d" or item_type.base_type == "s"
+            tmp = code\fresh_local "list.item.as_int"
+            int_type = item_type.base_type == "d" and "l" or "w"
+            code\add "#{tmp} =#{int_type} load#{int_type} #{item_loc}\n"
+            code\add "#{item} =d cast #{tmp}\n"
+        else
+            code\add "#{item} =#{item_type.base_type} #{item_type.load} #{item_loc}\n"
+        code\add "jmp #{done}\n"
+
+        code\add_label done
+
+        return item
 }
 
 return {:methods, :types}

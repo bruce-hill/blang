@@ -1,5 +1,6 @@
 #include <math.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 double sane_fmod(double x, double y) {
     double ret = fmod(x, y);
@@ -35,6 +36,17 @@ double d_mid(double x, double lo, double hi) {
         return hi;
     else
         return x;
+}
+
+int64_t random_range(int64_t low, int64_t high)
+{
+    const int64_t max_random = ((int64_t)2<<31) - 1;
+    int64_t limit = max_random - (max_random % (high - low));
+  retry:;
+    int64_t r = random();
+    if (__builtin_expect((r >= limit), 0))
+        goto retry;
+    return low + (r % (high - low));
 }
 
 int64_t l_mid(int64_t x, int64_t lo, int64_t hi) {
