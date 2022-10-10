@@ -92,7 +92,11 @@ methods = {
 
     set: (code,skip_ret,table_t=nil)=>
         code\add "\n# Table set\n"
-        table, key, value = @[1], @[2], @[3]
+        table,key,value = if @__tag == "FnCall"
+            @fn.value, @[1], @[2]
+        else
+            @[1],@[2],@[3]
+
         key_t,value_t = if table_t
             table_t.key_type, table_t.value_type
         else

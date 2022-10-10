@@ -464,7 +464,7 @@ assign_types = =>
                     if t_fn = ListMethods.types[@index[0]]
                         @__type = t_fn(t)
                         @__method = ListMethods.methods[@index[0]]
-                        @__inline_method = ListMethods.methods[@index[0]]
+                        @__inline_method = assert(ListMethods.methods[@index[0]], "List method isn't implemented: #{@index[0]}")
                     else
                         node_error @index, "#{@index[0]} is not a valid List method"
                 else
@@ -590,7 +590,6 @@ assign_types = =>
                 elseif t.type\is_a(Types.StructType)
                     member_name = @index[0]
                     dec = @value.__declaration.__parent
-                    assign_types dec
                     if method = dec.__staticmethods[member_name]
                         method_type = assert method.name.__type
                         @__staticmethod = method.name

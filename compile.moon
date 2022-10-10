@@ -1249,7 +1249,7 @@ expr_compilers =
 
     Negative: (ast)=>
         t = get_type ast.value
-        if t\is_a(Types.Int) or t\is_a(Types.Num) or t\is_a(Types.MeasureType)
+        if t\is_numeric!
             reg = @add_value ast.value
             ret = @fresh_local "neg"
             @add "#{ret} =#{t.base_type} neg #{reg}\n"

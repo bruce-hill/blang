@@ -1,5 +1,5 @@
 -- Custom implementations of list methods
-import FnType, OptionalType, ListType, NilType, String, Bool, Int, Range, Pointer from require 'types'
+import FnType, OptionalType, ListType, StructType, NilType, String, Bool, Int32, Int, Range, Pointer from require 'types'
 import log, viz, node_assert, node_error, each_tag, context_err from require 'util'
 
 types = {
@@ -19,8 +19,10 @@ types = {
     reversed: => FnType({@}, @, {"list"})
     wrapped: => FnType({@,Int}, Int, {"list","index"})
     join: => FnType({@,OptionalType(String)}, String, {"list","glue"})
-    sort: => FnType({@,OptionalType(FnType(@item_type,@item_type,Bool)),Bool}, NilType, {"list","by","reversed"})
-    sorted: => FnType({@,OptionalType(FnType(@item_type,@item_type,Bool)),Bool}, @, {"list","by","reversed"})
+    sort: =>
+        ptr = StructType("", {{name:1, type:@item_type}})
+        FnType({@,FnType({ptr,ptr},Int32),OptionalType(Bool)}, NilType, {"list","by","reversed"})
+    sorted: => FnType({@,OptionalType(FnType(@item_type,@item_type,Int32)),Bool}, @, {"list","by","reversed"})
     get_random: => FnType({@}, @item_type, {"list"})
 }
 
@@ -278,6 +280,29 @@ methods = {
         code\add_label done
 
         return item
+
+    sort: (code)=>
+        list = node_assert @fn.value, @, "No list provided"
+        list_reg = code\add_value list
+        by = node_assert @[1], @, "No comparison function provided"
+        by_reg = code\add_value by
+        len = code\fresh_local "len"
+        code\add "#{len} =l loadl #{list_reg}\n"
+        list_t = list.__type
+        items_reg = code\fresh_local "items"
+        code\add "#{items_reg} =l add #{list_reg}, 8\n"
+        code\add "#{items_reg} =l loadl #{items_reg}\n"
+        code\add "call $qsort(l #{items_reg}, l #{len}, l #{list_t.item_type.bytes}, l #{by_reg})\n"
+        return "0"
+
+    sorted: (code)=> error "Not implemented"
+    remove_range: => error "Not implemented"
+    find: => error "Not implemented"
+    count: => error "Not implemented"
+    join: => FnType({@,OptionalType(String)}, String, {"list","glue"})
+    reverse: => error "Not implemented"
+    reversed: => error "Not implemented"
+    wrapped: => error "Not implemented"
 }
 
 return {:methods, :types}
