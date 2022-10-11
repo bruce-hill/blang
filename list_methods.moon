@@ -308,6 +308,8 @@ methods = {
         code\add "#{buf_reg} =l copy 0\n"
         make_between = if glue
             glue_reg = code\add_value glue
+            -- NOTE: CORD_cat() works with 0 as equivalent to "", so no need to check
+            -- for a nil value
             -> "#{buf_reg} =l call $CORD_cat(l #{buf_reg}, l #{glue_reg})\n"
         else
             nil
