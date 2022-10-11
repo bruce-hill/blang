@@ -299,7 +299,33 @@ methods = {
     remove_range: => error "Not implemented"
     find: => error "Not implemented"
     count: => error "Not implemented"
-    join: => FnType({@,OptionalType(String)}, String, {"list","glue"})
+    join: (code)=>
+        list = @fn.value
+        glue = @[1]
+        t = list.__type
+        list_reg = code\add_value list
+        buf_reg = code\fresh_local "buf"
+        code\add "#{buf_reg} =l copy 0\n"
+        make_between = if glue
+            glue_reg = code\add_value glue
+            -> "#{buf_reg} =l call $CORD_cat(l #{buf_reg}, l #{glue_reg})\n"
+        else
+            nil
+
+        item_reg = code\fresh_local "item"
+        code\add_for_loop({
+            type: t, iter_reg:list_reg, val_reg:item_reg,
+            make_body: ->
+                item_str = code\fresh_local "item.string"
+                fn = code\get_tostring_fn t.item_type, scope
+                return code\new_code "#{item_str} =l call #{fn}(#{t.item_type.base_type} #{item_reg}, l 0)\n",
+                    "#{buf_reg} =l call $CORD_cat(l #{buf_reg}, l #{item_str})\n"
+            make_between: make_between
+        })
+        code\add "#{buf_reg} =l call $CORD_to_const_char_star(l #{buf_reg})\n"
+        code\add "#{buf_reg} =l call $bl_string(l #{buf_reg})\n"
+        return buf_reg
+
     reverse: => error "Not implemented"
     reversed: => error "Not implemented"
     wrapped: => error "Not implemented"
